@@ -42,6 +42,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar> {
     DrawingTool.watercolor,
     DrawingTool.crayon,
     DrawingTool.eraser,
+    DrawingTool.lasso,
     DrawingTool.text,
   ];
 
@@ -181,11 +182,17 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar> {
               // 3. Stroke Width Picker
               _buildWidthPicker(context),
 
-              // 4. Color Picker (hidden if eraser is selected)
-              if (controller.selectedTool != DrawingTool.eraser) ...[
+              // 4. Color Picker (hidden if eraser or lasso is selected)
+              if (controller.selectedTool != DrawingTool.eraser &&
+                  controller.selectedTool != DrawingTool.lasso) ...[
                 const SizedBox(width: 4),
                 _buildColorPicker(context),
               ],
+
+              const SizedBox(width: 4),
+
+              // 5. En Sağdaki 3 Nokta Menüsü (Ayarlar & Seçenekler)
+              _buildMoreMenu(context),
             ],
           ),
         ),
@@ -397,6 +404,59 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar> {
       height: 20,
       margin: const EdgeInsets.symmetric(horizontal: 5),
       color: Colors.black.withValues(alpha: 0.08),
+    );
+  }
+
+  Widget _buildMoreMenu(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: 'Daha Fazla Seçenek',
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+      icon: Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.04),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          Icons.more_horiz_rounded,
+          size: 18,
+          color: Color(0xFF1E293B),
+        ),
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      onSelected: (val) {
+        if (val == 'minimize') {
+          setState(() {
+            _isMinimized = true;
+          });
+        } else if (val == 'clear') {
+          widget.controller.clearCanvas();
+        }
+      },
+      itemBuilder: (ctx) => [
+        const PopupMenuItem(
+          value: 'minimize',
+          child: Row(
+            children: [
+              Icon(Icons.unfold_less_rounded, size: 18, color: Color(0xFF475569)),
+              SizedBox(width: 8),
+              Text('Araç Çubuğunu Küçült', style: TextStyle(fontSize: 13)),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'clear',
+          child: Row(
+            children: [
+              Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFFF3B30)),
+              SizedBox(width: 8),
+              Text('Çizimleri Temizle', style: TextStyle(fontSize: 13, color: Color(0xFFFF3B30))),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

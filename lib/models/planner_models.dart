@@ -69,6 +69,7 @@ enum DrawingTool {
   watercolor('Sulu Boya', Icons.brush_rounded, 24.0),
   crayon('Pastel Boya', Icons.grain_rounded, 14.0),
   eraser('Silgi', Icons.auto_fix_normal_rounded, 22.0),
+  lasso('Kement Seçim', Icons.gesture_rounded, 1.0),
   text('Metin', Icons.title_rounded, 1.0);
 
   final String label;

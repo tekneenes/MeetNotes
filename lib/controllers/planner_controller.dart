@@ -261,12 +261,21 @@ class PlannerController extends ChangeNotifier {
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
 
-    _activeStroke = DrawingStroke(
-      points: [point],
-      color: _selectedColor,
-      strokeWidth: _strokeWidth,
-      tool: _selectedTool,
-    );
+    if (_selectedTool.isShape) {
+      _activeStroke = DrawingStroke(
+        points: [point, point],
+        color: _selectedColor,
+        strokeWidth: _strokeWidth,
+        tool: _selectedTool,
+      );
+    } else {
+      _activeStroke = DrawingStroke(
+        points: [point],
+        color: _selectedColor,
+        strokeWidth: _strokeWidth,
+        tool: _selectedTool,
+      );
+    }
     notifyListeners();
   }
 
@@ -277,8 +286,13 @@ class PlannerController extends ChangeNotifier {
     }
 
     if (_activeStroke != null) {
-      final updatedPoints = List<Offset>.from(_activeStroke!.points)..add(point);
-      _activeStroke = _activeStroke!.copyWith(points: updatedPoints);
+      if (_selectedTool.isShape) {
+        final startPoint = _activeStroke!.points.first;
+        _activeStroke = _activeStroke!.copyWith(points: [startPoint, point]);
+      } else {
+        final updatedPoints = List<Offset>.from(_activeStroke!.points)..add(point);
+        _activeStroke = _activeStroke!.copyWith(points: updatedPoints);
+      }
       notifyListeners();
     }
   }
@@ -290,7 +304,17 @@ class PlannerController extends ChangeNotifier {
     }
 
     if (_activeStroke != null) {
-      _strokes.add(_activeStroke!);
+      if (_selectedTool.isShape) {
+        if (_activeStroke!.points.length >= 2) {
+          final p1 = _activeStroke!.points[0];
+          final p2 = _activeStroke!.points[1];
+          if ((p1 - p2).distance > 3.0) {
+            _strokes.add(_activeStroke!);
+          }
+        }
+      } else {
+        _strokes.add(_activeStroke!);
+      }
       _activeStroke = null;
       _saveCurrentStrokes();
       notifyListeners();

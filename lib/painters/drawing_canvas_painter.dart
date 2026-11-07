@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models/planner_models.dart';
 
@@ -32,6 +33,11 @@ class DrawingCanvasPainter extends CustomPainter {
 
   void _drawStroke(Canvas canvas, DrawingStroke stroke) {
     if (stroke.points.isEmpty) return;
+
+    if (stroke.tool.isShape && stroke.points.length >= 2) {
+      _drawShape(canvas, stroke);
+      return;
+    }
 
     final paint = Paint()
       ..style = PaintingStyle.stroke
@@ -123,6 +129,102 @@ class DrawingCanvasPainter extends CustomPainter {
 
     path.lineTo(stroke.points.last.dx, stroke.points.last.dy);
     canvas.drawPath(path, paint);
+  }
+
+  void _drawShape(Canvas canvas, DrawingStroke stroke) {
+    final paint = Paint()
+      ..color = stroke.color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke.strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final p1 = stroke.points.first;
+    final p2 = stroke.points.last;
+    final rect = Rect.fromPoints(p1, p2);
+
+    switch (stroke.tool) {
+      case DrawingTool.rectangle:
+        canvas.drawRect(rect, paint);
+        break;
+
+      case DrawingTool.square:
+        final side = math.min(rect.width, rect.height);
+        final left = (p2.dx >= p1.dx) ? p1.dx : p1.dx - side;
+        final top = (p2.dy >= p1.dy) ? p1.dy : p1.dy - side;
+        canvas.drawRect(Rect.fromLTWH(left, top, side, side), paint);
+        break;
+
+      case DrawingTool.circle:
+        final diameter = math.min(rect.width, rect.height);
+        final radius = diameter / 2;
+        final cx = (p2.dx >= p1.dx) ? p1.dx + radius : p1.dx - radius;
+        final cy = (p2.dy >= p1.dy) ? p1.dy + radius : p1.dy - radius;
+        canvas.drawCircle(Offset(cx, cy), radius, paint);
+        break;
+
+      case DrawingTool.ellipse:
+        canvas.drawOval(rect, paint);
+        break;
+
+      case DrawingTool.triangle:
+        final path = Path()
+          ..moveTo(rect.center.dx, rect.top)
+          ..lineTo(rect.right, rect.bottom)
+          ..lineTo(rect.left, rect.bottom)
+          ..close();
+        canvas.drawPath(path, paint);
+        break;
+
+      case DrawingTool.pentagon:
+        final center = rect.center;
+        final radius = math.min(rect.width, rect.height) / 2;
+        final path = Path();
+        for (int i = 0; i < 5; i++) {
+          final angle = -math.pi / 2 + i * (2 * math.pi / 5);
+          final x = center.dx + radius * math.cos(angle);
+          final y = center.dy + radius * math.sin(angle);
+          if (i == 0) {
+            path.moveTo(x, y);
+          } else {
+            path.lineTo(x, y);
+          }
+        }
+        path.close();
+        canvas.drawPath(path, paint);
+        break;
+
+      case DrawingTool.hexagon:
+        final center = rect.center;
+        final radius = math.min(rect.width, rect.height) / 2;
+        final path = Path();
+        for (int i = 0; i < 6; i++) {
+          final angle = -math.pi / 2 + i * (2 * math.pi / 6);
+          final x = center.dx + radius * math.cos(angle);
+          final y = center.dy + radius * math.sin(angle);
+          if (i == 0) {
+            path.moveTo(x, y);
+          } else {
+            path.lineTo(x, y);
+          }
+        }
+        path.close();
+        canvas.drawPath(path, paint);
+        break;
+
+      case DrawingTool.deltoid:
+        final path = Path()
+          ..moveTo(rect.center.dx, rect.top)
+          ..lineTo(rect.right, rect.center.dy)
+          ..lineTo(rect.center.dx, rect.bottom)
+          ..lineTo(rect.left, rect.center.dy)
+          ..close();
+        canvas.drawPath(path, paint);
+        break;
+
+      default:
+        break;
+    }
   }
 
   @override

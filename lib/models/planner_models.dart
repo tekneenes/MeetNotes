@@ -70,12 +70,30 @@ enum DrawingTool {
   crayon('Pastel Boya', Icons.grain_rounded, 14.0),
   eraser('Silgi', Icons.auto_fix_normal_rounded, 22.0),
   lasso('Kement Seçim', Icons.gesture_rounded, 1.0),
+  rectangle('Dikdörtgen', Icons.crop_square_rounded, 2.5),
+  square('Kare', Icons.square_outlined, 2.5),
+  circle('Daire', Icons.circle_outlined, 2.5),
+  ellipse('Elips', Icons.egg_outlined, 2.5),
+  triangle('Üçgen', Icons.change_history_rounded, 2.5),
+  pentagon('Beşgen', Icons.pentagon_outlined, 2.5),
+  hexagon('Altıgen', Icons.hexagon_outlined, 2.5),
+  deltoid('Deltoid', Icons.diamond_outlined, 2.5),
   text('Metin', Icons.title_rounded, 1.0);
 
   final String label;
   final IconData icon;
   final double defaultWidth;
   const DrawingTool(this.label, this.icon, this.defaultWidth);
+
+  bool get isShape =>
+      this == DrawingTool.rectangle ||
+      this == DrawingTool.square ||
+      this == DrawingTool.circle ||
+      this == DrawingTool.ellipse ||
+      this == DrawingTool.triangle ||
+      this == DrawingTool.pentagon ||
+      this == DrawingTool.hexagon ||
+      this == DrawingTool.deltoid;
 }
 
 class DrawingStroke {

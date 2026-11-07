@@ -5,12 +5,18 @@ import '../models/planner_models.dart';
 class DrawingCanvasPainter extends CustomPainter {
   final List<DrawingStroke> strokes;
   final DrawingStroke? activeStroke;
+  final List<Offset> lassoPoints;
+  final Rect? selectionBounds;
+  final Set<int> selectedStrokeIndices;
   final double scale;
   final Offset panOffset;
 
   DrawingCanvasPainter({
     required this.strokes,
     this.activeStroke,
+    this.lassoPoints = const [],
+    this.selectionBounds,
+    this.selectedStrokeIndices = const {},
     this.scale = 1.0,
     this.panOffset = Offset.zero,
   });
@@ -21,18 +27,42 @@ class DrawingCanvasPainter extends CustomPainter {
     canvas.translate(panOffset.dx, panOffset.dy);
     canvas.scale(scale);
 
-    for (final stroke in strokes) {
-      _drawStroke(canvas, stroke);
+    for (int i = 0; i < strokes.length; i++) {
+      _drawStroke(canvas, strokes[i], isSelected: selectedStrokeIndices.contains(i));
     }
     if (activeStroke != null) {
       _drawStroke(canvas, activeStroke!);
+    }
+    if (lassoPoints.length >= 2) {
+      _drawLassoLoop(canvas);
+    }
+    if (selectionBounds != null) {
+      _drawSelectionBox(canvas, selectionBounds!);
     }
 
     canvas.restore();
   }
 
-  void _drawStroke(Canvas canvas, DrawingStroke stroke) {
+  void _drawStroke(Canvas canvas, DrawingStroke stroke, {bool isSelected = false}) {
     if (stroke.points.isEmpty) return;
+
+    if (isSelected) {
+      final glowPaint = Paint()
+        ..color = const Color(0xFF007AFF).withValues(alpha: 0.22)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke.strokeWidth + 6.0
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+      if (stroke.tool.isShape && stroke.points.length >= 2) {
+        _drawShapeWithPaint(canvas, stroke, glowPaint);
+      } else if (stroke.points.length >= 2) {
+        final glowPath = Path()..moveTo(stroke.points.first.dx, stroke.points.first.dy);
+        for (int i = 1; i < stroke.points.length; i++) {
+          glowPath.lineTo(stroke.points[i].dx, stroke.points[i].dy);
+        }
+        canvas.drawPath(glowPath, glowPaint);
+      }
+    }
 
     if (stroke.tool.isShape && stroke.points.length >= 2) {
       _drawShape(canvas, stroke);
@@ -139,6 +169,10 @@ class DrawingCanvasPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
+    _drawShapeWithPaint(canvas, stroke, paint);
+  }
+
+  void _drawShapeWithPaint(Canvas canvas, DrawingStroke stroke, Paint paint) {
     final p1 = stroke.points.first;
     final p2 = stroke.points.last;
     final rect = Rect.fromPoints(p1, p2);
@@ -224,6 +258,86 @@ class DrawingCanvasPainter extends CustomPainter {
 
       default:
         break;
+    }
+  }
+
+  void _drawLassoLoop(Canvas canvas) {
+    final path = Path()..addPolygon(lassoPoints, true);
+
+    final fillPaint = Paint()
+      ..color = const Color(0xFF007AFF).withValues(alpha: 0.08)
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(path, fillPaint);
+
+    final strokePaint = Paint()
+      ..color = const Color(0xFF007AFF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8 / scale
+      ..strokeCap = StrokeCap.round;
+
+    _drawDashedPath(canvas, path, strokePaint, 6.0 / scale, 4.0 / scale);
+  }
+
+  void _drawSelectionBox(Canvas canvas, Rect bounds) {
+    final fillPaint = Paint()
+      ..color = const Color(0xFF007AFF).withValues(alpha: 0.04)
+      ..style = PaintingStyle.fill;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(bounds, Radius.circular(6.0 / scale)),
+      fillPaint,
+    );
+
+    final borderPaint = Paint()
+      ..color = const Color(0xFF007AFF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6 / scale;
+
+    final rectPath = Path()
+      ..addRRect(RRect.fromRectAndRadius(bounds, Radius.circular(6.0 / scale)));
+    _drawDashedPath(canvas, rectPath, borderPaint, 6.0 / scale, 4.0 / scale);
+
+    // Draw 8 resize/drag handles (corners + midpoints)
+    final handlePoints = [
+      bounds.topLeft,
+      bounds.topCenter,
+      bounds.topRight,
+      bounds.centerRight,
+      bounds.bottomRight,
+      bounds.bottomCenter,
+      bounds.bottomLeft,
+      bounds.centerLeft,
+    ];
+
+    final handleFill = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    final handleStroke = Paint()
+      ..color = const Color(0xFF007AFF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8 / scale;
+
+    final handleRadius = 4.5 / scale;
+    for (final pt in handlePoints) {
+      canvas.drawCircle(pt, handleRadius, handleFill);
+      canvas.drawCircle(pt, handleRadius, handleStroke);
+    }
+  }
+
+  void _drawDashedPath(
+    Canvas canvas,
+    Path sourcePath,
+    Paint paint,
+    double dashLength,
+    double gapLength,
+  ) {
+    for (final metric in sourcePath.computeMetrics()) {
+      double distance = 0.0;
+      while (distance < metric.length) {
+        final next = math.min(distance + dashLength, metric.length);
+        final segment = metric.extractPath(distance, next);
+        canvas.drawPath(segment, paint);
+        distance += dashLength + gapLength;
+      }
     }
   }
 

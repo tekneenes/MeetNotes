@@ -241,6 +241,9 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                     painter: DrawingCanvasPainter(
                       strokes: controller.strokes,
                       activeStroke: controller.activeStroke,
+                      lassoPoints: controller.lassoPoints,
+                      selectionBounds: controller.selectionBounds,
+                      selectedStrokeIndices: controller.selectedStrokeIndices,
                       scale: _scale,
                       panOffset: _panOffset,
                     ),
@@ -250,6 +253,12 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
 
               // 1c. Canvas Text Items (Mapped cleanly from Canvas Space to Viewport Space)
               ...controller.canvasTexts.map((textItem) => _buildCanvasTextWidget(textItem)),
+
+              // 1d. Floating Lasso Selection Action Pill (Copy / Delete / Clear Selection)
+              if (controller.hasLassoSelection &&
+                  !controller.isDraggingSelection &&
+                  controller.selectionBounds != null)
+                _buildSelectionActionPill(controller.selectionBounds!, viewportSize),
 
               // 2. Truly Floating & Draggable Apple Notes Toolbar
               Positioned(
@@ -330,6 +339,114 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectionActionPill(Rect canvasBounds, Size viewportSize) {
+    final topCenterViewport = canvasBounds.topCenter * _scale + _panOffset;
+    final bottomCenterViewport = canvasBounds.bottomCenter * _scale + _panOffset;
+
+    const pillWidth = 176.0;
+    const pillHeight = 36.0;
+
+    final left = (topCenterViewport.dx - pillWidth / 2)
+        .clamp(8.0, (viewportSize.width - pillWidth - 8.0).clamp(8.0, viewportSize.width));
+    final top = (topCenterViewport.dy - pillHeight - 12.0 >= 8.0)
+        ? topCenterViewport.dy - pillHeight - 12.0
+        : (bottomCenterViewport.dy + 12.0)
+            .clamp(8.0, (viewportSize.height - pillHeight - 8.0).clamp(8.0, viewportSize.height));
+
+    return Positioned(
+      left: left,
+      top: top,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          height: pillHeight,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E293B).withValues(alpha: 0.94),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.18),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Tooltip(
+                message: 'Seçimi Çoğalt',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: widget.controller.duplicateSelectedStrokes,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.copy_rounded, size: 15, color: Colors.white),
+                        SizedBox(width: 4),
+                        Text(
+                          'Çoğalt',
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.white),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 16,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                color: Colors.white.withValues(alpha: 0.2),
+              ),
+              Tooltip(
+                message: 'Seçimi Sil',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: widget.controller.deleteSelectedStrokes,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFFF453A)),
+                        SizedBox(width: 4),
+                        Text(
+                          'Sil',
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFFFF453A)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 16,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                color: Colors.white.withValues(alpha: 0.2),
+              ),
+              Tooltip(
+                message: 'Seçimi Kaldır',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: widget.controller.clearLassoSelection,
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.close_rounded, size: 15, color: Colors.white70),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

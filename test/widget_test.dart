@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:meet_notes/controllers/planner_controller.dart';
 import 'package:meet_notes/main.dart';
+import 'package:meet_notes/models/planner_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -72,5 +74,45 @@ void main() {
 
     // Toolbar 3-dots icon transforms into the active triangle icon
     expect(find.byIcon(Icons.change_history_rounded), findsWidgets);
+  });
+
+  test('Lasso tool selects and moves strokes and shapes', () async {
+    final controller = PlannerController();
+    await Future.delayed(const Duration(milliseconds: 50));
+
+    // 1. Draw a rectangle shape from (100, 100) to (200, 200)
+    controller.setTool(DrawingTool.rectangle);
+    controller.startStroke(const Offset(100, 100));
+    controller.updateStroke(const Offset(200, 200));
+    controller.endStroke();
+
+    expect(controller.strokes.length, 1);
+    expect(controller.strokes.first.points.first, const Offset(100, 100));
+
+    // 2. Switch to Lasso tool and draw a lasso loop around the rectangle
+    controller.setTool(DrawingTool.lasso);
+    controller.startStroke(const Offset(80, 80));
+    controller.updateStroke(const Offset(220, 80));
+    controller.updateStroke(const Offset(220, 220));
+    controller.updateStroke(const Offset(80, 220));
+    controller.endStroke();
+
+    expect(controller.hasLassoSelection, isTrue);
+    expect(controller.selectedStrokeIndices, contains(0));
+
+    // 3. Drag inside the selection box by (+50, +30)
+    controller.startStroke(const Offset(150, 150));
+    controller.updateStroke(const Offset(200, 180));
+    controller.endStroke();
+
+    expect(controller.strokes.first.points[0], const Offset(150, 130));
+    expect(controller.strokes.first.points[1], const Offset(250, 230));
+
+    // 4. Test duplicate and delete selected strokes
+    controller.duplicateSelectedStrokes();
+    expect(controller.strokes.length, 2);
+
+    controller.deleteSelectedStrokes();
+    expect(controller.strokes.length, 1);
   });
 }

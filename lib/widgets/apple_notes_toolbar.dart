@@ -193,9 +193,8 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar> {
               // 3. Stroke Width Picker
               _buildWidthPicker(context),
 
-              // 4. Color Picker (hidden if eraser or lasso is selected)
-              if (controller.selectedTool != DrawingTool.eraser &&
-                  controller.selectedTool != DrawingTool.lasso) ...[
+              // 4. Color Picker (hidden only if eraser is selected)
+              if (controller.selectedTool != DrawingTool.eraser) ...[
                 const SizedBox(width: 4),
                 _buildColorPicker(context),
               ],

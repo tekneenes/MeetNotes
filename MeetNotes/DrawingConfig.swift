@@ -9,7 +9,7 @@ enum ToolType: String, CaseIterable, Identifiable {
     case fountain
     case watercolor
     case crayon
-    case text // New Text Tool
+    case text
     case eraser
     case lasso
     
@@ -20,14 +20,37 @@ enum ToolType: String, CaseIterable, Identifiable {
         case .pen: return "pencil.tip"
         case .pencil: return "pencil"
         case .marker: return "highlighter"
-        case .monoline: return "scribble.variable"
-        case .fountain: return "scribble.variable" // Fixed icon
+        case .monoline: return "pencil.line"
+        case .fountain: return "applepencil.tip"
         case .watercolor: return "paintbrush.fill"
-        case .crayon: return "scribble"
-        case .text: return "textformat" // Icon for text
+        case .crayon: return "pencil.and.scribble"
+        case .text: return "textformat"
         case .eraser: return "eraser.fill"
         case .lasso: return "lasso"
         }
+    }
+    
+    var displayName: String {
+        switch self {
+        case .pen: return "Tükenmez Kalem"
+        case .pencil: return "Kurşun Kalem"
+        case .marker: return "Fosforlu Kalem"
+        case .monoline: return "Monoline"
+        case .fountain: return "Dolma Kalem"
+        case .watercolor: return "Sulu Boya"
+        case .crayon: return "Pastel Boya"
+        case .text: return "Metin"
+        case .eraser: return "Silgi"
+        case .lasso: return "Kement"
+        }
+    }
+    
+    static var drawingTools: [ToolType] {
+        [.pen, .pencil, .marker, .monoline, .fountain, .watercolor, .crayon]
+    }
+    
+    static var utilityTools: [ToolType] {
+        [.eraser, .lasso, .text]
     }
 }
 

@@ -11,11 +11,23 @@ import CoreData
 @main
 struct MeetNotesApp: App {
     let persistenceController = PersistenceController.shared
+    @State private var isShowingSplash = true
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environment(\.managedObjectContext, persistenceController.container.viewContext)
+            ZStack {
+                ContentView()
+                    .environment(\.managedObjectContext, persistenceController.container.viewContext)
+                
+                if isShowingSplash {
+                    SplashScreenView(isActive: $isShowingSplash)
+                        .transition(.asymmetric(
+                            insertion: .identity,
+                            removal: .scale(scale: 1.06).combined(with: .opacity)
+                        ))
+                        .zIndex(999)
+                }
+            }
         }
     }
 }

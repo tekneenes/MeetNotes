@@ -122,6 +122,27 @@ class PlannerStorageService {
     final raw = jsonEncode(texts.map((t) => t.toMap()).toList());
     await prefs.setString(key, raw);
   }
+
+  // --- Canvas Image Items ---
+  Future<List<CanvasImageItem>> loadCanvasImages(DateTime weekStart, int pageIndex, {String prefix = ''}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'meet_notes_images_$prefix${_formatWeekKey(weekStart)}_p$pageIndex';
+    final raw = prefs.getString(key);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list.map((e) => CanvasImageItem.fromMap(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveCanvasImages(DateTime weekStart, int pageIndex, List<CanvasImageItem> images, {String prefix = ''}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'meet_notes_images_$prefix${_formatWeekKey(weekStart)}_p$pageIndex';
+    final raw = jsonEncode(images.map((img) => img.toMap()).toList());
+    await prefs.setString(key, raw);
+  }
 }
 
 

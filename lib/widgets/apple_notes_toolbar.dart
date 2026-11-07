@@ -186,30 +186,6 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar> {
                 const SizedBox(width: 4),
                 _buildColorPicker(context),
               ],
-
-              _buildDivider(),
-
-              // 5. Undo & Redo
-              _buildActionButton(
-                icon: Icons.undo_rounded,
-                tooltip: 'Geri Al',
-                onPressed: controller.canUndo ? () => controller.undo() : null,
-              ),
-              _buildActionButton(
-                icon: Icons.redo_rounded,
-                tooltip: 'Yinele',
-                onPressed: controller.canRedo ? () => controller.redo() : null,
-              ),
-
-              // 6. Clear Canvas
-              _buildActionButton(
-                icon: Icons.delete_outline_rounded,
-                tooltip: 'Sayfayı Temizle',
-                color: const Color(0xFFFF3B30),
-                onPressed: controller.strokes.isEmpty
-                    ? null
-                    : () => _confirmClear(context),
-              ),
             ],
           ),
         ),
@@ -415,56 +391,12 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar> {
     );
   }
 
-  Widget _buildActionButton({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback? onPressed,
-    Color? color,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 1),
-      child: IconButton(
-        tooltip: tooltip,
-        icon: Icon(icon, size: 17),
-        color: color ?? Colors.grey.shade700,
-        disabledColor: Colors.grey.shade300,
-        constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-        padding: EdgeInsets.zero,
-        onPressed: onPressed,
-      ),
-    );
-  }
-
   Widget _buildDivider() {
     return Container(
       width: 1,
       height: 20,
       margin: const EdgeInsets.symmetric(horizontal: 5),
       color: Colors.black.withValues(alpha: 0.08),
-    );
-  }
-
-  void _confirmClear(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Sayfayı Temizle'),
-        content: const Text('Bu sayfadaki tüm çizimler silinecek. Emin misiniz?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('İptal'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFF3B30)),
-            onPressed: () {
-              widget.controller.clearCanvas();
-              Navigator.of(ctx).pop();
-            },
-            child: const Text('Temizle'),
-          ),
-        ],
-      ),
     );
   }
 }

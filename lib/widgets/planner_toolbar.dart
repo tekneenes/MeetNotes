@@ -145,12 +145,63 @@ class PlannerToolbar extends StatelessWidget {
             ),
           ),
 
-          // Sağ Kısım: Yakınlaştırma Hapı ve Ayarlar İkonu
+          // Sağ Kısım: Geri Al / Yinele / Temizle + Zoom + Hızlı Erişim + Ayarlar
           Align(
             alignment: Alignment.centerRight,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // İleri / Geri / Temizle Hapı
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'Geri Al',
+                        icon: const Icon(Icons.undo_rounded, size: 18),
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                        padding: EdgeInsets.zero,
+                        color: const Color(0xFF1E293B),
+                        disabledColor: Colors.grey.shade300,
+                        onPressed: controller.canUndo ? () => controller.undo() : null,
+                      ),
+                      IconButton(
+                        tooltip: 'Yinele',
+                        icon: const Icon(Icons.redo_rounded, size: 18),
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                        padding: EdgeInsets.zero,
+                        color: const Color(0xFF1E293B),
+                        disabledColor: Colors.grey.shade300,
+                        onPressed: controller.canRedo ? () => controller.redo() : null,
+                      ),
+                      Container(
+                        height: 14,
+                        width: 1,
+                        color: Colors.grey.shade300,
+                        margin: const EdgeInsets.symmetric(horizontal: 2),
+                      ),
+                      IconButton(
+                        tooltip: 'Sayfayı Temizle',
+                        icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                        padding: EdgeInsets.zero,
+                        color: const Color(0xFFFF3B30),
+                        disabledColor: Colors.grey.shade300,
+                        onPressed: controller.strokes.isEmpty
+                            ? null
+                            : () => _confirmClear(context),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+
                 // Zoom Pill (%100, -, +)
                 _buildZoomPill(context),
                 const SizedBox(width: 8),
@@ -256,6 +307,30 @@ class PlannerToolbar extends StatelessWidget {
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
             onPressed: controller.zoomScale < 4.0 ? () => controller.zoomIn() : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmClear(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sayfayı Temizle'),
+        content: const Text('Bu sayfadaki tüm çizimler silinecek. Emin misiniz?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('İptal'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFF3B30)),
+            onPressed: () {
+              controller.clearCanvas();
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Temizle'),
           ),
         ],
       ),

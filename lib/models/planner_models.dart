@@ -246,4 +246,58 @@ class CanvasTextItem {
   }
 }
 
+class CanvasImageItem {
+  final String id;
+  final Offset position;
+  final double width;
+  final double height;
+  final String base64Data;
+
+  const CanvasImageItem({
+    required this.id,
+    required this.position,
+    this.width = 220.0,
+    this.height = 160.0,
+    required this.base64Data,
+  });
+
+  CanvasImageItem copyWith({
+    String? id,
+    Offset? position,
+    double? width,
+    double? height,
+    String? base64Data,
+  }) {
+    return CanvasImageItem(
+      id: id ?? this.id,
+      position: position ?? this.position,
+      width: width ?? this.width,
+      height: height ?? this.height,
+      base64Data: base64Data ?? this.base64Data,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'x': position.dx,
+    'y': position.dy,
+    'width': width,
+    'height': height,
+    'base64Data': base64Data,
+  };
+
+  factory CanvasImageItem.fromMap(Map<String, dynamic> map) {
+    return CanvasImageItem(
+      id: map['id'] as String? ?? '',
+      position: Offset(
+        (map['x'] as num?)?.toDouble() ?? 80.0,
+        (map['y'] as num?)?.toDouble() ?? 100.0,
+      ),
+      width: (map['width'] as num?)?.toDouble() ?? 220.0,
+      height: (map['height'] as num?)?.toDouble() ?? 160.0,
+      base64Data: map['base64Data'] as String? ?? '',
+    );
+  }
+}
+
 

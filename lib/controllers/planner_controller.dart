@@ -26,6 +26,7 @@ class PlannerController extends ChangeNotifier {
   // Lasso Selection, Resize & 2D Rotation State
   List<Offset> _lassoPoints = [];
   final Set<int> _selectedStrokeIndices = {};
+  final Set<String> _selectedTextIds = {};
   bool _isDraggingSelection = false;
   Offset? _lastLassoDragPoint;
   SelectionHandle? _activeResizeHandle;
@@ -33,6 +34,7 @@ class PlannerController extends ChangeNotifier {
   Rect? _initialResizeRawBounds;
   Offset? _initialResizeCenter;
   Map<int, DrawingStroke> _initialResizeStrokes = {};
+  Map<String, CanvasTextItem> _initialResizeTexts = {};
   bool _isRotatingSelection = false;
   Offset? _rotationCenter;
   double? _initialRotationAngle;
@@ -41,6 +43,7 @@ class PlannerController extends ChangeNotifier {
   int _currentRotationDegrees = 0;
   Rect? _rotationAnchorBounds;
   Map<int, DrawingStroke> _initialRotationStrokes = {};
+  Map<String, CanvasTextItem> _initialRotationTexts = {};
 
   // Hızlı Erişim, Katman Sıralaması & Gruplama State
   bool _isQuickAccessOpen = false;
@@ -86,7 +89,10 @@ class PlannerController extends ChangeNotifier {
   DrawingStroke? get activeStroke => _activeStroke;
   List<Offset> get lassoPoints => List.unmodifiable(_lassoPoints);
   Set<int> get selectedStrokeIndices => Set.unmodifiable(_selectedStrokeIndices);
-  bool get hasLassoSelection => _selectedStrokeIndices.isNotEmpty;
+  Set<String> get selectedTextIds => Set.unmodifiable(_selectedTextIds);
+  bool get hasLassoSelection =>
+      _selectedStrokeIndices.isNotEmpty || _selectedTextIds.isNotEmpty;
+  bool isTextLassoSelected(String id) => _selectedTextIds.contains(id);
   bool get isDraggingSelection =>
       _isDraggingSelection || _activeResizeHandle != null || _isRotatingSelection;
   SelectionHandle? get activeResizeHandle => _activeResizeHandle;
@@ -101,9 +107,14 @@ class PlannerController extends ChangeNotifier {
   bool get isQuickAccessAssetsPage => _quickAccessSubPage == QuickAccessSubPage.assets;
   List<SavedCanvasAsset> get savedAssets => List.unmodifiable(_savedAssets);
   bool get hasAnyLayerSelection =>
-      _selectedStrokeIndices.isNotEmpty || _selectedTextId != null;
+      _selectedStrokeIndices.isNotEmpty ||
+      _selectedTextIds.isNotEmpty ||
+      _selectedTextId != null;
   int get selectedLayerCount =>
-      _selectedStrokeIndices.length + (_selectedTextId != null ? 1 : 0);
+      _selectedStrokeIndices.length +
+      (_selectedTextIds.isNotEmpty
+          ? _selectedTextIds.length
+          : (_selectedTextId != null ? 1 : 0));
   bool get showOnlySelectedLayers =>
       _showOnlySelectedLayers && hasAnyLayerSelection;
   bool get showOnlySelectedGroups =>
@@ -112,6 +123,18 @@ class PlannerController extends ChangeNotifier {
   bool get isSelectionLocked {
     for (final idx in _selectedStrokeIndices) {
       if (idx >= 0 && idx < _strokes.length && _strokes[idx].isLocked) {
+        return true;
+      }
+    }
+    for (final id in _selectedTextIds) {
+      final idx = _canvasTexts.indexWhere((t) => t.id == id);
+      if (idx != -1 && _canvasTexts[idx].isLocked) {
+        return true;
+      }
+    }
+    if (_selectedTextId != null) {
+      final idx = _canvasTexts.indexWhere((t) => t.id == _selectedTextId);
+      if (idx != -1 && _canvasTexts[idx].isLocked) {
         return true;
       }
     }
@@ -240,12 +263,11 @@ class PlannerController extends ChangeNotifier {
     String? customTitle,
     bool openAssetsPanel = true,
   }) async {
-    if (_selectedStrokeIndices.isEmpty) return null;
+    if (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) return null;
     final sortedIndices = _selectedStrokeIndices
         .where((i) => i >= 0 && i < _strokes.length)
         .toList()
       ..sort();
-    if (sortedIndices.isEmpty) return null;
 
     final clonedStrokes = sortedIndices
         .map((i) => _strokes[i].copyWith(
@@ -254,11 +276,24 @@ class PlannerController extends ChangeNotifier {
             ))
         .toList();
 
+    final clonedTexts = <CanvasTextItem>[];
+    for (final textId in _selectedTextIds) {
+      final idx = _canvasTexts.indexWhere((t) => t.id == textId);
+      if (idx != -1) {
+        clonedTexts.add(_canvasTexts[idx].copyWith(isLocked: false));
+      }
+    }
+
+    final totalParts = clonedStrokes.length + clonedTexts.length;
+    if (totalParts == 0) return null;
+
     final latestAssets = await _storage.loadSavedAssets();
     final nextNumber = latestAssets.length + 1;
-    final defaultTitle = clonedStrokes.length == 1
-        ? '${clonedStrokes.first.tool.label} #$nextNumber'
-        : 'Grup Varlığı (${clonedStrokes.length} parça) #$nextNumber';
+    final defaultTitle = totalParts == 1
+        ? (clonedTexts.isNotEmpty
+            ? 'Metin Varlığı #$nextNumber'
+            : '${clonedStrokes.first.tool.label} #$nextNumber')
+        : 'Grup Varlığı ($totalParts parça) #$nextNumber';
 
     final newAsset = SavedCanvasAsset(
       id: 'asset_${DateTime.now().microsecondsSinceEpoch}',
@@ -266,6 +301,7 @@ class PlannerController extends ChangeNotifier {
           ? customTitle.trim()
           : defaultTitle,
       strokes: clonedStrokes,
+      texts: clonedTexts,
       createdAt: DateTime.now(),
     );
 
@@ -284,24 +320,32 @@ class PlannerController extends ChangeNotifier {
     final assetIdx = _savedAssets.indexWhere((a) => a.id == assetId);
     if (assetIdx == -1) return;
     final asset = _savedAssets[assetIdx];
-    if (asset.strokes.isEmpty) return;
+    if (asset.strokes.isEmpty && asset.texts.isEmpty) return;
 
     double minX = double.infinity;
     double minY = double.infinity;
     double maxX = double.negativeInfinity;
     double maxY = double.negativeInfinity;
-    bool hasPoints = false;
+    bool hasBounds = false;
 
     for (final s in asset.strokes) {
       for (final p in s.points) {
-        hasPoints = true;
+        hasBounds = true;
         if (p.dx < minX) minX = p.dx;
         if (p.dy < minY) minY = p.dy;
         if (p.dx > maxX) maxX = p.dx;
         if (p.dy > maxY) maxY = p.dy;
       }
     }
-    if (!hasPoints) return;
+    for (final t in asset.texts) {
+      hasBounds = true;
+      final h = t.computeHeight();
+      if (t.position.dx < minX) minX = t.position.dx;
+      if (t.position.dy < minY) minY = t.position.dy;
+      if (t.position.dx + t.width > maxX) maxX = t.position.dx + t.width;
+      if (t.position.dy + h > maxY) maxY = t.position.dy + h;
+    }
+    if (!hasBounds) return;
 
     final originalCenter = Offset((minX + maxX) / 2.0, (minY + maxY) / 2.0);
     Offset destination = targetCenter ?? const Offset(340.0, 240.0);
@@ -316,7 +360,7 @@ class PlannerController extends ChangeNotifier {
     }
 
     final delta = destination - originalCenter;
-    final String? newGroupId = asset.strokes.length > 1
+    final String? newGroupId = (asset.strokes.length + asset.texts.length) > 1
         ? 'grp_${DateTime.now().microsecondsSinceEpoch}'
         : null;
 
@@ -337,13 +381,29 @@ class PlannerController extends ChangeNotifier {
       newSelectedIndices.add(_strokes.length - 1);
     }
 
+    final newSelectedTextIds = <String>{};
+    for (final t in asset.texts) {
+      final placedText = t.copyWith(
+        id: 'txt_${DateTime.now().microsecondsSinceEpoch}_${newSelectedTextIds.length}',
+        position: t.position + delta,
+        isLocked: false,
+        layerOrder: _nextTopLayerOrder(),
+      );
+      _canvasTexts.add(placedText);
+      newSelectedTextIds.add(placedText.id);
+    }
+
     _selectedTool = DrawingTool.lasso;
     _selectedStrokeIndices
       ..clear()
       ..addAll(newSelectedIndices);
+    _selectedTextIds
+      ..clear()
+      ..addAll(newSelectedTextIds);
     _normalizeUnifiedLayerOrders();
     _syncSelectionRotationFromStrokes();
     _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
     notifyListeners();
   }
 
@@ -393,7 +453,7 @@ class PlannerController extends ChangeNotifier {
   }
 
   void _syncSelectionRotationFromStrokes() {
-    if (_selectedStrokeIndices.isEmpty) {
+    if (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) {
       _selectionRotationAngle = 0.0;
       return;
     }
@@ -409,11 +469,23 @@ class PlannerController extends ChangeNotifier {
         }
       }
     }
+    for (final textId in _selectedTextIds) {
+      final idx = _canvasTexts.indexWhere((t) => t.id == textId);
+      if (idx != -1) {
+        final r = _canvasTexts[idx].rotation;
+        if (commonRotation == null) {
+          commonRotation = r;
+        } else if ((commonRotation - r).abs() > 0.001) {
+          commonRotation = 0.0;
+          break;
+        }
+      }
+    }
     _selectionRotationAngle = commonRotation ?? 0.0;
   }
 
   Rect? _computeRawSelectionBounds() {
-    if (_selectedStrokeIndices.isEmpty) return null;
+    if (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) return null;
     double minX = double.infinity;
     double minY = double.infinity;
     double maxX = double.negativeInfinity;
@@ -440,6 +512,41 @@ class PlannerController extends ChangeNotifier {
         }
       }
     }
+
+    for (final textId in _selectedTextIds) {
+      final idx = _canvasTexts.indexWhere((t) => t.id == textId);
+      if (idx != -1) {
+        final item = _canvasTexts[idx];
+        final h = item.computeHeight();
+        final itemCenter = Offset(
+          item.position.dx + item.width / 2.0,
+          item.position.dy + h / 2.0,
+        );
+        final rawCorners = [
+          Offset(item.position.dx, item.position.dy),
+          Offset(item.position.dx + item.width, item.position.dy),
+          Offset(item.position.dx + item.width, item.position.dy + h),
+          Offset(item.position.dx, item.position.dy + h),
+        ];
+        for (final c in rawCorners) {
+          found = true;
+          final worldCorner = item.rotation != 0.0
+              ? _rotatePointAround(c, itemCenter, item.rotation)
+              : c;
+          final lx = _selectionRotationAngle == 0.0
+              ? worldCorner.dx
+              : worldCorner.dx * cosNeg - worldCorner.dy * sinNeg;
+          final ly = _selectionRotationAngle == 0.0
+              ? worldCorner.dy
+              : worldCorner.dx * sinNeg + worldCorner.dy * cosNeg;
+          if (lx < minX) minX = lx;
+          if (ly < minY) minY = ly;
+          if (lx > maxX) maxX = lx;
+          if (ly > maxY) maxY = ly;
+        }
+      }
+    }
+
     if (!found) return null;
 
     if (_selectionRotationAngle == 0.0) {
@@ -666,6 +773,7 @@ class PlannerController extends ChangeNotifier {
     _strokeWidth = tool.defaultWidth;
     if (tool != DrawingTool.lasso) {
       _selectedStrokeIndices.clear();
+      _selectedTextIds.clear();
       _lassoPoints = [];
       _isDraggingSelection = false;
     }
@@ -685,6 +793,15 @@ class PlannerController extends ChangeNotifier {
           prefix: _storagePrefix,
         );
       }
+    }
+    if (_selectedTextIds.isNotEmpty && !isSelectionLocked) {
+      for (final id in _selectedTextIds) {
+        final idx = _canvasTexts.indexWhere((t) => t.id == id);
+        if (idx != -1 && !_canvasTexts[idx].isLocked) {
+          _canvasTexts[idx] = _canvasTexts[idx].copyWith(color: color);
+        }
+      }
+      _saveCurrentCanvasTexts();
     }
     if (_selectedStrokeIndices.isNotEmpty && !isSelectionLocked) {
       _undoStack.add(List.from(_strokes));
@@ -778,6 +895,11 @@ class PlannerController extends ChangeNotifier {
                         .toList(),
                   ),
             };
+            _initialResizeTexts = {
+              for (final id in _selectedTextIds)
+                for (final item in _canvasTexts)
+                  if (item.id == id) id: item,
+            };
             _isDraggingSelection = false;
             _lastLassoDragPoint = null;
             notifyListeners();
@@ -803,9 +925,52 @@ class PlannerController extends ChangeNotifier {
         }
       }
 
-      // 3. Check if user directly touched/grabbed an existing stroke or shape
+      // 3. Check if user directly touched/grabbed an existing stroke, shape, or text box
       final hitIndex = _findStrokeAtPoint(point);
-      if (hitIndex != null) {
+      final hitText = _findTextAtPoint(point);
+
+      bool selectStroke = false;
+      bool selectText = false;
+
+      if (hitIndex != null && hitText != null) {
+        final strokeOrder = _strokes[hitIndex].layerOrder ?? 0;
+        final textOrder = hitText.layerOrder ?? 0;
+        if (textOrder >= strokeOrder) {
+          selectText = true;
+        } else {
+          selectStroke = true;
+        }
+      } else if (hitText != null) {
+        selectText = true;
+      } else if (hitIndex != null) {
+        selectStroke = true;
+      }
+
+      if (selectText && hitText != null) {
+        _selectedStrokeIndices.clear();
+        _selectedTextIds
+          ..clear()
+          ..add(hitText.id);
+        _selectedTextId = null;
+        _editingTextId = null;
+        _syncSelectionRotationFromStrokes();
+        if (isSelectionLocked) {
+          _isDraggingSelection = false;
+          _lastLassoDragPoint = null;
+        } else {
+          _undoStack.add(List.from(_strokes));
+          _redoStack.clear();
+          _isDraggingSelection = true;
+          _lastLassoDragPoint = point;
+        }
+        _activeResizeHandle = null;
+        _lassoPoints = [];
+        notifyListeners();
+        return;
+      }
+
+      if (selectStroke && hitIndex != null) {
+        _selectedTextIds.clear();
         _selectedStrokeIndices
           ..clear()
           ..add(hitIndex);
@@ -829,6 +994,7 @@ class PlannerController extends ChangeNotifier {
 
       // 4. Otherwise, start drawing a freeform lasso loop in empty space
       _selectedStrokeIndices.clear();
+      _selectedTextIds.clear();
       _selectionRotationAngle = 0.0;
       _isDraggingSelection = false;
       _activeResizeHandle = null;
@@ -883,6 +1049,13 @@ class PlannerController extends ChangeNotifier {
             _strokes[idx] = s.copyWith(points: movedPoints);
           }
         }
+        for (final textId in _selectedTextIds) {
+          final idx = _canvasTexts.indexWhere((t) => t.id == textId);
+          if (idx != -1) {
+            final t = _canvasTexts[idx];
+            _canvasTexts[idx] = t.copyWith(position: t.position + delta);
+          }
+        }
       } else {
         _lassoPoints = List<Offset>.from(_lassoPoints)..add(point);
       }
@@ -931,11 +1104,14 @@ class PlannerController extends ChangeNotifier {
         _resizeStartPoint = null;
         _initialResizeRawBounds = null;
         _initialResizeStrokes.clear();
+        _initialResizeTexts.clear();
         _saveCurrentStrokes();
+        _saveCurrentCanvasTexts();
       } else if (_isDraggingSelection) {
         _isDraggingSelection = false;
         _lastLassoDragPoint = null;
         _saveCurrentStrokes();
+        _saveCurrentCanvasTexts();
       } else if (_lassoPoints.length >= 3) {
         _selectStrokesInsideLasso();
         _lassoPoints = [];
@@ -1134,6 +1310,44 @@ class PlannerController extends ChangeNotifier {
         _strokes[idx] = origStroke.copyWith(points: scaledPoints);
       }
     }
+
+    for (final entry in _initialResizeTexts.entries) {
+      final id = entry.key;
+      final origText = entry.value;
+      final idx = _canvasTexts.indexWhere((t) => t.id == id);
+      if (idx != -1) {
+        final scaleX = initW > 0.001 ? (newW / initW) : 1.0;
+        final scaleY = initH > 0.001 ? (newH / initH) : 1.0;
+        final scaleFont = ((scaleX + scaleY) / 2.0).clamp(0.2, 5.0);
+
+        final localPos = _rotatePointAround(
+          origText.position,
+          pivot,
+          -_selectionRotationAngle,
+        );
+        final mappedX = initW > 0.001
+            ? newLeft + ((localPos.dx - initRect.left) / initW) * newW
+            : newLeft + (localPos.dx - initRect.left);
+        final mappedY = initH > 0.001
+            ? newTop + ((localPos.dy - initRect.top) / initH) * newH
+            : newTop + (localPos.dy - initRect.top);
+
+        final newWorldPos = _rotatePointAround(
+          Offset(mappedX, mappedY),
+          pivot,
+          _selectionRotationAngle,
+        );
+
+        final newWidth = (origText.width * scaleX).clamp(60.0, 1600.0);
+        final newFontSize = (origText.fontSize * scaleFont).clamp(8.0, 96.0);
+
+        _canvasTexts[idx] = origText.copyWith(
+          position: newWorldPos,
+          width: newWidth,
+          fontSize: newFontSize,
+        );
+      }
+    }
   }
 
   int? _findStrokeAtPoint(Offset point) {
@@ -1164,6 +1378,26 @@ class PlannerController extends ChangeNotifier {
     return null;
   }
 
+  CanvasTextItem? _findTextAtPoint(Offset point) {
+    final sortedTexts = List<CanvasTextItem>.from(_canvasTexts);
+    sortedTexts.sort((a, b) => (b.layerOrder ?? 0).compareTo(a.layerOrder ?? 0));
+    for (final textItem in sortedTexts) {
+      final h = textItem.computeHeight();
+      final rect = Rect.fromLTWH(
+        textItem.position.dx,
+        textItem.position.dy,
+        textItem.width,
+        h,
+      );
+      final center = rect.center;
+      final localPt = _rotatePointAround(point, center, -textItem.rotation);
+      if (rect.inflate(8.0).contains(localPt)) {
+        return textItem;
+      }
+    }
+    return null;
+  }
+
   double _distanceToSegment(Offset p, Offset a, Offset b) {
     final ab = b - a;
     final ap = p - a;
@@ -1178,6 +1412,7 @@ class PlannerController extends ChangeNotifier {
     final lassoPath = Path()..addPolygon(_lassoPoints, true);
     final lassoBounds = lassoPath.getBounds();
     _selectedStrokeIndices.clear();
+    _selectedTextIds.clear();
 
     final unlockedHits = <int>{};
     final lockedHits = <int>{};
@@ -1253,11 +1488,67 @@ class PlannerController extends ChangeNotifier {
       }
     }
 
-    if (unlockedHits.isNotEmpty) {
-      _selectedStrokeIndices.addAll(unlockedHits);
-    } else if (lockedHits.isNotEmpty) {
-      _selectedStrokeIndices.addAll(lockedHits);
+    final unlockedTextHits = <String>{};
+    final lockedTextHits = <String>{};
+
+    for (final textItem in _canvasTexts) {
+      final h = textItem.computeHeight();
+      final rect = Rect.fromLTWH(
+        textItem.position.dx,
+        textItem.position.dy,
+        textItem.width,
+        h,
+      );
+      final center = rect.center;
+      final rawSamples = [
+        center,
+        rect.topLeft,
+        rect.topRight,
+        rect.bottomLeft,
+        rect.bottomRight,
+        rect.topCenter,
+        rect.bottomCenter,
+        rect.centerLeft,
+        rect.centerRight,
+      ];
+      final samplePoints = rawSamples
+          .map((p) => _rotatePointAround(p, center, textItem.rotation))
+          .toList();
+
+      bool isSelected = false;
+      for (final sp in samplePoints) {
+        if (lassoPath.contains(sp)) {
+          isSelected = true;
+          break;
+        }
+      }
+
+      if (!isSelected && lassoBounds.overlaps(rect)) {
+        final intersection = lassoBounds.intersect(rect);
+        if (intersection.width >= rect.width * 0.35 &&
+            intersection.height >= rect.height * 0.35) {
+          isSelected = true;
+        }
+      }
+
+      if (isSelected) {
+        if (textItem.isLocked) {
+          lockedTextHits.add(textItem.id);
+        } else {
+          unlockedTextHits.add(textItem.id);
+        }
+      }
     }
+
+    if (unlockedHits.isNotEmpty || unlockedTextHits.isNotEmpty) {
+      _selectedStrokeIndices.addAll(unlockedHits);
+      _selectedTextIds.addAll(unlockedTextHits);
+    } else if (lockedHits.isNotEmpty || lockedTextHits.isNotEmpty) {
+      _selectedStrokeIndices.addAll(lockedHits);
+      _selectedTextIds.addAll(lockedTextHits);
+    }
+    _selectedTextId = null;
+    _editingTextId = null;
     _expandSelectionWithGroups();
     _syncSelectionRotationFromStrokes();
   }
@@ -1298,8 +1589,11 @@ class PlannerController extends ChangeNotifier {
   }
 
   void clearLassoSelection() {
-    if (_selectedStrokeIndices.isNotEmpty || _lassoPoints.isNotEmpty) {
+    if (_selectedStrokeIndices.isNotEmpty ||
+        _selectedTextIds.isNotEmpty ||
+        _lassoPoints.isNotEmpty) {
       _selectedStrokeIndices.clear();
+      _selectedTextIds.clear();
       _selectionRotationAngle = 0.0;
       _lassoPoints = [];
       _isDraggingSelection = false;
@@ -1308,7 +1602,10 @@ class PlannerController extends ChangeNotifier {
   }
 
   void deleteSelectedStrokes() {
-    if (_selectedStrokeIndices.isEmpty || isSelectionLocked) return;
+    if ((_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) ||
+        isSelectionLocked) {
+      return;
+    }
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
     final sorted = _selectedStrokeIndices.toList()..sort((a, b) => b.compareTo(a));
@@ -1317,7 +1614,11 @@ class PlannerController extends ChangeNotifier {
         _strokes.removeAt(idx);
       }
     }
+    for (final textId in _selectedTextIds) {
+      _canvasTexts.removeWhere((t) => t.id == textId);
+    }
     _selectedStrokeIndices.clear();
+    _selectedTextIds.clear();
     _selectionRotationAngle = 0.0;
     _cleanupSingletonGroups();
     _normalizeUnifiedLayerOrders();
@@ -1327,7 +1628,7 @@ class PlannerController extends ChangeNotifier {
   }
 
   void duplicateSelectedStrokes() {
-    if (_selectedStrokeIndices.isEmpty) return;
+    if (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) return;
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
     final newIndices = <int>{};
@@ -1355,9 +1656,27 @@ class PlannerController extends ChangeNotifier {
         newIndices.add(_strokes.length - 1);
       }
     }
+    final newTextIds = <String>{};
+    for (final textId in _selectedTextIds) {
+      final idx = _canvasTexts.indexWhere((t) => t.id == textId);
+      if (idx != -1) {
+        final origText = _canvasTexts[idx];
+        final duplicatedText = origText.copyWith(
+          id: 'txt_${nowMicros}_${newTextIds.length}',
+          position: origText.position + const Offset(24, 24),
+          isLocked: false,
+          layerOrder: _nextTopLayerOrder(),
+        );
+        _canvasTexts.add(duplicatedText);
+        newTextIds.add(duplicatedText.id);
+      }
+    }
     _selectedStrokeIndices
       ..clear()
       ..addAll(newIndices);
+    _selectedTextIds
+      ..clear()
+      ..addAll(newTextIds);
     _normalizeUnifiedLayerOrders();
     _saveCurrentStrokes();
     _saveCurrentCanvasTexts();
@@ -1439,7 +1758,7 @@ class PlannerController extends ChangeNotifier {
   // --- Canva-Style Kilitleme (Lock / Unlock Management) ---
 
   void lockSelectedStrokes() {
-    if (_selectedStrokeIndices.isEmpty) return;
+    if (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) return;
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
 
@@ -1448,15 +1767,22 @@ class PlannerController extends ChangeNotifier {
         _strokes[idx] = _strokes[idx].copyWith(isLocked: true);
       }
     }
+    for (final textId in _selectedTextIds) {
+      final idx = _canvasTexts.indexWhere((t) => t.id == textId);
+      if (idx != -1) {
+        _canvasTexts[idx] = _canvasTexts[idx].copyWith(isLocked: true);
+      }
+    }
     _isDraggingSelection = false;
     _activeResizeHandle = null;
     _isRotatingSelection = false;
     _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
     notifyListeners();
   }
 
   void unlockSelectedStrokes() {
-    if (_selectedStrokeIndices.isEmpty) return;
+    if (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) return;
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
 
@@ -1465,7 +1791,14 @@ class PlannerController extends ChangeNotifier {
         _strokes[idx] = _strokes[idx].copyWith(isLocked: false);
       }
     }
+    for (final textId in _selectedTextIds) {
+      final idx = _canvasTexts.indexWhere((t) => t.id == textId);
+      if (idx != -1) {
+        _canvasTexts[idx] = _canvasTexts[idx].copyWith(isLocked: false);
+      }
+    }
     _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
     notifyListeners();
   }
 
@@ -1501,7 +1834,10 @@ class PlannerController extends ChangeNotifier {
   void startRotation(Offset startCanvasPoint) {
     if (isSelectionLocked) return;
     final rawBounds = _computeRawSelectionBounds();
-    if (rawBounds == null || _selectedStrokeIndices.isEmpty) return;
+    if (rawBounds == null ||
+        (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty)) {
+      return;
+    }
 
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
@@ -1527,6 +1863,11 @@ class PlannerController extends ChangeNotifier {
     _initialRotationStrokes = {
       for (final idx in _selectedStrokeIndices)
         if (idx >= 0 && idx < _strokes.length) idx: _strokes[idx],
+    };
+    _initialRotationTexts = {
+      for (final id in _selectedTextIds)
+        for (final item in _canvasTexts)
+          if (item.id == id) id: item,
     };
     notifyListeners();
   }
@@ -1569,6 +1910,28 @@ class PlannerController extends ChangeNotifier {
         );
       }
     }
+
+    for (final entry in _initialRotationTexts.entries) {
+      final id = entry.key;
+      final origText = entry.value;
+      final idx = _canvasTexts.indexWhere((t) => t.id == id);
+      if (idx != -1) {
+        final h = origText.computeHeight();
+        final origCenter = Offset(
+          origText.position.dx + origText.width / 2.0,
+          origText.position.dy + h / 2.0,
+        );
+        final newCenter = _rotatePointAround(origCenter, center, deltaAngle);
+        final newPos = Offset(
+          newCenter.dx - origText.width / 2.0,
+          newCenter.dy - h / 2.0,
+        );
+        _canvasTexts[idx] = origText.copyWith(
+          position: newPos,
+          rotation: origText.rotation + deltaAngle,
+        );
+      }
+    }
     notifyListeners();
   }
 
@@ -1579,14 +1942,19 @@ class PlannerController extends ChangeNotifier {
     _initialRotationAngle = null;
     _rotationAnchorBounds = null;
     _initialRotationStrokes.clear();
+    _initialRotationTexts.clear();
     _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
     notifyListeners();
   }
 
   void flipSelectionHorizontally() {
     if (isSelectionLocked) return;
     final rawBounds = _computeRawSelectionBounds();
-    if (rawBounds == null || _selectedStrokeIndices.isEmpty) return;
+    if (rawBounds == null ||
+        (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty)) {
+      return;
+    }
 
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
@@ -1600,14 +1968,30 @@ class PlannerController extends ChangeNotifier {
         _strokes[idx] = expanded.copyWith(points: flippedPoints);
       }
     }
+    for (final textId in _selectedTextIds) {
+      final idx = _canvasTexts.indexWhere((t) => t.id == textId);
+      if (idx != -1) {
+        final t = _canvasTexts[idx];
+        final centerDx = t.position.dx + t.width / 2.0;
+        final newCenterDx = 2 * cx - centerDx;
+        _canvasTexts[idx] = t.copyWith(
+          position: Offset(newCenterDx - t.width / 2.0, t.position.dy),
+          rotation: -t.rotation,
+        );
+      }
+    }
     _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
     notifyListeners();
   }
 
   void flipSelectionVertically() {
     if (isSelectionLocked) return;
     final rawBounds = _computeRawSelectionBounds();
-    if (rawBounds == null || _selectedStrokeIndices.isEmpty) return;
+    if (rawBounds == null ||
+        (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty)) {
+      return;
+    }
 
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
@@ -1621,7 +2005,21 @@ class PlannerController extends ChangeNotifier {
         _strokes[idx] = expanded.copyWith(points: flippedPoints);
       }
     }
+    for (final textId in _selectedTextIds) {
+      final idx = _canvasTexts.indexWhere((t) => t.id == textId);
+      if (idx != -1) {
+        final t = _canvasTexts[idx];
+        final h = t.computeHeight();
+        final centerDy = t.position.dy + h / 2.0;
+        final newCenterDy = 2 * cy - centerDy;
+        _canvasTexts[idx] = t.copyWith(
+          position: Offset(t.position.dx, newCenterDy - h / 2.0),
+          rotation: -t.rotation,
+        );
+      }
+    }
     _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
     notifyListeners();
   }
 
@@ -1740,7 +2138,8 @@ class PlannerController extends ChangeNotifier {
     if (entry.isStroke) {
       return _selectedStrokeIndices.contains(entry.strokeIndex);
     }
-    return _selectedTextId != null && _selectedTextId == entry.textId;
+    return _selectedTextIds.contains(entry.textId) ||
+        (_selectedTextId != null && _selectedTextId == entry.textId);
   }
 
   void _applyReorderedUnifiedLayers(List<CanvasLayerEntry> reordered) {
@@ -1903,12 +2302,17 @@ class PlannerController extends ChangeNotifier {
   }
 
   void bringSelectionToFront() {
-    if (_selectedTextId != null && _selectedStrokeIndices.isEmpty) {
+    if (_selectedTextId != null &&
+        _selectedStrokeIndices.isEmpty &&
+        _selectedTextIds.isEmpty) {
       bringTextToFront(_selectedTextId!);
       return;
     }
     final layers = unifiedLayers;
-    if (_selectedStrokeIndices.isEmpty || layers.length <= 1) return;
+    if ((_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) ||
+        layers.length <= 1) {
+      return;
+    }
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
 
@@ -1925,12 +2329,17 @@ class PlannerController extends ChangeNotifier {
   }
 
   void sendSelectionToBack() {
-    if (_selectedTextId != null && _selectedStrokeIndices.isEmpty) {
+    if (_selectedTextId != null &&
+        _selectedStrokeIndices.isEmpty &&
+        _selectedTextIds.isEmpty) {
       sendTextToBack(_selectedTextId!);
       return;
     }
     final layers = unifiedLayers;
-    if (_selectedStrokeIndices.isEmpty || layers.length <= 1) return;
+    if ((_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) ||
+        layers.length <= 1) {
+      return;
+    }
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
 
@@ -1947,12 +2356,17 @@ class PlannerController extends ChangeNotifier {
   }
 
   void moveSelectionForward() {
-    if (_selectedTextId != null && _selectedStrokeIndices.isEmpty) {
+    if (_selectedTextId != null &&
+        _selectedStrokeIndices.isEmpty &&
+        _selectedTextIds.isEmpty) {
       moveTextLayerUp(_selectedTextId!);
       return;
     }
     final layers = unifiedLayers;
-    if (_selectedStrokeIndices.isEmpty || layers.length <= 1) return;
+    if ((_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) ||
+        layers.length <= 1) {
+      return;
+    }
     final selectedUnified = <int>[];
     for (int i = 0; i < layers.length; i++) {
       if (isUnifiedLayerSelected(layers[i])) {
@@ -1972,12 +2386,17 @@ class PlannerController extends ChangeNotifier {
   }
 
   void moveSelectionBackward() {
-    if (_selectedTextId != null && _selectedStrokeIndices.isEmpty) {
+    if (_selectedTextId != null &&
+        _selectedStrokeIndices.isEmpty &&
+        _selectedTextIds.isEmpty) {
       moveTextLayerDown(_selectedTextId!);
       return;
     }
     final layers = unifiedLayers;
-    if (_selectedStrokeIndices.isEmpty || layers.length <= 1) return;
+    if ((_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) ||
+        layers.length <= 1) {
+      return;
+    }
     final selectedUnified = <int>[];
     for (int i = 0; i < layers.length; i++) {
       if (isUnifiedLayerSelected(layers[i])) {
@@ -2231,6 +2650,7 @@ class PlannerController extends ChangeNotifier {
     );
 
     _selectedStrokeIndices.clear();
+    _selectedTextIds.clear();
     _canvasTexts.add(newItem);
     _normalizeUnifiedLayerOrders();
     _selectedTextId = newItem.id;
@@ -2251,6 +2671,7 @@ class PlannerController extends ChangeNotifier {
       layerOrder: _nextTopLayerOrder(),
     );
     _selectedStrokeIndices.clear();
+    _selectedTextIds.clear();
     _canvasTexts.add(newItem);
     _normalizeUnifiedLayerOrders();
     _selectedTextId = newItem.id;
@@ -2263,6 +2684,7 @@ class PlannerController extends ChangeNotifier {
   void selectCanvasText(String? id, {bool startEditing = false}) {
     if (id != null) {
       _selectedStrokeIndices.clear();
+      _selectedTextIds.clear();
     }
     if (_editingTextId != null && _editingTextId != id) {
       _cleanupEmptyEditingText(_editingTextId!);
@@ -2276,6 +2698,7 @@ class PlannerController extends ChangeNotifier {
     final idx = _canvasTexts.indexWhere((t) => t.id == id);
     if (idx == -1 || _canvasTexts[idx].isLocked) return;
     _selectedStrokeIndices.clear();
+    _selectedTextIds.clear();
     _selectedTextId = id;
     _editingTextId = id;
     notifyListeners();

@@ -396,6 +396,21 @@ class CanvasTextItem {
       layerOrder: (map['layerOrder'] as num?)?.toInt(),
     );
   }
+  double computeHeight() {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text.isEmpty ? ' ' : text,
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: isBold ? FontWeight.w800 : FontWeight.w500,
+          height: 1.32,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: (width - 24.0).clamp(10.0, 4000.0));
+    final calculated = tp.height + 16.0;
+    return calculated < 38.0 ? 38.0 : calculated;
+  }
 }
 
 enum CanvasLayerType {
@@ -493,12 +508,14 @@ class SavedCanvasAsset {
   final String id;
   final String title;
   final List<DrawingStroke> strokes;
+  final List<CanvasTextItem> texts;
   final DateTime createdAt;
 
   const SavedCanvasAsset({
     required this.id,
     required this.title,
     required this.strokes,
+    this.texts = const [],
     required this.createdAt,
   });
 
@@ -506,12 +523,14 @@ class SavedCanvasAsset {
     String? id,
     String? title,
     List<DrawingStroke>? strokes,
+    List<CanvasTextItem>? texts,
     DateTime? createdAt,
   }) {
     return SavedCanvasAsset(
       id: id ?? this.id,
       title: title ?? this.title,
       strokes: strokes ?? this.strokes,
+      texts: texts ?? this.texts,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -520,16 +539,21 @@ class SavedCanvasAsset {
     'id': id,
     'title': title,
     'strokes': strokes.map((s) => s.toMap()).toList(),
+    if (texts.isNotEmpty) 'texts': texts.map((t) => t.toMap()).toList(),
     'createdAt': createdAt.toIso8601String(),
   };
 
   factory SavedCanvasAsset.fromMap(Map<String, dynamic> map) {
     final rawStrokes = map['strokes'] as List<dynamic>? ?? const [];
+    final rawTexts = map['texts'] as List<dynamic>? ?? const [];
     return SavedCanvasAsset(
       id: map['id'] as String? ?? '',
       title: map['title'] as String? ?? 'Varlık',
       strokes: rawStrokes
           .map((e) => DrawingStroke.fromMap(e as Map<String, dynamic>))
+          .toList(),
+      texts: rawTexts
+          .map((e) => CanvasTextItem.fromMap(e as Map<String, dynamic>))
           .toList(),
       createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ??
           DateTime.now(),

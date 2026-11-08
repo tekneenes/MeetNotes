@@ -78,6 +78,9 @@ void main() {
 
   test('Lasso tool selects and moves strokes and shapes', () async {
     final controller = PlannerController();
+    while (controller.isLoading) {
+      await Future.delayed(const Duration(milliseconds: 20));
+    }
     await Future.delayed(const Duration(milliseconds: 50));
 
     // 1. Draw a rectangle shape from (100, 100) to (200, 200)
@@ -136,5 +139,64 @@ void main() {
 
     controller.deleteSelectedStrokes();
     expect(controller.strokes.length, 1);
+  });
+
+  test('Lasso tool selects, moves, resizes, and duplicates text items and sticky notes', () async {
+    final controller = PlannerController();
+    while (controller.isLoading) {
+      await Future.delayed(const Duration(milliseconds: 20));
+    }
+    await Future.delayed(const Duration(milliseconds: 50));
+
+    // 1. Add a sticky note and a text item
+    controller.addPresetCanvasText(
+      CanvaTextPreset.stickyNote,
+      position: const Offset(200, 200),
+      startEditing: false,
+    );
+    controller.addCanvasText(const Offset(400, 200), 'Not metni');
+
+    expect(controller.canvasTexts.length, 2);
+    final stickyId = controller.canvasTexts.first.id;
+    final textId = controller.canvasTexts.last.id;
+
+    // 2. Switch to Lasso and tap directly on the sticky note
+    controller.setTool(DrawingTool.lasso);
+    controller.startStroke(const Offset(250, 230)); // Inside sticky note
+    controller.endStroke();
+
+    expect(controller.hasLassoSelection, isTrue);
+    expect(controller.selectedTextIds, contains(stickyId));
+    expect(controller.selectionBounds, isNotNull);
+
+    // 3. Drag the selected sticky note by (+30, +40)
+    controller.startStroke(controller.selectionBounds!.center);
+    controller.updateStroke(controller.selectionBounds!.center + const Offset(30, 40));
+    controller.endStroke();
+
+    final movedSticky = controller.canvasTexts.firstWhere((t) => t.id == stickyId);
+    expect(movedSticky.position.dx, closeTo(230, 1.0));
+    expect(movedSticky.position.dy, closeTo(240, 1.0));
+
+    // 4. Draw lasso loop enclosing BOTH the sticky note and the text item
+    controller.clearLassoSelection();
+    expect(controller.hasLassoSelection, isFalse);
+
+    controller.startStroke(const Offset(50, 50));
+    controller.updateStroke(const Offset(750, 50));
+    controller.updateStroke(const Offset(750, 450));
+    controller.updateStroke(const Offset(50, 450));
+    controller.endStroke();
+
+    expect(controller.hasLassoSelection, isTrue);
+    expect(controller.selectedTextIds, containsAll([stickyId, textId]));
+
+    // 5. Test duplicate of lasso-selected text items
+    controller.duplicateSelectedStrokes();
+    expect(controller.canvasTexts.length, 4);
+
+    // 6. Test delete of duplicate text items
+    controller.deleteSelectedStrokes();
+    expect(controller.canvasTexts.length, 2);
   });
 }

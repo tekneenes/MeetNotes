@@ -331,6 +331,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     final viewportPos = item.position * _scale + _panOffset;
     final isSelected = widget.controller.selectedTextId == item.id;
     final isEditing = widget.controller.editingTextId == item.id;
+    final isLassoMode = widget.controller.selectedTool == DrawingTool.lasso;
 
     return Positioned(
       left: viewportPos.dx,
@@ -338,13 +339,16 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       child: Transform.scale(
         scale: _scale,
         alignment: Alignment.topLeft,
-        child: _CanvaCanvasTextBox(
-          key: ValueKey('canvas_text_${item.id}'),
-          item: item,
-          isSelected: isSelected,
-          isEditing: isEditing,
-          canvasScale: _scale,
-          controller: widget.controller,
+        child: IgnorePointer(
+          ignoring: isLassoMode && !isEditing,
+          child: _CanvaCanvasTextBox(
+            key: ValueKey('canvas_text_${item.id}'),
+            item: item,
+            isSelected: isSelected,
+            isEditing: isEditing,
+            canvasScale: _scale,
+            controller: widget.controller,
+          ),
         ),
       ),
     );
@@ -1636,8 +1640,8 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            controller.selectedStrokeIndices.length > 1
-                                ? 'Seçimi Tek Parça Varlık Olarak Kaydet (${controller.selectedStrokeIndices.length})'
+                            controller.selectedLayerCount > 1
+                                ? 'Seçimi Tek Parça Varlık Olarak Kaydet (${controller.selectedLayerCount})'
                                 : 'Öğeyi Varlıklara Kaydet',
                             style: const TextStyle(
                               fontSize: 12.5,
@@ -1788,7 +1792,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            'Seçili Öğelerin Katmanını Göster (${widget.controller.selectedStrokeIndices.length})',
+                            'Seçili Öğelerin Katmanını Göster (${widget.controller.selectedLayerCount})',
                             style: const TextStyle(
                               fontSize: 12.5,
                               fontWeight: FontWeight.w700,
@@ -2148,6 +2152,8 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
     final isSelected = widget.isSelected;
     final isEditing = widget.isEditing;
     final isLocked = item.isLocked;
+    final isLassoSelected = widget.controller.isTextLassoSelected(item.id);
+    final hasLasso = widget.controller.hasLassoSelection;
 
     final textStyle = TextStyle(
       fontSize: item.fontSize,
@@ -2164,7 +2170,8 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
         ? const Color(0xFFF59E0B)
         : const Color(0xFF007AFF);
 
-    final showSelectionBox = isSelected || isEditing;
+    final showIndividualHandles = (isSelected || isEditing) && !hasLasso;
+    final showSelectionBox = showIndividualHandles || isLassoSelected;
     final selectionFill = item.backgroundColor != null
         ? Color(item.backgroundColor!)
         : showSelectionBox
@@ -2261,7 +2268,7 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
               ),
 
               // 8 Selection Circle Handles (matching stroke selection frame)
-              if (isSelected && !isLocked) ...[
+              if (showIndividualHandles && !isLocked) ...[
                 // Top-Left
                 Positioned(
                   top: -5.5,
@@ -2352,7 +2359,7 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
           ),
 
           // Selection Connector Stem + 2D Rotation Handle (↻)
-          if (isSelected && !isLocked)
+          if (showIndividualHandles && !isLocked)
             Column(
               mainAxisSize: MainAxisSize.min,
               children: [

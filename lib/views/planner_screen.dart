@@ -434,20 +434,23 @@ class _PlannerScreenState extends State<PlannerScreen>
   }
 
   Widget _buildQuickAccessDrawer(BuildContext context, PlannerController activeController) {
-    final allStrokes = activeController.strokes;
-    final selectedSet = activeController.selectedStrokeIndices;
+    final allUnifiedLayers = activeController.unifiedLayers;
+    final selectedLayerCount = activeController.selectedLayerCount;
+    final hasLayerSelection = activeController.hasAnyLayerSelection;
     final onlySelected = activeController.showOnlySelectedLayers;
     final isLayersPage = activeController.isQuickAccessLayersPage;
     final isGroupsPage = activeController.isQuickAccessGroupsPage;
     final isAssetsPage = activeController.isQuickAccessAssetsPage;
     final allGroups = activeController.allStrokeGroups;
     final savedAssets = activeController.savedAssets;
+    final selectedSet = activeController.selectedStrokeIndices;
 
-    // Build layer entries from TOPMOST (highest index) to BOTTOMMOST (lowest index)
-    final layerIndices = <int>[];
-    for (int i = allStrokes.length - 1; i >= 0; i--) {
-      if (!onlySelected || selectedSet.contains(i)) {
-        layerIndices.add(i);
+    // Build unified layer entries from TOPMOST (highest index) to BOTTOMMOST (lowest index)
+    final visibleLayerIndices = <int>[];
+    for (int i = allUnifiedLayers.length - 1; i >= 0; i--) {
+      if (!onlySelected ||
+          activeController.isUnifiedLayerSelected(allUnifiedLayers[i])) {
+        visibleLayerIndices.add(i);
       }
     }
 
@@ -515,7 +518,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                     ),
                   ),
                 ),
-                if ((isLayersPage || isGroupsPage || isAssetsPage) && selectedSet.isNotEmpty)
+                if ((isLayersPage || isGroupsPage || isAssetsPage) &&
+                    (isLayersPage ? hasLayerSelection : selectedSet.isNotEmpty))
                   Container(
                     margin: const EdgeInsets.only(right: 4),
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
@@ -524,7 +528,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      '${selectedSet.length} seçili',
+                      '${isLayersPage ? selectedLayerCount : selectedSet.length} seçili',
                       style: const TextStyle(
                         fontSize: 10.5,
                         fontWeight: FontWeight.w700,
@@ -586,7 +590,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                                   ),
                                   alignment: Alignment.center,
                                   child: Text(
-                                    'Tüm Katmanlar (${allStrokes.length})',
+                                    'Tüm Katmanlar (${allUnifiedLayers.length})',
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight:
@@ -601,7 +605,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                             ),
                             Expanded(
                               child: GestureDetector(
-                                onTap: selectedSet.isNotEmpty
+                                onTap: hasLayerSelection
                                     ? () => activeController.setShowOnlySelectedLayers(true)
                                     : null,
                                 child: Container(
@@ -621,12 +625,12 @@ class _PlannerScreenState extends State<PlannerScreen>
                                   ),
                                   alignment: Alignment.center,
                                   child: Text(
-                                    'Seçili Öğeler (${selectedSet.length})',
+                                    'Seçili Öğeler ($selectedLayerCount)',
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight:
                                           onlySelected ? FontWeight.w700 : FontWeight.w600,
-                                      color: selectedSet.isEmpty
+                                      color: !hasLayerSelection
                                           ? Colors.grey.shade400
                                           : onlySelected
                                               ? const Color(0xFF007AFF)
@@ -641,7 +645,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                       ),
                       const SizedBox(height: 10),
 
-                      if (layerIndices.isEmpty)
+                      if (visibleLayerIndices.isEmpty)
                         Container(
                           padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 12),
                           decoration: BoxDecoration(
@@ -659,8 +663,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                               const SizedBox(height: 6),
                               Text(
                                 onlySelected
-                                    ? 'Seçili çizim veya şekil yok.'
-                                    : 'Bu sayfada henüz çizim katmanı yok.',
+                                    ? 'Seçili çizim, şekil veya metin kutusu yok.'
+                                    : 'Bu sayfada henüz katman yok.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500),
                               ),
@@ -672,8 +676,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Text(
                             onlySelected
-                                ? 'Basılı tutup sürükleyerek veya oklarla seçili öğelerin katman sırasını değiştirebilirsiniz:'
-                                : 'Üstteki öğeler en önde görünür. Basılı tutup sürükleyerek veya oklarla sırasını değiştirebilirsiniz:',
+                                ? 'Basılı tutup sürükleyerek veya oklarla seçili katmanların sırasını değiştirebilirsiniz:'
+                                : 'Üstteki öğeler en önde görünür. Çizim ve metin kutularını sürükleyerek veya oklarla sıralayabilirsiniz:',
                             style: TextStyle(
                               fontSize: 10.5,
                               color: Colors.grey.shade600,
@@ -685,7 +689,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           buildDefaultDragHandles: false,
-                          itemCount: layerIndices.length,
+                          itemCount: visibleLayerIndices.length,
                           proxyDecorator: (child, index, animation) {
                             return AnimatedBuilder(
                               animation: animation,
@@ -709,30 +713,41 @@ class _PlannerScreenState extends State<PlannerScreen>
                               newListPos -= 1;
                             }
                             if (oldListPos < 0 ||
-                                oldListPos >= layerIndices.length ||
+                                oldListPos >= visibleLayerIndices.length ||
                                 newListPos < 0 ||
-                                newListPos >= layerIndices.length ||
+                                newListPos >= visibleLayerIndices.length ||
                                 oldListPos == newListPos) {
                               return;
                             }
-                            final fromStrokeIdx = layerIndices[oldListPos];
-                            final toStrokeIdx = layerIndices[newListPos];
-                            activeController.moveStrokeToIndex(fromStrokeIdx, toStrokeIdx);
+                            final fromUnifiedIdx = visibleLayerIndices[oldListPos];
+                            final toUnifiedIdx = visibleLayerIndices[newListPos];
+                            activeController.moveUnifiedLayerToIndex(fromUnifiedIdx, toUnifiedIdx);
                           },
                           itemBuilder: (ctx, listPos) {
-                            final strokeIdx = layerIndices[listPos];
-                            final stroke = allStrokes[strokeIdx];
-                            final isSelected = selectedSet.contains(strokeIdx);
+                            final unifiedIdx = visibleLayerIndices[listPos];
+                            final layerEntry = allUnifiedLayers[unifiedIdx];
+                            final isSelected = activeController.isUnifiedLayerSelected(layerEntry);
                             final isTopInList = listPos == 0;
-                            final isBottomInList = listPos == layerIndices.length - 1;
+                            final isBottomInList = listPos == visibleLayerIndices.length - 1;
                             final canMoveUp = onlySelected
                                 ? !isTopInList
-                                : strokeIdx < allStrokes.length - 1;
+                                : unifiedIdx < allUnifiedLayers.length - 1;
                             final canMoveDown =
-                                onlySelected ? !isBottomInList : strokeIdx > 0;
+                                onlySelected ? !isBottomInList : unifiedIdx > 0;
+
+                            final isLocked = layerEntry.isLocked;
+                            final isText = layerEntry.isText;
+                            final label = isText
+                                ? (layerEntry.textItem!.text.trim().isEmpty
+                                    ? 'Metin Kutusu'
+                                    : layerEntry.textItem!.text.split('\n').first)
+                                : layerEntry.stroke!.tool.label;
+                            final dotColor = isText
+                                ? layerEntry.textItem!.color
+                                : layerEntry.stroke!.color;
 
                             return ReorderableDelayedDragStartListener(
-                              key: ValueKey('layer_item_$strokeIdx'),
+                              key: ValueKey('unified_layer_${layerEntry.uniqueKey}'),
                               index: listPos,
                               child: Padding(
                                 padding: const EdgeInsets.only(bottom: 6),
@@ -740,7 +755,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                                   borderRadius: BorderRadius.circular(10),
                                   onTap: () {
                                     if (!onlySelected) {
-                                      activeController.selectStrokeFromLayerPanel(strokeIdx);
+                                      activeController.selectUnifiedLayerFromPanel(layerEntry);
                                     }
                                   },
                                   child: Container(
@@ -786,11 +801,19 @@ class _PlannerScreenState extends State<PlannerScreen>
                                               color: Colors.black.withValues(alpha: 0.08),
                                             ),
                                           ),
-                                          child: CustomPaint(
-                                            painter: _StrokeLayerMiniPreviewPainter(
-                                              stroke: stroke,
-                                            ),
-                                          ),
+                                          child: isText
+                                              ? const Center(
+                                                  child: Icon(
+                                                    Icons.title_rounded,
+                                                    size: 18,
+                                                    color: Color(0xFF007AFF),
+                                                  ),
+                                                )
+                                              : CustomPaint(
+                                                  painter: _StrokeLayerMiniPreviewPainter(
+                                                    stroke: layerEntry.stroke!,
+                                                  ),
+                                                ),
                                         ),
                                         const SizedBox(width: 8),
                                         Expanded(
@@ -803,14 +826,14 @@ class _PlannerScreenState extends State<PlannerScreen>
                                                     width: 8,
                                                     height: 8,
                                                     decoration: BoxDecoration(
-                                                      color: stroke.color,
+                                                      color: dotColor,
                                                       shape: BoxShape.circle,
                                                     ),
                                                   ),
                                                   const SizedBox(width: 5),
                                                   Expanded(
                                                     child: Text(
-                                                      stroke.tool.label,
+                                                      label,
                                                       maxLines: 1,
                                                       overflow: TextOverflow.ellipsis,
                                                       style: const TextStyle(
@@ -836,10 +859,10 @@ class _PlannerScreenState extends State<PlannerScreen>
                                                     ),
                                                     decoration: BoxDecoration(
                                                       color: isTopInList &&
-                                                              layerIndices.length > 1
+                                                              visibleLayerIndices.length > 1
                                                           ? const Color(0xFFDCFCE7)
                                                           : isBottomInList &&
-                                                                  layerIndices.length > 1
+                                                                  visibleLayerIndices.length > 1
                                                               ? const Color(0xFFF1F5F9)
                                                               : const Color(0xFFE0F2FE),
                                                       borderRadius:
@@ -847,34 +870,54 @@ class _PlannerScreenState extends State<PlannerScreen>
                                                     ),
                                                     child: Text(
                                                       isTopInList &&
-                                                              layerIndices.length > 1
+                                                              visibleLayerIndices.length > 1
                                                           ? 'ÜSTTE'
                                                           : isBottomInList &&
-                                                                  layerIndices.length > 1
+                                                                  visibleLayerIndices.length > 1
                                                               ? 'ALTTA'
                                                               : 'ORTADA',
                                                       style: TextStyle(
                                                         fontSize: 9,
                                                         fontWeight: FontWeight.w800,
                                                         color: isTopInList &&
-                                                                layerIndices.length > 1
+                                                                visibleLayerIndices.length > 1
                                                             ? const Color(0xFF15803D)
                                                             : isBottomInList &&
-                                                                    layerIndices.length > 1
+                                                                    visibleLayerIndices.length > 1
                                                                 ? const Color(0xFF475569)
                                                                 : const Color(0xFF0369A1),
                                                       ),
                                                     ),
                                                   ),
+                                                  if (isText)
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(
+                                                        horizontal: 4.5,
+                                                        vertical: 1.5,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(0xFFE0E7FF),
+                                                        borderRadius:
+                                                            BorderRadius.circular(4),
+                                                      ),
+                                                      child: const Text(
+                                                        'METİN',
+                                                        style: TextStyle(
+                                                          fontSize: 8.5,
+                                                          fontWeight: FontWeight.w800,
+                                                          color: Color(0xFF4338CA),
+                                                        ),
+                                                      ),
+                                                    ),
                                                   Text(
-                                                    'Katman #${strokeIdx + 1}',
+                                                    'Katman #${unifiedIdx + 1}',
                                                     style: TextStyle(
                                                       fontSize: 10,
                                                       fontWeight: FontWeight.w600,
                                                       color: Colors.grey.shade500,
                                                     ),
                                                   ),
-                                                  if (stroke.isLocked)
+                                                  if (isLocked)
                                                     Container(
                                                       padding:
                                                           const EdgeInsets.symmetric(
@@ -916,17 +959,22 @@ class _PlannerScreenState extends State<PlannerScreen>
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
                                             Tooltip(
-                                              message: stroke.isLocked
+                                              message: isLocked
                                                   ? 'Kilidi Aç'
                                                   : 'Kilitle',
                                               child: InkWell(
                                                 borderRadius: BorderRadius.circular(6),
-                                                onTap: () => activeController
-                                                    .toggleStrokeLock(strokeIdx),
+                                                onTap: () {
+                                                  if (isText) {
+                                                    activeController.toggleCanvasTextLock(layerEntry.textId!);
+                                                  } else {
+                                                    activeController.toggleStrokeLock(layerEntry.strokeIndex!);
+                                                  }
+                                                },
                                                 child: Container(
                                                   padding: const EdgeInsets.all(5),
                                                   decoration: BoxDecoration(
-                                                    color: stroke.isLocked
+                                                    color: isLocked
                                                         ? const Color(0xFFF59E0B)
                                                             .withValues(alpha: 0.16)
                                                         : Colors.grey
@@ -935,11 +983,11 @@ class _PlannerScreenState extends State<PlannerScreen>
                                                         BorderRadius.circular(6),
                                                   ),
                                                   child: Icon(
-                                                    stroke.isLocked
+                                                    isLocked
                                                         ? Icons.lock_rounded
                                                         : Icons.lock_open_rounded,
                                                     size: 15,
-                                                    color: stroke.isLocked
+                                                    color: isLocked
                                                         ? const Color(0xFFD97706)
                                                         : Colors.grey.shade500,
                                                   ),
@@ -953,8 +1001,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                                                 borderRadius: BorderRadius.circular(6),
                                                 onTap: canMoveUp
                                                     ? () =>
-                                                        activeController.moveStrokeLayerUp(
-                                                          strokeIdx,
+                                                        activeController.moveUnifiedLayerUp(
+                                                          unifiedIdx,
                                                           relativeToSelection: onlySelected,
                                                         )
                                                     : null,
@@ -985,8 +1033,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                                                 borderRadius: BorderRadius.circular(6),
                                                 onTap: canMoveDown
                                                     ? () => activeController
-                                                        .moveStrokeLayerDown(
-                                                          strokeIdx,
+                                                        .moveUnifiedLayerDown(
+                                                          unifiedIdx,
                                                           relativeToSelection: onlySelected,
                                                         )
                                                     : null,
@@ -1031,9 +1079,9 @@ class _PlannerScreenState extends State<PlannerScreen>
                         icon: Icons.layers_rounded,
                         color: const Color(0xFF007AFF),
                         title: 'Katmanlar',
-                        subtitle: selectedSet.isNotEmpty
-                            ? '${allStrokes.length} katman • ${selectedSet.length} öğe seçili'
-                            : '${allStrokes.length} çizim katmanı • Sıralamayı düzenle',
+                        subtitle: hasLayerSelection
+                            ? '${allUnifiedLayers.length} katman • $selectedLayerCount öğe seçili'
+                            : '${allUnifiedLayers.length} katman (çizim & metin) • Sıralamayı düzenle',
                         onTap: () {
                           activeController.openQuickAccessLayersPage(
                             onlySelected: false,

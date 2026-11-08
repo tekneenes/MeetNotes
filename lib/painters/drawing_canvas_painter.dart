@@ -4,6 +4,8 @@ import '../models/planner_models.dart';
 
 class DrawingCanvasPainter extends CustomPainter {
   final List<DrawingStroke> strokes;
+  final List<int>? strokeIndicesToRender;
+  final bool renderOverlay;
   final DrawingStroke? activeStroke;
   final List<Offset> lassoPoints;
   final Rect? selectionBounds;
@@ -17,6 +19,8 @@ class DrawingCanvasPainter extends CustomPainter {
 
   DrawingCanvasPainter({
     required this.strokes,
+    this.strokeIndicesToRender,
+    this.renderOverlay = true,
     this.activeStroke,
     this.lassoPoints = const [],
     this.selectionBounds,
@@ -35,17 +39,35 @@ class DrawingCanvasPainter extends CustomPainter {
     canvas.translate(panOffset.dx, panOffset.dy);
     canvas.scale(scale);
 
-    for (int i = 0; i < strokes.length; i++) {
-      _drawStroke(canvas, strokes[i], isSelected: selectedStrokeIndices.contains(i));
+    if (strokeIndicesToRender != null) {
+      for (final idx in strokeIndicesToRender!) {
+        if (idx >= 0 && idx < strokes.length) {
+          _drawStroke(
+            canvas,
+            strokes[idx],
+            isSelected: selectedStrokeIndices.contains(idx),
+          );
+        }
+      }
+    } else {
+      for (int i = 0; i < strokes.length; i++) {
+        _drawStroke(
+          canvas,
+          strokes[i],
+          isSelected: selectedStrokeIndices.contains(i),
+        );
+      }
     }
-    if (activeStroke != null) {
-      _drawStroke(canvas, activeStroke!);
-    }
-    if (lassoPoints.length >= 2) {
-      _drawLassoLoop(canvas);
-    }
-    if (selectionBounds != null) {
-      _drawSelectionBox(canvas, selectionBounds!);
+    if (renderOverlay) {
+      if (activeStroke != null) {
+        _drawStroke(canvas, activeStroke!);
+      }
+      if (lassoPoints.length >= 2) {
+        _drawLassoLoop(canvas);
+      }
+      if (selectionBounds != null) {
+        _drawSelectionBox(canvas, selectionBounds!);
+      }
     }
 
     canvas.restore();

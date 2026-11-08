@@ -211,7 +211,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                     ),
                   ),
 
-                  // 1b. Direct Untransformed Viewport Pointer Listener & Drawing Canvas Painter
+                  // 1b. Direct Untransformed Viewport Pointer Listener
                   // Zero double-transformation: pointer localPosition is pure viewport space!
                   Positioned.fill(
                     child: Listener(
@@ -221,29 +221,14 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                       onPointerUp: _handlePointerUpOrCancel,
                       onPointerCancel: _handlePointerUpOrCancel,
                       onPointerPanZoomStart: _handleTrackpadPanZoomStart,
-                      onPointerPanZoomUpdate: (event) => _handleTrackpadPanZoomUpdate(event, viewportSize),
-                      child: CustomPaint(
-                        painter: DrawingCanvasPainter(
-                          strokes: controller.strokes,
-                          activeStroke: controller.activeStroke,
-                          lassoPoints: controller.lassoPoints,
-                          selectionBounds: controller.selectionBounds,
-                          selectionRotationAngle: controller.selectionRotationAngle,
-                          selectedStrokeIndices: controller.selectedStrokeIndices,
-                          activeResizeHandle: controller.activeResizeHandle,
-                          isRotatingSelection: controller.isRotatingSelection,
-                          isSelectionLocked: controller.isSelectionLocked,
-                          scale: _scale,
-                          panOffset: _panOffset,
-                        ),
-                      ),
+                      onPointerPanZoomUpdate: (event) =>
+                          _handleTrackpadPanZoomUpdate(event, viewportSize),
+                      child: const SizedBox.expand(),
                     ),
                   ),
 
-                  // 1c. Canvas Text Items (Mapped cleanly from Canvas Space to Viewport Space)
-                  ...controller.canvasTexts.map(
-                    (textItem) => _buildCanvasTextWidget(textItem),
-                  ),
+                  // 1c. Unified Interleaved Canvas Layers (Strokes + Text Boxes in true Z-Order)
+                  ..._buildUnifiedCanvasLayers(controller),
 
                   // 1c-format. Floating Canva Text Formatting Bar when a text box is selected
                   if (controller.selectedTextItem != null)
@@ -294,6 +279,54 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     );
   }
 
+  List<Widget> _buildUnifiedCanvasLayers(PlannerController controller) {
+    final layers = controller.unifiedLayers;
+    final widgets = <Widget>[];
+    final currentStrokeBatch = <int>[];
+
+    void flushStrokeBatch({required bool renderOverlay}) {
+      if (currentStrokeBatch.isEmpty && !renderOverlay) return;
+      final batchCopy = List<int>.from(currentStrokeBatch);
+      currentStrokeBatch.clear();
+      widgets.add(
+        Positioned.fill(
+          child: IgnorePointer(
+            child: CustomPaint(
+              painter: DrawingCanvasPainter(
+                strokes: controller.strokes,
+                strokeIndicesToRender: batchCopy,
+                renderOverlay: renderOverlay,
+                activeStroke: controller.activeStroke,
+                lassoPoints: controller.lassoPoints,
+                selectionBounds: controller.selectionBounds,
+                selectionRotationAngle: controller.selectionRotationAngle,
+                selectedStrokeIndices: controller.selectedStrokeIndices,
+                activeResizeHandle: controller.activeResizeHandle,
+                isRotatingSelection: controller.isRotatingSelection,
+                isSelectionLocked: controller.isSelectionLocked,
+                scale: _scale,
+                panOffset: _panOffset,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    for (final entry in layers) {
+      if (entry.isStroke && entry.strokeIndex != null) {
+        currentStrokeBatch.add(entry.strokeIndex!);
+      } else if (entry.isText && entry.textItem != null) {
+        flushStrokeBatch(renderOverlay: false);
+        widgets.add(_buildCanvasTextWidget(entry.textItem!));
+      }
+    }
+
+    // Flush remaining topmost strokes and always render active stroke / selection overlay on top
+    flushStrokeBatch(renderOverlay: true);
+    return widgets;
+  }
+
   Widget _buildCanvasTextWidget(CanvasTextItem item) {
     final viewportPos = item.position * _scale + _panOffset;
     final isSelected = widget.controller.selectedTextId == item.id;
@@ -321,7 +354,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     final viewportPos = item.position * _scale + _panOffset;
     final boxWidthViewport = item.width * _scale;
     final isLocked = item.isLocked;
-    final pillWidth = isLocked ? 210.0 : 565.0;
+    final pillWidth = isLocked ? 210.0 : 595.0;
     const pillHeight = 38.0;
 
     final centerX = viewportPos.dx + boxWidthViewport / 2.0;
@@ -834,6 +867,188 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                                 size: 15,
                                 color: Color(0xFFFF453A),
                               ),
+                            ),
+                          ),
+                        ),
+                        _buildPillDivider(),
+                        PopupMenuButton<String>(
+                          tooltip: 'Katman ve Sıralama Seçenekleri',
+                          offset: const Offset(0, 38),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 10,
+                          padding: EdgeInsets.zero,
+                          onSelected: (action) {
+                            switch (action) {
+                              case 'show_selected_layers':
+                                widget.controller
+                                    .openQuickAccessForSelectedLayers();
+                                break;
+                              case 'show_all_layers':
+                                widget.controller.openQuickAccessAllLayers();
+                                break;
+                              case 'bring_front':
+                                widget.controller.bringTextToFront(item.id);
+                                break;
+                              case 'move_up':
+                                widget.controller.moveTextLayerUp(item.id);
+                                break;
+                              case 'move_down':
+                                widget.controller.moveTextLayerDown(item.id);
+                                break;
+                              case 'send_back':
+                                widget.controller.sendTextToBack(item.id);
+                                break;
+                            }
+                          },
+                          itemBuilder: (ctx) => [
+                            const PopupMenuItem<String>(
+                              value: 'show_selected_layers',
+                              height: 38,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.layers_rounded,
+                                    size: 17,
+                                    color: Color(0xFF007AFF),
+                                  ),
+                                  SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      'Seçili Metnin Katmanını Göster',
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF007AFF),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem<String>(
+                              value: 'show_all_layers',
+                              height: 36,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.view_agenda_outlined,
+                                    size: 16,
+                                    color: Color(0xFF1E293B),
+                                  ),
+                                  SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      'Tüm Katmanları Göster',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF1E293B),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuDivider(height: 8),
+                            const PopupMenuItem<String>(
+                              value: 'bring_front',
+                              height: 34,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.flip_to_front_rounded,
+                                    size: 16,
+                                    color: Color(0xFF334155),
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'En Üste Getir',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem<String>(
+                              value: 'move_up',
+                              height: 34,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.arrow_upward_rounded,
+                                    size: 16,
+                                    color: Color(0xFF334155),
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'Bir Üste Çıkar',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem<String>(
+                              value: 'move_down',
+                              height: 34,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.arrow_downward_rounded,
+                                    size: 16,
+                                    color: Color(0xFF334155),
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'Bir Alta İndir',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem<String>(
+                              value: 'send_back',
+                              height: 34,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.flip_to_back_rounded,
+                                    size: 16,
+                                    color: Color(0xFF334155),
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'En Alta Gönder',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              size: 19,
+                              color: Colors.white,
                             ),
                           ),
                         ),

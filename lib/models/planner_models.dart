@@ -122,6 +122,7 @@ class DrawingStroke {
   final double rotation;
   final String? groupId;
   final bool isLocked;
+  final int? layerOrder;
 
   const DrawingStroke({
     required this.points,
@@ -131,6 +132,7 @@ class DrawingStroke {
     this.rotation = 0.0,
     this.groupId,
     this.isLocked = false,
+    this.layerOrder,
   });
 
   DrawingStroke copyWith({
@@ -142,6 +144,7 @@ class DrawingStroke {
     String? groupId,
     bool clearGroupId = false,
     bool? isLocked,
+    int? layerOrder,
   }) {
     return DrawingStroke(
       points: points ?? this.points,
@@ -151,6 +154,7 @@ class DrawingStroke {
       rotation: rotation ?? this.rotation,
       groupId: clearGroupId ? null : (groupId ?? this.groupId),
       isLocked: isLocked ?? this.isLocked,
+      layerOrder: layerOrder ?? this.layerOrder,
     );
   }
 
@@ -163,6 +167,7 @@ class DrawingStroke {
       'rotation': rotation,
       if (groupId != null) 'groupId': groupId,
       if (isLocked) 'isLocked': true,
+      if (layerOrder != null) 'layerOrder': layerOrder,
     };
   }
 
@@ -187,6 +192,7 @@ class DrawingStroke {
       rotation: (map['rotation'] as num?)?.toDouble() ?? 0.0,
       groupId: map['groupId'] as String?,
       isLocked: map['isLocked'] as bool? ?? false,
+      layerOrder: (map['layerOrder'] as num?)?.toInt(),
     );
   }
 }
@@ -286,6 +292,7 @@ class CanvasTextItem {
   final double rotation;
   final double width;
   final bool isLocked;
+  final int? layerOrder;
 
   const CanvasTextItem({
     required this.id,
@@ -303,6 +310,7 @@ class CanvasTextItem {
     this.rotation = 0.0,
     this.width = 220.0,
     this.isLocked = false,
+    this.layerOrder,
   });
 
   CanvasTextItem copyWith({
@@ -322,6 +330,7 @@ class CanvasTextItem {
     double? rotation,
     double? width,
     bool? isLocked,
+    int? layerOrder,
   }) {
     return CanvasTextItem(
       id: id ?? this.id,
@@ -340,6 +349,7 @@ class CanvasTextItem {
       rotation: rotation ?? this.rotation,
       width: width ?? this.width,
       isLocked: isLocked ?? this.isLocked,
+      layerOrder: layerOrder ?? this.layerOrder,
     );
   }
 
@@ -360,6 +370,7 @@ class CanvasTextItem {
     'rotation': rotation,
     'width': width,
     'isLocked': isLocked,
+    if (layerOrder != null) 'layerOrder': layerOrder,
   };
 
   factory CanvasTextItem.fromMap(Map<String, dynamic> map) {
@@ -382,8 +393,46 @@ class CanvasTextItem {
       rotation: (map['rotation'] as num?)?.toDouble() ?? 0.0,
       width: (map['width'] as num?)?.toDouble() ?? 220.0,
       isLocked: map['isLocked'] as bool? ?? false,
+      layerOrder: (map['layerOrder'] as num?)?.toInt(),
     );
   }
+}
+
+enum CanvasLayerType {
+  stroke,
+  text,
+}
+
+class CanvasLayerEntry {
+  final CanvasLayerType type;
+  final int? strokeIndex;
+  final DrawingStroke? stroke;
+  final String? textId;
+  final CanvasTextItem? textItem;
+  final int layerOrder;
+
+  const CanvasLayerEntry.stroke({
+    required int this.strokeIndex,
+    required DrawingStroke this.stroke,
+    required this.layerOrder,
+  })  : type = CanvasLayerType.stroke,
+        textId = null,
+        textItem = null;
+
+  const CanvasLayerEntry.text({
+    required String this.textId,
+    required CanvasTextItem this.textItem,
+    required this.layerOrder,
+  })  : type = CanvasLayerType.text,
+        strokeIndex = null,
+        stroke = null;
+
+  bool get isStroke => type == CanvasLayerType.stroke;
+  bool get isText => type == CanvasLayerType.text;
+  bool get isLocked =>
+      isStroke ? (stroke?.isLocked ?? false) : (textItem?.isLocked ?? false);
+  String get uniqueKey =>
+      isStroke ? 'layer_stroke_$strokeIndex' : 'layer_text_$textId';
 }
 
 class CanvasImageItem {

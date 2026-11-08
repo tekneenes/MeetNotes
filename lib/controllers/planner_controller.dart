@@ -100,8 +100,12 @@ class PlannerController extends ChangeNotifier {
   bool get isQuickAccessGroupsPage => _quickAccessSubPage == QuickAccessSubPage.groups;
   bool get isQuickAccessAssetsPage => _quickAccessSubPage == QuickAccessSubPage.assets;
   List<SavedCanvasAsset> get savedAssets => List.unmodifiable(_savedAssets);
+  bool get hasAnyLayerSelection =>
+      _selectedStrokeIndices.isNotEmpty || _selectedTextId != null;
+  int get selectedLayerCount =>
+      _selectedStrokeIndices.length + (_selectedTextId != null ? 1 : 0);
   bool get showOnlySelectedLayers =>
-      _showOnlySelectedLayers && _selectedStrokeIndices.isNotEmpty;
+      _showOnlySelectedLayers && hasAnyLayerSelection;
   bool get showOnlySelectedGroups =>
       _showOnlySelectedGroups && hasGroupedStrokeInSelection;
 
@@ -171,8 +175,10 @@ class PlannerController extends ChangeNotifier {
     if (_isQuickAccessOpen) {
       // Normal açılışta Hızlı Erişim ana sayfasında (Hızlı İşlemler) başla
       _quickAccessSubPage = QuickAccessSubPage.main;
-      if (_selectedStrokeIndices.isEmpty) {
+      if (!hasAnyLayerSelection) {
         _showOnlySelectedLayers = false;
+      }
+      if (_selectedStrokeIndices.isEmpty) {
         _showOnlySelectedGroups = false;
       }
       _storage.loadSavedAssets().then((assets) {
@@ -191,7 +197,7 @@ class PlannerController extends ChangeNotifier {
   void openQuickAccessLayersPage({bool onlySelected = false}) {
     _isQuickAccessOpen = true;
     _quickAccessSubPage = QuickAccessSubPage.layers;
-    _showOnlySelectedLayers = onlySelected && _selectedStrokeIndices.isNotEmpty;
+    _showOnlySelectedLayers = onlySelected && hasAnyLayerSelection;
     notifyListeners();
   }
 
@@ -325,6 +331,7 @@ class PlannerController extends ChangeNotifier {
         groupId: newGroupId,
         clearGroupId: newGroupId == null,
         isLocked: false,
+        layerOrder: _nextTopLayerOrder(),
       );
       _strokes.add(placedStroke);
       newSelectedIndices.add(_strokes.length - 1);
@@ -334,6 +341,7 @@ class PlannerController extends ChangeNotifier {
     _selectedStrokeIndices
       ..clear()
       ..addAll(newSelectedIndices);
+    _normalizeUnifiedLayerOrders();
     _syncSelectionRotationFromStrokes();
     _saveCurrentStrokes();
     notifyListeners();
@@ -539,6 +547,7 @@ class PlannerController extends ChangeNotifier {
     _strokes = await _storage.loadStrokes(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
     _tasks = await _storage.loadTasks(_currentWeekStart);
     _canvasTexts = await _storage.loadCanvasTexts(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
+    _normalizeUnifiedLayerOrders();
     _savedAssets = await _storage.loadSavedAssets();
 
     if (singleDayDate != null) {
@@ -634,11 +643,21 @@ class PlannerController extends ChangeNotifier {
   Future<void> _loadPageStrokes() async {
     _strokes = await _storage.loadStrokes(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
     _canvasTexts = await _storage.loadCanvasTexts(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
+    _normalizeUnifiedLayerOrders();
     notifyListeners();
   }
 
   Future<void> _saveCurrentStrokes() async {
     await _storage.saveStrokes(_currentWeekStart, _currentPageIndex, _strokes, prefix: _storagePrefix);
+  }
+
+  Future<void> _saveCurrentCanvasTexts() async {
+    await _storage.saveCanvasTexts(
+      _currentWeekStart,
+      _currentPageIndex,
+      _canvasTexts,
+      prefix: _storagePrefix,
+    );
   }
 
   // Tools & Styling
@@ -928,19 +947,24 @@ class PlannerController extends ChangeNotifier {
     }
 
     if (_activeStroke != null) {
+      final strokeWithOrder = _activeStroke!.copyWith(
+        layerOrder: _nextTopLayerOrder(),
+      );
       if (_selectedTool.isShape) {
-        if (_activeStroke!.points.length >= 2) {
-          final p1 = _activeStroke!.points[0];
-          final p2 = _activeStroke!.points[1];
+        if (strokeWithOrder.points.length >= 2) {
+          final p1 = strokeWithOrder.points[0];
+          final p2 = strokeWithOrder.points[1];
           if ((p1 - p2).distance > 3.0) {
-            _strokes.add(_activeStroke!);
+            _strokes.add(strokeWithOrder);
           }
         }
       } else {
-        _strokes.add(_activeStroke!);
+        _strokes.add(strokeWithOrder);
       }
       _activeStroke = null;
+      _normalizeUnifiedLayerOrders();
       _saveCurrentStrokes();
+      _saveCurrentCanvasTexts();
       notifyListeners();
     }
   }
@@ -1296,7 +1320,9 @@ class PlannerController extends ChangeNotifier {
     _selectedStrokeIndices.clear();
     _selectionRotationAngle = 0.0;
     _cleanupSingletonGroups();
+    _normalizeUnifiedLayerOrders();
     _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
     notifyListeners();
   }
 
@@ -1323,6 +1349,7 @@ class PlannerController extends ChangeNotifier {
           original.copyWith(
             points: shiftedPoints,
             groupId: duplicatedGroupId,
+            layerOrder: _nextTopLayerOrder(),
           ),
         );
         newIndices.add(_strokes.length - 1);
@@ -1331,7 +1358,9 @@ class PlannerController extends ChangeNotifier {
     _selectedStrokeIndices
       ..clear()
       ..addAll(newIndices);
+    _normalizeUnifiedLayerOrders();
     _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
     notifyListeners();
   }
 
@@ -1596,149 +1625,388 @@ class PlannerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- Katmanlama (Layer Z-Order Management) ---
+  // --- Katmanlama (Unified Layer Z-Order Management: Strokes + Text Boxes) ---
 
-  void moveStrokeToIndex(int oldIndex, int newIndex) {
-    if (oldIndex < 0 || oldIndex >= _strokes.length) return;
-    final clampedNew = newIndex.clamp(0, _strokes.length - 1);
-    if (oldIndex == clampedNew) return;
+  int _nextTopLayerOrder() {
+    int maxOrder = -1;
+    for (int i = 0; i < _strokes.length; i++) {
+      final order = _strokes[i].layerOrder ?? i;
+      if (order > maxOrder) maxOrder = order;
+    }
+    for (int i = 0; i < _canvasTexts.length; i++) {
+      final order = _canvasTexts[i].layerOrder ?? (_strokes.length + i);
+      if (order > maxOrder) maxOrder = order;
+    }
+    return maxOrder + 1;
+  }
+
+  void _normalizeUnifiedLayerOrders() {
+    if (_strokes.isEmpty && _canvasTexts.isEmpty) return;
+
+    final entries = <_InternalLayerSortItem>[];
+    for (int i = 0; i < _strokes.length; i++) {
+      entries.add(
+        _InternalLayerSortItem(
+          isStroke: true,
+          originalStrokeIndex: i,
+          stroke: _strokes[i],
+          sortOrder: _strokes[i].layerOrder,
+          tieBreaker: i,
+        ),
+      );
+    }
+    for (int i = 0; i < _canvasTexts.length; i++) {
+      entries.add(
+        _InternalLayerSortItem(
+          isStroke: false,
+          textItem: _canvasTexts[i],
+          sortOrder: _canvasTexts[i].layerOrder,
+          tieBreaker: _strokes.length + i,
+        ),
+      );
+    }
+
+    entries.sort((a, b) {
+      final aOrder = a.sortOrder ?? (1000000 + a.tieBreaker);
+      final bOrder = b.sortOrder ?? (1000000 + b.tieBreaker);
+      if (aOrder != bOrder) return aOrder.compareTo(bOrder);
+      return a.tieBreaker.compareTo(b.tieBreaker);
+    });
+
+    final prevSelected = <int>{..._selectedStrokeIndices};
+    final newStrokes = <DrawingStroke>[];
+    final newSelected = <int>{};
+    final newTexts = <CanvasTextItem>[];
+
+    for (int unifiedIdx = 0; unifiedIdx < entries.length; unifiedIdx++) {
+      final item = entries[unifiedIdx];
+      if (item.isStroke) {
+        final newStrokeIdx = newStrokes.length;
+        newStrokes.add(item.stroke!.copyWith(layerOrder: unifiedIdx));
+        if (prevSelected.contains(item.originalStrokeIndex)) {
+          newSelected.add(newStrokeIdx);
+        }
+      } else {
+        newTexts.add(item.textItem!.copyWith(layerOrder: unifiedIdx));
+      }
+    }
+
+    _strokes = newStrokes;
+    _selectedStrokeIndices
+      ..clear()
+      ..addAll(newSelected);
+    _canvasTexts = newTexts;
+  }
+
+  /// Unified layer list ordered from BOTTOMMOST (0) to TOPMOST (length - 1).
+  List<CanvasLayerEntry> get unifiedLayers {
+    final result = <CanvasLayerEntry>[];
+    for (int i = 0; i < _strokes.length; i++) {
+      result.add(
+        CanvasLayerEntry.stroke(
+          strokeIndex: i,
+          stroke: _strokes[i],
+          layerOrder: _strokes[i].layerOrder ?? i,
+        ),
+      );
+    }
+    for (int i = 0; i < _canvasTexts.length; i++) {
+      result.add(
+        CanvasLayerEntry.text(
+          textId: _canvasTexts[i].id,
+          textItem: _canvasTexts[i],
+          layerOrder: _canvasTexts[i].layerOrder ?? (_strokes.length + i),
+        ),
+      );
+    }
+    result.sort((a, b) => a.layerOrder.compareTo(b.layerOrder));
+    return [
+      for (int i = 0; i < result.length; i++)
+        result[i].isStroke
+            ? CanvasLayerEntry.stroke(
+                strokeIndex: result[i].strokeIndex!,
+                stroke: result[i].stroke!,
+                layerOrder: i,
+              )
+            : CanvasLayerEntry.text(
+                textId: result[i].textId!,
+                textItem: result[i].textItem!,
+                layerOrder: i,
+              ),
+    ];
+  }
+
+  bool isUnifiedLayerSelected(CanvasLayerEntry entry) {
+    if (entry.isStroke) {
+      return _selectedStrokeIndices.contains(entry.strokeIndex);
+    }
+    return _selectedTextId != null && _selectedTextId == entry.textId;
+  }
+
+  void _applyReorderedUnifiedLayers(List<CanvasLayerEntry> reordered) {
+    final prevSelected = <int>{..._selectedStrokeIndices};
+    final newStrokes = <DrawingStroke>[];
+    final newSelected = <int>{};
+    final newTexts = <CanvasTextItem>[];
+
+    for (int i = 0; i < reordered.length; i++) {
+      final entry = reordered[i];
+      if (entry.isStroke) {
+        final newStrokeIdx = newStrokes.length;
+        newStrokes.add(entry.stroke!.copyWith(layerOrder: i));
+        if (prevSelected.contains(entry.strokeIndex)) {
+          newSelected.add(newStrokeIdx);
+        }
+      } else {
+        newTexts.add(entry.textItem!.copyWith(layerOrder: i));
+      }
+    }
+
+    _strokes = newStrokes;
+    _selectedStrokeIndices
+      ..clear()
+      ..addAll(newSelected);
+    _canvasTexts = newTexts;
+
+    _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
+    notifyListeners();
+  }
+
+  void moveUnifiedLayerToIndex(int oldUnifiedIndex, int newUnifiedIndex) {
+    final layers = unifiedLayers;
+    if (oldUnifiedIndex < 0 || oldUnifiedIndex >= layers.length) return;
+    final clampedNew = newUnifiedIndex.clamp(0, layers.length - 1);
+    if (oldUnifiedIndex == clampedNew) return;
 
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
 
-    final selectedSet = <int>{..._selectedStrokeIndices};
-    final indexedStrokes = List<MapEntry<int, DrawingStroke>>.generate(
-      _strokes.length,
-      (i) => MapEntry(i, _strokes[i]),
-    );
-    final movedItem = indexedStrokes.removeAt(oldIndex);
-    indexedStrokes.insert(clampedNew, movedItem);
+    final reordered = List<CanvasLayerEntry>.from(layers);
+    final movedItem = reordered.removeAt(oldUnifiedIndex);
+    reordered.insert(clampedNew, movedItem);
 
-    _strokes = indexedStrokes.map((e) => e.value).toList();
-    _selectedStrokeIndices
-      ..clear()
-      ..addAll([
-        for (int i = 0; i < indexedStrokes.length; i++)
-          if (selectedSet.contains(indexedStrokes[i].key)) i,
-      ]);
+    _applyReorderedUnifiedLayers(reordered);
+  }
 
-    _saveCurrentStrokes();
-    notifyListeners();
+  void moveUnifiedLayerUp(int unifiedIndex, {bool relativeToSelection = false}) {
+    final layers = unifiedLayers;
+    if (unifiedIndex < 0 || unifiedIndex >= layers.length - 1) return;
+    if (relativeToSelection &&
+        selectedLayerCount > 1 &&
+        isUnifiedLayerSelected(layers[unifiedIndex])) {
+      for (int i = unifiedIndex + 1; i < layers.length; i++) {
+        if (isUnifiedLayerSelected(layers[i])) {
+          moveUnifiedLayerToIndex(unifiedIndex, i);
+          return;
+        }
+      }
+    }
+    moveUnifiedLayerToIndex(unifiedIndex, unifiedIndex + 1);
+  }
+
+  void moveUnifiedLayerDown(int unifiedIndex, {bool relativeToSelection = false}) {
+    final layers = unifiedLayers;
+    if (unifiedIndex <= 0 || unifiedIndex >= layers.length) return;
+    if (relativeToSelection &&
+        selectedLayerCount > 1 &&
+        isUnifiedLayerSelected(layers[unifiedIndex])) {
+      for (int i = unifiedIndex - 1; i >= 0; i--) {
+        if (isUnifiedLayerSelected(layers[i])) {
+          moveUnifiedLayerToIndex(unifiedIndex, i);
+          return;
+        }
+      }
+    }
+    moveUnifiedLayerToIndex(unifiedIndex, unifiedIndex - 1);
+  }
+
+  void bringUnifiedLayerToFront(int unifiedIndex) {
+    final layers = unifiedLayers;
+    if (unifiedIndex < 0 || unifiedIndex >= layers.length - 1) return;
+    moveUnifiedLayerToIndex(unifiedIndex, layers.length - 1);
+  }
+
+  void sendUnifiedLayerToBack(int unifiedIndex) {
+    final layers = unifiedLayers;
+    if (unifiedIndex <= 0 || unifiedIndex >= layers.length) return;
+    moveUnifiedLayerToIndex(unifiedIndex, 0);
+  }
+
+  int _findStrokeUnifiedIndex(int strokeIndex, List<CanvasLayerEntry> layers) {
+    return layers.indexWhere((e) => e.isStroke && e.strokeIndex == strokeIndex);
+  }
+
+  int _findTextUnifiedIndex(String textId, List<CanvasLayerEntry> layers) {
+    return layers.indexWhere((e) => e.isText && e.textId == textId);
+  }
+
+  void moveTextLayerUp(String id) {
+    final layers = unifiedLayers;
+    final uIdx = _findTextUnifiedIndex(id, layers);
+    if (uIdx != -1) moveUnifiedLayerUp(uIdx);
+  }
+
+  void moveTextLayerDown(String id) {
+    final layers = unifiedLayers;
+    final uIdx = _findTextUnifiedIndex(id, layers);
+    if (uIdx != -1) moveUnifiedLayerDown(uIdx);
+  }
+
+  void bringTextToFront(String id) {
+    final layers = unifiedLayers;
+    final uIdx = _findTextUnifiedIndex(id, layers);
+    if (uIdx != -1) bringUnifiedLayerToFront(uIdx);
+  }
+
+  void sendTextToBack(String id) {
+    final layers = unifiedLayers;
+    final uIdx = _findTextUnifiedIndex(id, layers);
+    if (uIdx != -1) sendUnifiedLayerToBack(uIdx);
+  }
+
+  void moveStrokeToIndex(int oldIndex, int newIndex) {
+    final layers = unifiedLayers;
+    final oldUnified = _findStrokeUnifiedIndex(oldIndex, layers);
+    final newUnified = _findStrokeUnifiedIndex(newIndex, layers);
+    if (oldUnified != -1 && newUnified != -1) {
+      moveUnifiedLayerToIndex(oldUnified, newUnified);
+    }
   }
 
   void moveStrokeLayerUp(int index, {bool relativeToSelection = false}) {
-    if (index < 0 || index >= _strokes.length - 1) return;
-    if (relativeToSelection &&
-        _selectedStrokeIndices.length > 1 &&
-        _selectedStrokeIndices.contains(index)) {
-      final higherSelected = _selectedStrokeIndices
-          .where((idx) => idx > index)
-          .toList()
-        ..sort();
-      if (higherSelected.isNotEmpty) {
-        moveStrokeToIndex(index, higherSelected.first);
-        return;
-      }
+    final layers = unifiedLayers;
+    final uIdx = _findStrokeUnifiedIndex(index, layers);
+    if (uIdx != -1) {
+      moveUnifiedLayerUp(uIdx, relativeToSelection: relativeToSelection);
     }
-    moveStrokeToIndex(index, index + 1);
   }
 
   void moveStrokeLayerDown(int index, {bool relativeToSelection = false}) {
-    if (index <= 0 || index >= _strokes.length) return;
-    if (relativeToSelection &&
-        _selectedStrokeIndices.length > 1 &&
-        _selectedStrokeIndices.contains(index)) {
-      final lowerSelected = _selectedStrokeIndices
-          .where((idx) => idx < index)
-          .toList()
-        ..sort();
-      if (lowerSelected.isNotEmpty) {
-        moveStrokeToIndex(index, lowerSelected.last);
-        return;
-      }
+    final layers = unifiedLayers;
+    final uIdx = _findStrokeUnifiedIndex(index, layers);
+    if (uIdx != -1) {
+      moveUnifiedLayerDown(uIdx, relativeToSelection: relativeToSelection);
     }
-    moveStrokeToIndex(index, index - 1);
   }
 
   void bringStrokeToFront(int index) {
-    if (index < 0 || index >= _strokes.length - 1) return;
-    moveStrokeToIndex(index, _strokes.length - 1);
+    final layers = unifiedLayers;
+    final uIdx = _findStrokeUnifiedIndex(index, layers);
+    if (uIdx != -1) bringUnifiedLayerToFront(uIdx);
   }
 
   void sendStrokeToBack(int index) {
-    if (index <= 0 || index >= _strokes.length) return;
-    moveStrokeToIndex(index, 0);
+    final layers = unifiedLayers;
+    final uIdx = _findStrokeUnifiedIndex(index, layers);
+    if (uIdx != -1) sendUnifiedLayerToBack(uIdx);
   }
 
   void bringSelectionToFront() {
-    if (_selectedStrokeIndices.isEmpty || _strokes.length <= 1) return;
+    if (_selectedTextId != null && _selectedStrokeIndices.isEmpty) {
+      bringTextToFront(_selectedTextId!);
+      return;
+    }
+    final layers = unifiedLayers;
+    if (_selectedStrokeIndices.isEmpty || layers.length <= 1) return;
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
 
-    final unselected = <DrawingStroke>[];
-    final selected = <DrawingStroke>[];
-    for (int i = 0; i < _strokes.length; i++) {
-      if (_selectedStrokeIndices.contains(i)) {
-        selected.add(_strokes[i]);
+    final unselected = <CanvasLayerEntry>[];
+    final selected = <CanvasLayerEntry>[];
+    for (final entry in layers) {
+      if (isUnifiedLayerSelected(entry)) {
+        selected.add(entry);
       } else {
-        unselected.add(_strokes[i]);
+        unselected.add(entry);
       }
     }
-    _strokes = [...unselected, ...selected];
-    _selectedStrokeIndices
-      ..clear()
-      ..addAll(List.generate(selected.length, (i) => unselected.length + i));
-    _saveCurrentStrokes();
-    notifyListeners();
+    _applyReorderedUnifiedLayers([...unselected, ...selected]);
   }
 
   void sendSelectionToBack() {
-    if (_selectedStrokeIndices.isEmpty || _strokes.length <= 1) return;
+    if (_selectedTextId != null && _selectedStrokeIndices.isEmpty) {
+      sendTextToBack(_selectedTextId!);
+      return;
+    }
+    final layers = unifiedLayers;
+    if (_selectedStrokeIndices.isEmpty || layers.length <= 1) return;
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
 
-    final selected = <DrawingStroke>[];
-    final unselected = <DrawingStroke>[];
-    for (int i = 0; i < _strokes.length; i++) {
-      if (_selectedStrokeIndices.contains(i)) {
-        selected.add(_strokes[i]);
+    final selected = <CanvasLayerEntry>[];
+    final unselected = <CanvasLayerEntry>[];
+    for (final entry in layers) {
+      if (isUnifiedLayerSelected(entry)) {
+        selected.add(entry);
       } else {
-        unselected.add(_strokes[i]);
+        unselected.add(entry);
       }
     }
-    _strokes = [...selected, ...unselected];
-    _selectedStrokeIndices
-      ..clear()
-      ..addAll(List.generate(selected.length, (i) => i));
-    _saveCurrentStrokes();
-    notifyListeners();
+    _applyReorderedUnifiedLayers([...selected, ...unselected]);
   }
 
   void moveSelectionForward() {
-    if (_selectedStrokeIndices.isEmpty || _strokes.length <= 1) return;
-    final sorted = _selectedStrokeIndices.toList()..sort();
-    if (sorted.length == 1) {
-      moveStrokeLayerUp(sorted.first);
+    if (_selectedTextId != null && _selectedStrokeIndices.isEmpty) {
+      moveTextLayerUp(_selectedTextId!);
       return;
     }
-    if (sorted.last < _strokes.length - 1) {
-      moveStrokeToIndex(sorted.last + 1, sorted.first);
+    final layers = unifiedLayers;
+    if (_selectedStrokeIndices.isEmpty || layers.length <= 1) return;
+    final selectedUnified = <int>[];
+    for (int i = 0; i < layers.length; i++) {
+      if (isUnifiedLayerSelected(layers[i])) {
+        selectedUnified.add(i);
+      }
+    }
+    if (selectedUnified.isEmpty) return;
+    if (selectedUnified.length == 1) {
+      moveUnifiedLayerUp(selectedUnified.first);
+      return;
+    }
+    if (selectedUnified.last < layers.length - 1) {
+      moveUnifiedLayerToIndex(selectedUnified.last + 1, selectedUnified.first);
     } else {
-      moveStrokeLayerUp(sorted.first, relativeToSelection: true);
+      moveUnifiedLayerUp(selectedUnified.first, relativeToSelection: true);
     }
   }
 
   void moveSelectionBackward() {
-    if (_selectedStrokeIndices.isEmpty || _strokes.length <= 1) return;
-    final sorted = _selectedStrokeIndices.toList()..sort();
-    if (sorted.length == 1) {
-      moveStrokeLayerDown(sorted.first);
+    if (_selectedTextId != null && _selectedStrokeIndices.isEmpty) {
+      moveTextLayerDown(_selectedTextId!);
       return;
     }
-    if (sorted.first > 0) {
-      moveStrokeToIndex(sorted.first - 1, sorted.last);
+    final layers = unifiedLayers;
+    if (_selectedStrokeIndices.isEmpty || layers.length <= 1) return;
+    final selectedUnified = <int>[];
+    for (int i = 0; i < layers.length; i++) {
+      if (isUnifiedLayerSelected(layers[i])) {
+        selectedUnified.add(i);
+      }
+    }
+    if (selectedUnified.isEmpty) return;
+    if (selectedUnified.length == 1) {
+      moveUnifiedLayerDown(selectedUnified.first);
+      return;
+    }
+    if (selectedUnified.first > 0) {
+      moveUnifiedLayerToIndex(selectedUnified.first - 1, selectedUnified.last);
     } else {
-      moveStrokeLayerDown(sorted.last, relativeToSelection: true);
+      moveUnifiedLayerDown(selectedUnified.last, relativeToSelection: true);
+    }
+  }
+
+  void selectUnifiedLayerFromPanel(
+    CanvasLayerEntry entry, {
+    bool additive = false,
+  }) {
+    if (entry.isStroke && entry.strokeIndex != null) {
+      if (_selectedTextId != null || _editingTextId != null) {
+        stopEditingCanvasText(deselect: true);
+      }
+      selectStrokeFromLayerPanel(entry.strokeIndex!, additive: additive);
+    } else if (entry.isText && entry.textId != null) {
+      selectCanvasText(entry.textId!);
     }
   }
 
@@ -1854,7 +2122,9 @@ class PlannerController extends ChangeNotifier {
     });
 
     if (_strokes.length != initialCount) {
+      _normalizeUnifiedLayerOrders();
       _undoStack.add(List.from(_strokes));
+      _saveCurrentCanvasTexts();
       notifyListeners();
     }
   }
@@ -1865,7 +2135,9 @@ class PlannerController extends ChangeNotifier {
       _selectedStrokeIndices.clear();
       _redoStack.add(List.from(_strokes));
       _strokes = _undoStack.removeLast();
+      _normalizeUnifiedLayerOrders();
       _saveCurrentStrokes();
+      _saveCurrentCanvasTexts();
       notifyListeners();
     }
   }
@@ -1875,18 +2147,24 @@ class PlannerController extends ChangeNotifier {
       _selectedStrokeIndices.clear();
       _undoStack.add(List.from(_strokes));
       _strokes = _redoStack.removeLast();
+      _normalizeUnifiedLayerOrders();
       _saveCurrentStrokes();
+      _saveCurrentCanvasTexts();
       notifyListeners();
     }
   }
 
   void clearCanvas() {
-    if (_strokes.isEmpty) return;
+    if (_strokes.isEmpty && _canvasTexts.isEmpty) return;
     _selectedStrokeIndices.clear();
+    _selectedTextId = null;
+    _editingTextId = null;
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
     _strokes = [];
+    _canvasTexts = [];
     _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
     notifyListeners();
   }
 
@@ -1949,18 +2227,16 @@ class PlannerController extends ChangeNotifier {
       isBold: preset.defaultBold,
       backgroundColor: preset.defaultBgColor,
       width: preset == CanvaTextPreset.heading ? 280.0 : 230.0,
+      layerOrder: _nextTopLayerOrder(),
     );
 
     _selectedStrokeIndices.clear();
     _canvasTexts.add(newItem);
+    _normalizeUnifiedLayerOrders();
     _selectedTextId = newItem.id;
     _editingTextId = startEditing ? newItem.id : null;
-    _storage.saveCanvasTexts(
-      _currentWeekStart,
-      _currentPageIndex,
-      _canvasTexts,
-      prefix: _storagePrefix,
-    );
+    _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
     notifyListeners();
     return newItem;
   }
@@ -1972,17 +2248,15 @@ class PlannerController extends ChangeNotifier {
       position: position,
       text: trimmed.isEmpty ? 'Metin yazın...' : trimmed,
       color: _selectedColor,
+      layerOrder: _nextTopLayerOrder(),
     );
     _selectedStrokeIndices.clear();
     _canvasTexts.add(newItem);
+    _normalizeUnifiedLayerOrders();
     _selectedTextId = newItem.id;
     _editingTextId = newItem.id;
-    _storage.saveCanvasTexts(
-      _currentWeekStart,
-      _currentPageIndex,
-      _canvasTexts,
-      prefix: _storagePrefix,
-    );
+    _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
     notifyListeners();
   }
 
@@ -2016,12 +2290,7 @@ class PlannerController extends ChangeNotifier {
     if (deselect) {
       _selectedTextId = null;
     }
-    _storage.saveCanvasTexts(
-      _currentWeekStart,
-      _currentPageIndex,
-      _canvasTexts,
-      prefix: _storagePrefix,
-    );
+    _saveCurrentCanvasTexts();
     notifyListeners();
   }
 
@@ -2032,6 +2301,8 @@ class PlannerController extends ChangeNotifier {
       if (_selectedTextId == id) {
         _selectedTextId = null;
       }
+      _normalizeUnifiedLayerOrders();
+      _saveCurrentStrokes();
     }
   }
 
@@ -2039,12 +2310,7 @@ class PlannerController extends ChangeNotifier {
     final idx = _canvasTexts.indexWhere((t) => t.id == id);
     if (idx != -1 && !_canvasTexts[idx].isLocked) {
       _canvasTexts[idx] = _canvasTexts[idx].copyWith(text: text);
-      _storage.saveCanvasTexts(
-        _currentWeekStart,
-        _currentPageIndex,
-        _canvasTexts,
-        prefix: _storagePrefix,
-      );
+      _saveCurrentCanvasTexts();
       notifyListeners();
     }
   }
@@ -2056,12 +2322,7 @@ class PlannerController extends ChangeNotifier {
     final idx = _canvasTexts.indexWhere((t) => t.id == id);
     if (idx == -1) return;
     _canvasTexts[idx] = updater(_canvasTexts[idx]);
-    _storage.saveCanvasTexts(
-      _currentWeekStart,
-      _currentPageIndex,
-      _canvasTexts,
-      prefix: _storagePrefix,
-    );
+    _saveCurrentCanvasTexts();
     notifyListeners();
   }
 
@@ -2073,16 +2334,14 @@ class PlannerController extends ChangeNotifier {
       id: 'txt_${DateTime.now().microsecondsSinceEpoch}',
       position: src.position + const Offset(22.0, 22.0),
       isLocked: false,
+      layerOrder: _nextTopLayerOrder(),
     );
     _canvasTexts.add(copy);
+    _normalizeUnifiedLayerOrders();
     _selectedTextId = copy.id;
     _editingTextId = null;
-    _storage.saveCanvasTexts(
-      _currentWeekStart,
-      _currentPageIndex,
-      _canvasTexts,
-      prefix: _storagePrefix,
-    );
+    _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
     notifyListeners();
   }
 
@@ -2094,12 +2353,7 @@ class PlannerController extends ChangeNotifier {
     if (nextLock && _editingTextId == id) {
       _editingTextId = null;
     }
-    _storage.saveCanvasTexts(
-      _currentWeekStart,
-      _currentPageIndex,
-      _canvasTexts,
-      prefix: _storagePrefix,
-    );
+    _saveCurrentCanvasTexts();
     notifyListeners();
   }
 
@@ -2119,12 +2373,7 @@ class PlannerController extends ChangeNotifier {
     }).toList();
     _canvasTexts[idx] =
         _canvasTexts[idx].copyWith(text: updatedLines.join('\n'));
-    _storage.saveCanvasTexts(
-      _currentWeekStart,
-      _currentPageIndex,
-      _canvasTexts,
-      prefix: _storagePrefix,
-    );
+    _saveCurrentCanvasTexts();
     notifyListeners();
   }
 
@@ -2132,12 +2381,7 @@ class PlannerController extends ChangeNotifier {
     final idx = _canvasTexts.indexWhere((t) => t.id == id);
     if (idx != -1 && !_canvasTexts[idx].isLocked) {
       _canvasTexts[idx] = _canvasTexts[idx].copyWith(position: newPos);
-      _storage.saveCanvasTexts(
-        _currentWeekStart,
-        _currentPageIndex,
-        _canvasTexts,
-        prefix: _storagePrefix,
-      );
+      _saveCurrentCanvasTexts();
       notifyListeners();
     }
   }
@@ -2148,12 +2392,9 @@ class PlannerController extends ChangeNotifier {
     _canvasTexts.removeWhere((t) => t.id == id);
     if (_selectedTextId == id) _selectedTextId = null;
     if (_editingTextId == id) _editingTextId = null;
-    _storage.saveCanvasTexts(
-      _currentWeekStart,
-      _currentPageIndex,
-      _canvasTexts,
-      prefix: _storagePrefix,
-    );
+    _normalizeUnifiedLayerOrders();
+    _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
     notifyListeners();
   }
 
@@ -2177,6 +2418,24 @@ class PlannerController extends ChangeNotifier {
     _zoomScale = scale.clamp(0.5, 4.0);
     notifyListeners();
   }
+}
+
+class _InternalLayerSortItem {
+  final bool isStroke;
+  final int? originalStrokeIndex;
+  final DrawingStroke? stroke;
+  final CanvasTextItem? textItem;
+  final int? sortOrder;
+  final int tieBreaker;
+
+  const _InternalLayerSortItem({
+    required this.isStroke,
+    this.originalStrokeIndex,
+    this.stroke,
+    this.textItem,
+    this.sortOrder,
+    required this.tieBreaker,
+  });
 }
 
 

@@ -864,6 +864,41 @@ class _PlannerScreenState extends State<PlannerScreen>
                                                       color: Colors.grey.shade500,
                                                     ),
                                                   ),
+                                                  if (stroke.isLocked) ...[
+                                                    const SizedBox(width: 6),
+                                                    Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                        horizontal: 5,
+                                                        vertical: 2,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(0xFFFEF3C7),
+                                                        borderRadius:
+                                                            BorderRadius.circular(5),
+                                                      ),
+                                                      child: const Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Icon(
+                                                            Icons.lock_rounded,
+                                                            size: 9,
+                                                            color: Color(0xFFD97706),
+                                                          ),
+                                                          SizedBox(width: 2),
+                                                          Text(
+                                                            'KİLİTLİ',
+                                                            style: TextStyle(
+                                                              fontSize: 8.5,
+                                                              fontWeight:
+                                                                  FontWeight.w800,
+                                                              color: Color(0xFFD97706),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
                                                 ],
                                               ),
                                             ],
@@ -872,6 +907,38 @@ class _PlannerScreenState extends State<PlannerScreen>
                                         Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
+                                            Tooltip(
+                                              message: stroke.isLocked
+                                                  ? 'Kilidi Aç'
+                                                  : 'Kilitle',
+                                              child: InkWell(
+                                                borderRadius: BorderRadius.circular(6),
+                                                onTap: () => activeController
+                                                    .toggleStrokeLock(strokeIdx),
+                                                child: Container(
+                                                  padding: const EdgeInsets.all(5),
+                                                  decoration: BoxDecoration(
+                                                    color: stroke.isLocked
+                                                        ? const Color(0xFFF59E0B)
+                                                            .withValues(alpha: 0.16)
+                                                        : Colors.grey
+                                                            .withValues(alpha: 0.08),
+                                                    borderRadius:
+                                                        BorderRadius.circular(6),
+                                                  ),
+                                                  child: Icon(
+                                                    stroke.isLocked
+                                                        ? Icons.lock_rounded
+                                                        : Icons.lock_open_rounded,
+                                                    size: 15,
+                                                    color: stroke.isLocked
+                                                        ? const Color(0xFFD97706)
+                                                        : Colors.grey.shade500,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 4),
                                             Tooltip(
                                               message: 'Üste Çıkar',
                                               child: InkWell(

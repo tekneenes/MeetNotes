@@ -248,6 +248,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                       selectedStrokeIndices: controller.selectedStrokeIndices,
                       activeResizeHandle: controller.activeResizeHandle,
                       isRotatingSelection: controller.isRotatingSelection,
+                      isSelectionLocked: controller.isSelectionLocked,
                       scale: _scale,
                       panOffset: _panOffset,
                     ),
@@ -399,9 +400,10 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     );
     final handleViewport = rotatedHandleCanvas * _scale + _panOffset;
 
+    final isLocked = controller.isSelectionLocked;
     final showGroupBtn =
         controller.canGroupSelection || controller.hasGroupedStrokeInSelection;
-    final pillWidth = showGroupBtn ? 344.0 : 268.0;
+    final pillWidth = isLocked ? 210.0 : (showGroupBtn ? 378.0 : 302.0);
     const pillHeight = 36.0;
     const handleClearanceRadius = 26.0;
 
@@ -488,7 +490,89 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
-            children: [
+            children: isLocked
+                ? [
+                    // Canva-Style Locked Selection Bar: [🔒 Kilitli | 🔓 Kilidi Aç | ✕]
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.lock_rounded,
+                            size: 14,
+                            color: Color(0xFFFBBF24),
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            'Kilitli',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFFBBF24),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      width: 1,
+                      height: 16,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      color: Colors.white.withValues(alpha: 0.2),
+                    ),
+                    Tooltip(
+                      message: 'Öğenin Kilidini Aç',
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: widget.controller.unlockSelectedStrokes,
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.lock_open_rounded,
+                                size: 15,
+                                color: Colors.white,
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'Kilidi Aç',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Container(
+                      width: 1,
+                      height: 16,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      color: Colors.white.withValues(alpha: 0.2),
+                    ),
+                    Tooltip(
+                      message: 'Seçimi Kaldır',
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: widget.controller.clearLassoSelection,
+                        child: const Padding(
+                          padding: EdgeInsets.all(4),
+                          child: Icon(
+                            Icons.close_rounded,
+                            size: 15,
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ]
+                : [
               Tooltip(
                 message: 'Seçimi Çoğalt',
                 child: InkWell(
@@ -612,14 +696,34 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 margin: const EdgeInsets.symmetric(horizontal: 4),
                 color: Colors.white.withValues(alpha: 0.2),
               ),
+              Tooltip(
+                message: 'Öğeyi Kilitle (Taşınmasını ve Silinmesini Önler)',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: widget.controller.lockSelectedStrokes,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Icon(Icons.lock_outline_rounded, size: 15, color: Colors.white),
+                  ),
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 16,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                color: Colors.white.withValues(alpha: 0.2),
+              ),
               PopupMenuButton<String>(
-                tooltip: 'Grup, Katman ve Sıralama Seçenekleri',
+                tooltip: 'Grup, Kilit, Katman ve Sıralama Seçenekleri',
                 offset: const Offset(0, 38),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 elevation: 10,
                 padding: EdgeInsets.zero,
                 onSelected: (action) {
                   switch (action) {
+                    case 'lock_selection':
+                      widget.controller.lockSelectedStrokes();
+                      break;
                     case 'group_selection':
                       widget.controller.groupSelectedStrokes();
                       break;
@@ -653,6 +757,27 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                   }
                 },
                 itemBuilder: (ctx) => [
+                  const PopupMenuItem<String>(
+                    value: 'lock_selection',
+                    height: 36,
+                    child: Row(
+                      children: [
+                        Icon(Icons.lock_outline_rounded, size: 17, color: Color(0xFFD97706)),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Seçili Öğeyi Kilitle',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFD97706),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(height: 8),
                   if (controller.canGroupSelection)
                     PopupMenuItem<String>(
                       value: 'group_selection',

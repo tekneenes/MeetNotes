@@ -120,6 +120,7 @@ class DrawingStroke {
   final DrawingTool tool;
   final double rotation;
   final String? groupId;
+  final bool isLocked;
 
   const DrawingStroke({
     required this.points,
@@ -128,6 +129,7 @@ class DrawingStroke {
     required this.tool,
     this.rotation = 0.0,
     this.groupId,
+    this.isLocked = false,
   });
 
   DrawingStroke copyWith({
@@ -138,6 +140,7 @@ class DrawingStroke {
     double? rotation,
     String? groupId,
     bool clearGroupId = false,
+    bool? isLocked,
   }) {
     return DrawingStroke(
       points: points ?? this.points,
@@ -146,6 +149,7 @@ class DrawingStroke {
       tool: tool ?? this.tool,
       rotation: rotation ?? this.rotation,
       groupId: clearGroupId ? null : (groupId ?? this.groupId),
+      isLocked: isLocked ?? this.isLocked,
     );
   }
 
@@ -157,6 +161,7 @@ class DrawingStroke {
       'tool': tool.name,
       'rotation': rotation,
       if (groupId != null) 'groupId': groupId,
+      if (isLocked) 'isLocked': true,
     };
   }
 
@@ -180,6 +185,7 @@ class DrawingStroke {
       ),
       rotation: (map['rotation'] as num?)?.toDouble() ?? 0.0,
       groupId: map['groupId'] as String?,
+      isLocked: map['isLocked'] as bool? ?? false,
     );
   }
 }

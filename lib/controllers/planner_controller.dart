@@ -100,6 +100,17 @@ class PlannerController extends ChangeNotifier {
   bool get showOnlySelectedGroups =>
       _showOnlySelectedGroups && hasGroupedStrokeInSelection;
 
+  bool get isSelectionLocked {
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length && _strokes[idx].isLocked) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  int get lockedStrokeCount => _strokes.where((s) => s.isLocked).length;
+
   bool get hasGroupedStrokeInSelection {
     for (final idx in _selectedStrokeIndices) {
       if (idx >= 0 && idx < _strokes.length && _strokes[idx].groupId != null) {
@@ -488,11 +499,11 @@ class PlannerController extends ChangeNotifier {
 
   void setColor(Color color) {
     _selectedColor = color;
-    if (_selectedStrokeIndices.isNotEmpty) {
+    if (_selectedStrokeIndices.isNotEmpty && !isSelectionLocked) {
       _undoStack.add(List.from(_strokes));
       _redoStack.clear();
       for (final idx in _selectedStrokeIndices) {
-        if (idx >= 0 && idx < _strokes.length) {
+        if (idx >= 0 && idx < _strokes.length && !_strokes[idx].isLocked) {
           _strokes[idx] = _strokes[idx].copyWith(color: color);
         }
       }
@@ -503,11 +514,11 @@ class PlannerController extends ChangeNotifier {
 
   void setStrokeWidth(double width) {
     _strokeWidth = width;
-    if (_selectedStrokeIndices.isNotEmpty) {
+    if (_selectedStrokeIndices.isNotEmpty && !isSelectionLocked) {
       _undoStack.add(List.from(_strokes));
       _redoStack.clear();
       for (final idx in _selectedStrokeIndices) {
-        if (idx >= 0 && idx < _strokes.length) {
+        if (idx >= 0 && idx < _strokes.length && !_strokes[idx].isLocked) {
           _strokes[idx] = _strokes[idx].copyWith(strokeWidth: width);
         }
       }
@@ -538,56 +549,64 @@ class PlannerController extends ChangeNotifier {
           -_selectionRotationAngle,
         );
 
-        // 0. Check if user grabbed the Canva circular 2D rotation handle attached to the bottom stem
-        final rotHandleCenter = Offset(
-          bounds.bottomCenter.dx,
-          bounds.bottomCenter.dy + 34.0 / _zoomScale,
-        );
-        if ((localPoint - rotHandleCenter).distance <= 22.0 / _zoomScale) {
-          startRotation(point);
-          return;
-        }
-
-        // 1. Check if user grabbed one of the 8 resize handles (corners or edges)
-        final handle = _findResizeHandleAtPoint(localPoint, bounds);
-        if (handle != null) {
-          _undoStack.add(List.from(_strokes));
-          _redoStack.clear();
-          _activeResizeHandle = handle;
-          final raw = _computeRawSelectionBounds()!;
-          _initialResizeRawBounds = raw;
-          _initialResizeCenter = raw.center;
-          _resizeStartPoint = _rotatePointAround(
-            point,
-            _initialResizeCenter!,
-            -_selectionRotationAngle,
+        if (!isSelectionLocked) {
+          // 0. Check if user grabbed the Canva circular 2D rotation handle attached to the bottom stem
+          final rotHandleCenter = Offset(
+            bounds.bottomCenter.dx,
+            bounds.bottomCenter.dy + 34.0 / _zoomScale,
           );
-          _initialResizeStrokes = {
-            for (final idx in _selectedStrokeIndices)
-              if (idx >= 0 && idx < _strokes.length)
-                idx: _strokes[idx].copyWith(
-                  points: _strokes[idx]
-                      .points
-                      .map((p) => _rotatePointAround(
-                            p,
-                            _initialResizeCenter!,
-                            -_selectionRotationAngle,
-                          ))
-                      .toList(),
-                ),
-          };
-          _isDraggingSelection = false;
-          _lastLassoDragPoint = null;
-          notifyListeners();
-          return;
-        }
+          if ((localPoint - rotHandleCenter).distance <= 22.0 / _zoomScale) {
+            startRotation(point);
+            return;
+          }
 
-        // 2. Otherwise check if user touched inside the selection box to move/translate
-        if (bounds.inflate(10.0).contains(localPoint)) {
-          _undoStack.add(List.from(_strokes));
-          _redoStack.clear();
-          _isDraggingSelection = true;
-          _lastLassoDragPoint = point;
+          // 1. Check if user grabbed one of the 8 resize handles (corners or edges)
+          final handle = _findResizeHandleAtPoint(localPoint, bounds);
+          if (handle != null) {
+            _undoStack.add(List.from(_strokes));
+            _redoStack.clear();
+            _activeResizeHandle = handle;
+            final raw = _computeRawSelectionBounds()!;
+            _initialResizeRawBounds = raw;
+            _initialResizeCenter = raw.center;
+            _resizeStartPoint = _rotatePointAround(
+              point,
+              _initialResizeCenter!,
+              -_selectionRotationAngle,
+            );
+            _initialResizeStrokes = {
+              for (final idx in _selectedStrokeIndices)
+                if (idx >= 0 && idx < _strokes.length)
+                  idx: _strokes[idx].copyWith(
+                    points: _strokes[idx]
+                        .points
+                        .map((p) => _rotatePointAround(
+                              p,
+                              _initialResizeCenter!,
+                              -_selectionRotationAngle,
+                            ))
+                        .toList(),
+                  ),
+            };
+            _isDraggingSelection = false;
+            _lastLassoDragPoint = null;
+            notifyListeners();
+            return;
+          }
+
+          // 2. Otherwise check if user touched inside the selection box to move/translate
+          if (bounds.inflate(10.0).contains(localPoint)) {
+            _undoStack.add(List.from(_strokes));
+            _redoStack.clear();
+            _isDraggingSelection = true;
+            _lastLassoDragPoint = point;
+            _activeResizeHandle = null;
+            notifyListeners();
+            return;
+          }
+        } else if (bounds.inflate(10.0).contains(localPoint)) {
+          // Selection is locked: keep it selected without moving or resizing
+          _isDraggingSelection = false;
           _activeResizeHandle = null;
           notifyListeners();
           return;
@@ -597,15 +616,21 @@ class PlannerController extends ChangeNotifier {
       // 3. Check if user directly touched/grabbed an existing stroke or shape
       final hitIndex = _findStrokeAtPoint(point);
       if (hitIndex != null) {
-        _undoStack.add(List.from(_strokes));
-        _redoStack.clear();
         _selectedStrokeIndices
           ..clear()
           ..add(hitIndex);
         _expandSelectionWithGroups();
         _syncSelectionRotationFromStrokes();
-        _isDraggingSelection = true;
-        _lastLassoDragPoint = point;
+        if (isSelectionLocked) {
+          // Locked stroke/group: select in place so user can unlock, do not drag!
+          _isDraggingSelection = false;
+          _lastLassoDragPoint = null;
+        } else {
+          _undoStack.add(List.from(_strokes));
+          _redoStack.clear();
+          _isDraggingSelection = true;
+          _lastLassoDragPoint = point;
+        }
         _activeResizeHandle = null;
         _lassoPoints = [];
         notifyListeners();
@@ -959,6 +984,9 @@ class PlannerController extends ChangeNotifier {
     final lassoBounds = lassoPath.getBounds();
     _selectedStrokeIndices.clear();
 
+    final unlockedHits = <int>{};
+    final lockedHits = <int>{};
+
     for (int i = 0; i < _strokes.length; i++) {
       final stroke = _strokes[i];
       if (stroke.points.isEmpty) continue;
@@ -1022,8 +1050,18 @@ class PlannerController extends ChangeNotifier {
       }
 
       if (isSelected) {
-        _selectedStrokeIndices.add(i);
+        if (stroke.isLocked) {
+          lockedHits.add(i);
+        } else {
+          unlockedHits.add(i);
+        }
       }
+    }
+
+    if (unlockedHits.isNotEmpty) {
+      _selectedStrokeIndices.addAll(unlockedHits);
+    } else if (lockedHits.isNotEmpty) {
+      _selectedStrokeIndices.addAll(lockedHits);
     }
     _expandSelectionWithGroups();
     _syncSelectionRotationFromStrokes();
@@ -1075,7 +1113,7 @@ class PlannerController extends ChangeNotifier {
   }
 
   void deleteSelectedStrokes() {
-    if (_selectedStrokeIndices.isEmpty) return;
+    if (_selectedStrokeIndices.isEmpty || isSelectionLocked) return;
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
     final sorted = _selectedStrokeIndices.toList()..sort((a, b) => b.compareTo(a));
@@ -1198,8 +1236,70 @@ class PlannerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- Canva-Style Kilitleme (Lock / Unlock Management) ---
+
+  void lockSelectedStrokes() {
+    if (_selectedStrokeIndices.isEmpty) return;
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length) {
+        _strokes[idx] = _strokes[idx].copyWith(isLocked: true);
+      }
+    }
+    _isDraggingSelection = false;
+    _activeResizeHandle = null;
+    _isRotatingSelection = false;
+    _saveCurrentStrokes();
+    notifyListeners();
+  }
+
+  void unlockSelectedStrokes() {
+    if (_selectedStrokeIndices.isEmpty) return;
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length) {
+        _strokes[idx] = _strokes[idx].copyWith(isLocked: false);
+      }
+    }
+    _saveCurrentStrokes();
+    notifyListeners();
+  }
+
+  void toggleSelectionLock() {
+    if (isSelectionLocked) {
+      unlockSelectedStrokes();
+    } else {
+      lockSelectedStrokes();
+    }
+  }
+
+  void toggleStrokeLock(int index) {
+    if (index < 0 || index >= _strokes.length) return;
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    final targetLocked = !_strokes[index].isLocked;
+    final gid = _strokes[index].groupId;
+    if (gid != null) {
+      for (int i = 0; i < _strokes.length; i++) {
+        if (_strokes[i].groupId == gid) {
+          _strokes[i] = _strokes[i].copyWith(isLocked: targetLocked);
+        }
+      }
+    } else {
+      _strokes[index] = _strokes[index].copyWith(isLocked: targetLocked);
+    }
+    _saveCurrentStrokes();
+    notifyListeners();
+  }
+
   // 2D Canva-Style Rotation & Horizontal/Vertical Flip (Aynalama)
   void startRotation(Offset startCanvasPoint) {
+    if (isSelectionLocked) return;
     final rawBounds = _computeRawSelectionBounds();
     if (rawBounds == null || _selectedStrokeIndices.isEmpty) return;
 
@@ -1284,6 +1384,7 @@ class PlannerController extends ChangeNotifier {
   }
 
   void flipSelectionHorizontally() {
+    if (isSelectionLocked) return;
     final rawBounds = _computeRawSelectionBounds();
     if (rawBounds == null || _selectedStrokeIndices.isEmpty) return;
 
@@ -1304,6 +1405,7 @@ class PlannerController extends ChangeNotifier {
   }
 
   void flipSelectionVertically() {
+    if (isSelectionLocked) return;
     final rawBounds = _computeRawSelectionBounds();
     if (rawBounds == null || _selectedStrokeIndices.isEmpty) return;
 
@@ -1567,6 +1669,7 @@ class PlannerController extends ChangeNotifier {
     final initialCount = _strokes.length;
 
     _strokes.removeWhere((stroke) {
+      if (stroke.isLocked) return false;
       if (stroke.tool.isShape && stroke.points.length >= 2) {
         final rect = Rect.fromPoints(stroke.points.first, stroke.points.last).inflate(eraseRadius);
         if (rect.contains(point)) return true;

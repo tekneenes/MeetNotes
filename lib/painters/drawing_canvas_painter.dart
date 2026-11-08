@@ -11,6 +11,7 @@ class DrawingCanvasPainter extends CustomPainter {
   final Set<int> selectedStrokeIndices;
   final SelectionHandle? activeResizeHandle;
   final bool isRotatingSelection;
+  final bool isSelectionLocked;
   final double scale;
   final Offset panOffset;
 
@@ -23,6 +24,7 @@ class DrawingCanvasPainter extends CustomPainter {
     this.selectedStrokeIndices = const {},
     this.activeResizeHandle,
     this.isRotatingSelection = false,
+    this.isSelectionLocked = false,
     this.scale = 1.0,
     this.panOffset = Offset.zero,
   });
@@ -316,8 +318,11 @@ class DrawingCanvasPainter extends CustomPainter {
       canvas.translate(-pivot.dx, -pivot.dy);
     }
 
+    final themeColor =
+        isSelectionLocked ? const Color(0xFFF59E0B) : const Color(0xFF007AFF);
+
     final fillPaint = Paint()
-      ..color = const Color(0xFF007AFF).withValues(alpha: 0.04)
+      ..color = themeColor.withValues(alpha: 0.04)
       ..style = PaintingStyle.fill;
     canvas.drawRRect(
       RRect.fromRectAndRadius(bounds, Radius.circular(6.0 / scale)),
@@ -325,13 +330,18 @@ class DrawingCanvasPainter extends CustomPainter {
     );
 
     final borderPaint = Paint()
-      ..color = const Color(0xFF007AFF)
+      ..color = themeColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.6 / scale;
 
     final rectPath = Path()
       ..addRRect(RRect.fromRectAndRadius(bounds, Radius.circular(6.0 / scale)));
     _drawDashedPath(canvas, rectPath, borderPaint, 6.0 / scale, 4.0 / scale);
+
+    if (isSelectionLocked) {
+      canvas.restore();
+      return;
+    }
 
     // Connector stem line from bottomCenter to the Canva rotation handle
     final stemEnd = Offset(bounds.bottomCenter.dx, bounds.bottomCenter.dy + 18.0 / scale);

@@ -1184,11 +1184,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       ),
       _buildPillDivider(),
 
-      // 13. More Options Popup
-      _buildUnifiedMoreOptionsMenu(controller, item),
-      _buildPillDivider(),
-
-      // 14. Delete
+      // 13. Delete (Trash Icon Only)
       Tooltip(
         message: 'Seçimi Sil',
         child: InkWell(
@@ -1199,41 +1195,18 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           },
           child: const Padding(
             padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFFF453A)),
-                SizedBox(width: 4),
-                Text(
-                  'Sil',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFFFF453A),
-                  ),
-                ),
-              ],
+            child: Icon(
+              Icons.delete_outline_rounded,
+              size: 16,
+              color: Color(0xFFFF453A),
             ),
           ),
         ),
       ),
       _buildPillDivider(),
 
-      // 15. Close selection
-      Tooltip(
-        message: 'Seçimi Kaldır',
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () {
-            controller.clearLassoSelection();
-            controller.selectCanvasText(null);
-          },
-          child: const Padding(
-            padding: EdgeInsets.all(4),
-            child: Icon(Icons.close_rounded, size: 15, color: Colors.white70),
-          ),
-        ),
-      ),
+      // 14. More Options Popup (En sağ tarafta)
+      _buildUnifiedMoreOptionsMenu(controller, item),
     ];
   }
 
@@ -1374,8 +1347,6 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         ),
       ),
       _buildPillDivider(),
-      _buildUnifiedMoreOptionsMenu(controller, null),
-      _buildPillDivider(),
       Tooltip(
         message: 'Seçimi Sil',
         child: InkWell(
@@ -1383,36 +1354,16 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           onTap: controller.deleteSelectedStrokes,
           child: const Padding(
             padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFFF453A)),
-                SizedBox(width: 4),
-                Text(
-                  'Sil',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFFFF453A),
-                  ),
-                ),
-              ],
+            child: Icon(
+              Icons.delete_outline_rounded,
+              size: 16,
+              color: Color(0xFFFF453A),
             ),
           ),
         ),
       ),
       _buildPillDivider(),
-      Tooltip(
-        message: 'Seçimi Kaldır',
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: controller.clearLassoSelection,
-          child: const Padding(
-            padding: EdgeInsets.all(4),
-            child: Icon(Icons.close_rounded, size: 15, color: Colors.white70),
-          ),
-        ),
-      ),
+      _buildUnifiedMoreOptionsMenu(controller, null),
     ];
   }
 

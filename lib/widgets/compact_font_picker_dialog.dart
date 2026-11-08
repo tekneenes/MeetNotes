@@ -5,11 +5,12 @@ import 'package:google_fonts/google_fonts.dart';
 /// Compact Google Fonts & Typography Picker Dialog matching the unified dark toolbar aesthetic.
 /// Features:
 /// - 1,800+ Google Fonts via `google_fonts`
-/// - Categorized quick filters (Popüler, El Yazısı, Modern, Serif, Başlık, Kod, Tümü)
+/// - Top popular fonts prioritized at the top + full alphabetical library
 /// - Live instant search
-/// - Live typeface previews for each font item
+/// - Font name itself is rendered in its own typeface preview
+/// - Ultra-compact width (190px) matching the color picker
 /// - Transparent barrier with zero background dimming
-/// - Anchored positioning directly under the toolbar button
+/// - Anchored positioning directly under the toolbar button, clamped inside workspace
 class CompactFontPickerDialog extends StatefulWidget {
   final String currentFontFamily;
   final ValueChanged<String> onFontSelected;
@@ -19,7 +20,7 @@ class CompactFontPickerDialog extends StatefulWidget {
     super.key,
     required this.currentFontFamily,
     required this.onFontSelected,
-    this.width = 230.0,
+    this.width = 190.0,
   });
 
   /// Displays the font picker anchored directly relative to the clicked button.
@@ -29,7 +30,7 @@ class CompactFontPickerDialog extends StatefulWidget {
     required String currentFontFamily,
     required ValueChanged<String> onFontSelected,
     Rect? boundaryRect,
-    double width = 230.0,
+    double width = 190.0,
   }) async {
     final mediaQuery = MediaQuery.of(context);
     final screenSize = mediaQuery.size;
@@ -45,7 +46,7 @@ class CompactFontPickerDialog extends StatefulWidget {
     final minLeft = minX;
     final maxLeft = math.max(minLeft, maxX);
 
-    const popupHeight = 330.0;
+    const popupHeight = 310.0;
 
     // Horizontal placement: Center on anchor, clamped strictly within boundary
     final left =
@@ -117,18 +118,7 @@ class CompactFontPickerDialog extends StatefulWidget {
 
 class _CompactFontPickerDialogState extends State<CompactFontPickerDialog> {
   final TextEditingController _searchController = TextEditingController();
-  String _selectedCategory = 'Popüler';
   String _searchQuery = '';
-
-  static const List<String> _categories = [
-    'Popüler',
-    'El Yazısı',
-    'Modern',
-    'Serif',
-    'Başlık',
-    'Kod',
-    'Tümü (1800+)',
-  ];
 
   static const List<String> _popularFonts = [
     'Inter',
@@ -149,96 +139,33 @@ class _CompactFontPickerDialogState extends State<CompactFontPickerDialog> {
     'Lobster',
     'Indie Flower',
     'Cinzel',
-  ];
-
-  static const List<String> _handwritingFonts = [
-    'Caveat',
-    'Dancing Script',
-    'Pacifico',
-    'Kalam',
-    'Indie Flower',
-    'Shadows Into Light',
-    'Sacramento',
+    'Bebas Neue',
+    'Comfortaa',
+    'Permanent Marker',
     'Great Vibes',
-    'Kaushan Script',
     'Satisfy',
     'Amatic SC',
-    'Permanent Marker',
-    'Marck Script',
-    'Courgette',
-    'Yellowtail',
-    'Alex Brush',
-    'Bad Script',
-    'Gloria Hallelujah',
-  ];
-
-  static const List<String> _modernSansFonts = [
-    'Inter',
-    'Roboto',
-    'Montserrat',
-    'Poppins',
-    'Open Sans',
-    'Lato',
-    'Raleway',
-    'Nunito',
-    'Work Sans',
-    'Quicksand',
-    'Rubik',
-    'DM Sans',
-    'Plus Jakarta Sans',
-    'Ubuntu',
-    'Kanit',
-    'Outfit',
-  ];
-
-  static const List<String> _serifFonts = [
-    'Playfair Display',
-    'Merriweather',
-    'Lora',
-    'Cinzel',
-    'Cormorant Garamond',
-    'EB Garamond',
-    'Bodoni Moda',
-    'PT Serif',
-    'Libre Baskerville',
-    'Arvo',
-    'Bitter',
-    'Spectral',
-  ];
-
-  static const List<String> _displayFonts = [
-    'Bebas Neue',
-    'Oswald',
+    'JetBrains Mono',
     'Anton',
-    'Lobster',
     'Righteous',
     'Abril Fatface',
-    'Bungee',
-    'Alfa Slab One',
-    'Press Start 2P',
-    'Creepster',
-    'Bangers',
-    'Shrikhand',
-  ];
-
-  static const List<String> _monoFonts = [
-    'Fira Code',
-    'JetBrains Mono',
-    'Source Code Pro',
-    'Space Mono',
-    'Inconsolata',
-    'Roboto Mono',
-    'VT323',
-    'Share Tech Mono',
-    'Cousine',
   ];
 
   late final List<String> _allGoogleFonts;
+  late final List<String> _defaultDisplayFonts;
 
   @override
   void initState() {
     super.initState();
-    _allGoogleFonts = GoogleFonts.asMap().keys.toList()..sort();
+    final allSorted = GoogleFonts.asMap().keys.toList()..sort();
+    _allGoogleFonts = allSorted;
+
+    // Prioritize popular fonts at the top, then remaining fonts
+    final popularSet = _popularFonts.toSet();
+    _defaultDisplayFonts = [
+      ..._popularFonts,
+      ...allSorted.where((f) => !popularSet.contains(f)),
+    ];
   }
 
   @override
@@ -248,7 +175,6 @@ class _CompactFontPickerDialogState extends State<CompactFontPickerDialog> {
   }
 
   List<String> get _filteredFonts {
-    List<String> baseList;
     if (_searchQuery.isNotEmpty) {
       final q = _searchQuery.toLowerCase();
       return _allGoogleFonts
@@ -256,47 +182,25 @@ class _CompactFontPickerDialogState extends State<CompactFontPickerDialog> {
           .take(80)
           .toList();
     }
-
-    switch (_selectedCategory) {
-      case 'El Yazısı':
-        baseList = _handwritingFonts;
-        break;
-      case 'Modern':
-        baseList = _modernSansFonts;
-        break;
-      case 'Serif':
-        baseList = _serifFonts;
-        break;
-      case 'Başlık':
-        baseList = _displayFonts;
-        break;
-      case 'Kod':
-        baseList = _monoFonts;
-        break;
-      case 'Tümü (1800+)':
-        baseList = _allGoogleFonts.take(150).toList();
-        break;
-      case 'Popüler':
-      default:
-        baseList = _popularFonts;
-        break;
-    }
-    return baseList;
+    return _defaultDisplayFonts.take(100).toList();
   }
 
-  TextStyle _buildFontPreviewStyle(String fontName) {
+  TextStyle _buildFontPreviewStyle(String fontName, bool isSelected) {
+    final color = isSelected ? const Color(0xFF38BDF8) : Colors.white;
     try {
       return GoogleFonts.getFont(
         fontName,
-        textStyle: const TextStyle(
-          fontSize: 12.5,
-          color: Colors.white70,
+        textStyle: TextStyle(
+          fontSize: 13,
+          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+          color: color,
         ),
       );
     } catch (_) {
-      return const TextStyle(
-        fontSize: 12.5,
-        color: Colors.white70,
+      return TextStyle(
+        fontSize: 13,
+        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+        color: color,
       );
     }
   }
@@ -307,20 +211,20 @@ class _CompactFontPickerDialogState extends State<CompactFontPickerDialog> {
 
     return Container(
       width: widget.width,
-      height: 340,
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+      height: 310,
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       decoration: BoxDecoration(
         color: const Color(0xFF1E222D),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.12),
+          color: Colors.white.withValues(alpha: 0.14),
           width: 1.0,
         ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.40),
-            blurRadius: 22,
-            offset: const Offset(0, 8),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -330,13 +234,14 @@ class _CompactFontPickerDialogState extends State<CompactFontPickerDialog> {
           // Header Bar
           Row(
             children: [
+              const SizedBox(width: 4),
               const Expanded(
                 child: Text(
-                  'Yazı Tipleri (1800+)',
+                  'Yazı Tipleri',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 12.5,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: Colors.white,
                     letterSpacing: -0.2,
@@ -361,14 +266,14 @@ class _CompactFontPickerDialogState extends State<CompactFontPickerDialog> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 7),
 
           // Search Field
           Container(
-            height: 30,
+            height: 28,
             decoration: BoxDecoration(
               color: const Color(0xFF12151D),
-              borderRadius: BorderRadius.circular(7),
+              borderRadius: BorderRadius.circular(6),
               border: Border.all(
                 color: Colors.white.withValues(alpha: 0.08),
                 width: 0.8,
@@ -376,28 +281,28 @@ class _CompactFontPickerDialogState extends State<CompactFontPickerDialog> {
             ),
             child: Row(
               children: [
-                const SizedBox(width: 7),
+                const SizedBox(width: 6),
                 const Icon(
                   Icons.search_rounded,
-                  size: 14,
+                  size: 13,
                   color: Colors.white54,
                 ),
-                const SizedBox(width: 5),
+                const SizedBox(width: 4),
                 Expanded(
                   child: TextField(
                     controller: _searchController,
                     style: const TextStyle(
-                      fontSize: 11.5,
+                      fontSize: 11,
                       color: Colors.white,
                     ),
                     decoration: const InputDecoration(
-                      hintText: 'Font ara (örn. Caveat, Roboto)...',
+                      hintText: 'Font ara...',
                       hintStyle: TextStyle(
-                        fontSize: 11,
+                        fontSize: 10.5,
                         color: Colors.white38,
                       ),
                       isDense: true,
-                      contentPadding: EdgeInsets.symmetric(vertical: 6),
+                      contentPadding: EdgeInsets.symmetric(vertical: 5),
                       border: InputBorder.none,
                     ),
                     onChanged: (val) {
@@ -417,10 +322,10 @@ class _CompactFontPickerDialogState extends State<CompactFontPickerDialog> {
                       });
                     },
                     child: const Padding(
-                      padding: EdgeInsets.all(4),
+                      padding: EdgeInsets.all(3),
                       child: Icon(
                         Icons.clear_rounded,
-                        size: 13,
+                        size: 12,
                         color: Colors.white60,
                       ),
                     ),
@@ -430,55 +335,12 @@ class _CompactFontPickerDialogState extends State<CompactFontPickerDialog> {
           ),
           const SizedBox(height: 7),
 
-          // Horizontal Category Filter Pills (hidden if actively searching)
-          if (_searchQuery.isEmpty)
-            SizedBox(
-              height: 23,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: _categories.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 4),
-                itemBuilder: (context, index) {
-                  final cat = _categories[index];
-                  final isSelected = _selectedCategory == cat;
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(11),
-                    onTap: () {
-                      setState(() {
-                        _selectedCategory = cat;
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? const Color(0xFF007AFF)
-                            : Colors.white.withValues(alpha: 0.07),
-                        borderRadius: BorderRadius.circular(11),
-                      ),
-                      child: Text(
-                        cat,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight:
-                              isSelected ? FontWeight.w700 : FontWeight.w500,
-                          color: isSelected ? Colors.white : Colors.white70,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          if (_searchQuery.isEmpty) const SizedBox(height: 7),
-
-          // Scrollable Font List
+          // Scrollable Font List (Single-line items: Font Name rendered in its own font style)
           Expanded(
             child: Container(
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(9),
+                borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                   color: Colors.white.withValues(alpha: 0.05),
                 ),
@@ -495,7 +357,7 @@ class _CompactFontPickerDialogState extends State<CompactFontPickerDialog> {
                       ),
                     )
                   : ListView.builder(
-                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      padding: const EdgeInsets.symmetric(vertical: 2),
                       itemCount: fonts.length,
                       itemBuilder: (context, index) {
                         final font = fonts[index];
@@ -511,6 +373,7 @@ class _CompactFontPickerDialogState extends State<CompactFontPickerDialog> {
                                     font == 'Inter');
 
                         return InkWell(
+                          key: ValueKey('font_item_$font'),
                           onTap: () {
                             widget.onFontSelected(font);
                             Navigator.of(context).pop();
@@ -518,47 +381,29 @@ class _CompactFontPickerDialogState extends State<CompactFontPickerDialog> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 8,
-                              vertical: 5,
+                              vertical: 6.5,
                             ),
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? const Color(0xFF007AFF).withValues(alpha: 0.18)
+                                  ? const Color(0xFF007AFF)
+                                      .withValues(alpha: 0.18)
                                   : Colors.transparent,
                             ),
                             child: Row(
                               children: [
                                 Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        font,
-                                        style: TextStyle(
-                                          fontSize: 11.5,
-                                          fontWeight: isSelected
-                                              ? FontWeight.w700
-                                              : FontWeight.w600,
-                                          color: isSelected
-                                              ? const Color(0xFF38BDF8)
-                                              : Colors.white,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 1),
-                                      Text(
-                                        'Metin örneği AaBb 123',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: _buildFontPreviewStyle(font),
-                                      ),
-                                    ],
+                                  child: Text(
+                                    font,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: _buildFontPreviewStyle(
+                                        font, isSelected),
                                   ),
                                 ),
                                 if (isSelected)
                                   const Icon(
                                     Icons.check_rounded,
-                                    size: 15,
+                                    size: 14,
                                     color: Color(0xFF38BDF8),
                                   ),
                               ],
@@ -574,4 +419,3 @@ class _CompactFontPickerDialogState extends State<CompactFontPickerDialog> {
     );
   }
 }
-

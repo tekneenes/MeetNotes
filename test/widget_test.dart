@@ -349,19 +349,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Yazı Tipleri'), findsOneWidget);
-    expect(find.text('Popüler'), findsOneWidget);
-    expect(find.text('El Yazısı'), findsOneWidget);
 
-    // Switch to El Yazısı category
-    await tester.tap(find.text('El Yazısı'));
+    // Search and select Caveat
+    await tester.enterText(find.byType(TextField), 'Caveat');
     await tester.pumpAndSettle();
 
-    // Find and select Caveat
-    expect(find.text('Caveat'), findsWidgets);
-    await tester.tap(find.text('Caveat').first);
+    // Find and select Caveat item from list
+    final caveatFinder = find.byKey(const ValueKey('font_item_Caveat'));
+    expect(caveatFinder, findsOneWidget);
+    await tester.tap(caveatFinder);
     await tester.pumpAndSettle();
 
     expect(chosenFont, 'Caveat');
-    expect(find.text('Yazı Tipleri'), findsNothing);
+    expect(find.textContaining('Yazı Tipleri'), findsNothing);
   });
 }

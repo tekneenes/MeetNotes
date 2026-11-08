@@ -44,6 +44,7 @@ class PlannerController extends ChangeNotifier {
 
   // Hızlı Erişim & Katman Sıralaması (Z-Order Layering) State
   bool _isQuickAccessOpen = false;
+  bool _isQuickAccessLayersPage = false;
   bool _showOnlySelectedLayers = false;
 
   final Map<String, String> _dayNotes = {};
@@ -90,25 +91,44 @@ class PlannerController extends ChangeNotifier {
   int get currentRotationDegrees => _currentRotationDegrees;
   Rect? get rotationAnchorBounds => _rotationAnchorBounds;
   bool get isQuickAccessOpen => _isQuickAccessOpen;
+  bool get isQuickAccessLayersPage => _isQuickAccessLayersPage;
   bool get showOnlySelectedLayers =>
       _showOnlySelectedLayers && _selectedStrokeIndices.isNotEmpty;
 
   void toggleQuickAccess() {
     _isQuickAccessOpen = !_isQuickAccessOpen;
-    if (_isQuickAccessOpen && _selectedStrokeIndices.isEmpty) {
-      _showOnlySelectedLayers = false;
+    if (_isQuickAccessOpen) {
+      // Normal açılışta Hızlı Erişim ana sayfasında (Hızlı İşlemler) başla
+      _isQuickAccessLayersPage = false;
+      if (_selectedStrokeIndices.isEmpty) {
+        _showOnlySelectedLayers = false;
+      }
     }
+    notifyListeners();
+  }
+
+  void openQuickAccessMainPage() {
+    _isQuickAccessLayersPage = false;
+    notifyListeners();
+  }
+
+  void openQuickAccessLayersPage({bool onlySelected = false}) {
+    _isQuickAccessOpen = true;
+    _isQuickAccessLayersPage = true;
+    _showOnlySelectedLayers = onlySelected && _selectedStrokeIndices.isNotEmpty;
     notifyListeners();
   }
 
   void openQuickAccessForSelectedLayers() {
     _isQuickAccessOpen = true;
+    _isQuickAccessLayersPage = true;
     _showOnlySelectedLayers = _selectedStrokeIndices.isNotEmpty;
     notifyListeners();
   }
 
   void openQuickAccessAllLayers() {
     _isQuickAccessOpen = true;
+    _isQuickAccessLayersPage = true;
     _showOnlySelectedLayers = false;
     notifyListeners();
   }

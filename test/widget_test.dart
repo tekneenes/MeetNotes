@@ -4,6 +4,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:meet_notes/controllers/planner_controller.dart';
 import 'package:meet_notes/main.dart';
 import 'package:meet_notes/models/planner_models.dart';
+import 'package:meet_notes/widgets/compact_color_picker_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -219,5 +220,43 @@ void main() {
     // Test updating canvas text color
     controller.updateCanvasTextStyle(stickyId, (cur) => cur.copyWith(color: const Color(0xFFDC2626)));
     expect(controller.selectedTextItem!.color, const Color(0xFFDC2626));
+  });
+
+  testWidgets('CompactColorPickerDialog displays wheel, opacity, and presets',
+      (WidgetTester tester) async {
+    Color? pickedColor;
+    bool cleared = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CompactColorPickerDialog(
+            title: 'Kutu Arka Planı',
+            initialColor: const Color(0xFFFEF08A),
+            allowOpacity: true,
+            allowClear: true,
+            onClear: () => cleared = true,
+            onColorChanged: (c) => pickedColor = c,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Kutu Arka Planı'), findsOneWidget);
+    expect(find.text('Opaklık'), findsOneWidget);
+    expect(find.text('Şeffaf'), findsOneWidget);
+
+    // Tap a preset swatch by ValueKey
+    final presetFinder = find.byKey(const ValueKey('preset_0'));
+    expect(presetFinder, findsOneWidget);
+    await tester.tap(presetFinder);
+    await tester.pumpAndSettle();
+    expect(pickedColor, isNotNull);
+
+    // Tap Şeffaf button
+    await tester.tap(find.text('Şeffaf'));
+    await tester.pumpAndSettle();
+    expect(cleared, isTrue);
   });
 }

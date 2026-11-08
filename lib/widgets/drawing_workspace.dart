@@ -6,6 +6,7 @@ import '../models/planner_models.dart';
 import '../painters/paper_background_painter.dart';
 import '../painters/drawing_canvas_painter.dart';
 import 'apple_notes_toolbar.dart';
+import 'compact_color_picker_dialog.dart';
 
 class DrawingWorkspace extends StatefulWidget {
   final PlannerController controller;
@@ -486,47 +487,6 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     );
   }
 
-  PopupMenuItem<Color> _buildTextColorMenuItem(
-      Color color, String label, Color currentColor) {
-    final isSelected = color.toARGB32() == currentColor.toARGB32();
-    return PopupMenuItem<Color>(
-      value: color,
-      height: 32,
-      child: Row(
-        children: [
-          Container(
-            width: 16,
-            height: 16,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.black.withValues(alpha: 0.25),
-                width: 1,
-              ),
-            ),
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-          ),
-          if (isSelected)
-            const Icon(
-              Icons.check_rounded,
-              size: 15,
-              color: Color(0xFF007AFF),
-            ),
-        ],
-      ),
-    );
-  }
-
   Offset _rotateCanvasPoint(Offset pt, Offset center, double angle) {
     if (angle == 0.0) return pt;
     final cosA = math.cos(angle);
@@ -928,62 +888,61 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       ),
       _buildPillDivider(),
 
-      // 3d. Text Color Picker (Canva-style 'A' with color bar)
-      PopupMenuButton<Color>(
-        tooltip: 'Yazı Rengi',
-        offset: const Offset(0, 36),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        onSelected: (newColor) {
-          controller.updateCanvasTextStyle(
-            item.id,
-            (cur) => cur.copyWith(color: newColor),
-          );
-        },
-        itemBuilder: (ctx) => [
-          _buildTextColorMenuItem(const Color(0xFF1E293B), 'Koyu / Siyah', item.color),
-          _buildTextColorMenuItem(const Color(0xFFFFFFFF), 'Beyaz', item.color),
-          _buildTextColorMenuItem(const Color(0xFF64748B), 'Gri', item.color),
-          _buildTextColorMenuItem(const Color(0xFF0284C7), 'Açık Mavi', item.color),
-          _buildTextColorMenuItem(const Color(0xFF1D4ED8), 'Koyu Mavi', item.color),
-          _buildTextColorMenuItem(const Color(0xFF4F46E5), 'İndigo', item.color),
-          _buildTextColorMenuItem(const Color(0xFF059669), 'Zümrüt Yeşili', item.color),
-          _buildTextColorMenuItem(const Color(0xFF16A34A), 'Yeşil', item.color),
-          _buildTextColorMenuItem(const Color(0xFFD97706), 'Kehribar / Turuncu', item.color),
-          _buildTextColorMenuItem(const Color(0xFFDC2626), 'Kırmızı', item.color),
-          _buildTextColorMenuItem(const Color(0xFF9333EA), 'Mor', item.color),
-          _buildTextColorMenuItem(const Color(0xFFDB2777), 'Pembe', item.color),
-        ],
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(7),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                'A',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  height: 1.0,
-                ),
+      // 3d. Text Color Picker (Canva-style 'A' with color bar -> opens Compact Color Palette)
+      Tooltip(
+        message: 'Yazı Rengi Paleti',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(7),
+          onTap: () {
+            showDialog(
+              context: context,
+              barrierColor: Colors.black.withValues(alpha: 0.25),
+              builder: (ctx) => CompactColorPickerDialog(
+                title: 'Yazı Rengi',
+                initialColor: item.color,
+                allowOpacity: false,
+                onColorChanged: (newColor) {
+                  controller.updateCanvasTextStyle(
+                    item.id,
+                    (cur) => cur.copyWith(color: newColor),
+                  );
+                },
               ),
-              const SizedBox(height: 2),
-              Container(
-                width: 14,
-                height: 3,
-                decoration: BoxDecoration(
-                  color: item.color,
-                  borderRadius: BorderRadius.circular(1.5),
-                  border: item.color == Colors.black || item.color == const Color(0xFF1E293B)
-                      ? Border.all(color: Colors.white70, width: 0.6)
-                      : null,
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(7),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  'A',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    height: 1.0,
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Container(
+                  width: 14,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: item.color,
+                    borderRadius: BorderRadius.circular(1.5),
+                    border: item.color == Colors.black ||
+                            item.color == const Color(0xFF1E293B)
+                        ? Border.all(color: Colors.white70, width: 0.6)
+                        : null,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1036,54 +995,47 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       ),
       _buildPillDivider(),
 
-      // 5. Background Color Picker
-      PopupMenuButton<int>(
-        tooltip: 'Kutu Arka Plan / Post-it Rengi',
-        offset: const Offset(0, 36),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        onSelected: (bgVal) {
-          controller.updateCanvasTextStyle(
-            item.id,
-            (cur) => bgVal == 0
-                ? cur.copyWith(clearBackgroundColor: true)
-                : cur.copyWith(backgroundColor: bgVal),
-          );
-        },
-        itemBuilder: (ctx) => const [
-          PopupMenuItem(
-            value: 0,
-            height: 32,
-            child: Text('Şeffaf (Arka Plansız)', style: TextStyle(fontSize: 12)),
-          ),
-          PopupMenuItem(
-            value: 0xFFFEF08A,
-            height: 32,
-            child: Text('🟨 Sarı Post-it', style: TextStyle(fontSize: 12)),
-          ),
-          PopupMenuItem(
-            value: 0xFFDBEAFE,
-            height: 32,
-            child: Text('🟦 Mavi Not Kutusu', style: TextStyle(fontSize: 12)),
-          ),
-          PopupMenuItem(
-            value: 0xFFDCFCE7,
-            height: 32,
-            child: Text('🟩 Yeşil Not Kutusu', style: TextStyle(fontSize: 12)),
-          ),
-          PopupMenuItem(
-            value: 0xFFFCE7F3,
-            height: 32,
-            child: Text('🟪 Pembe Not Kutusu', style: TextStyle(fontSize: 12)),
-          ),
-        ],
-        child: Padding(
-          padding: const EdgeInsets.all(5),
-          child: Icon(
-            Icons.format_color_fill_rounded,
-            size: 15,
-            color: item.backgroundColor != null
+      // 5. Background Color Picker (Opens Compact Color Palette)
+      Tooltip(
+        message: 'Kutu Arka Plan Rengi Paleti',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () {
+            final currentColor = item.backgroundColor != null
                 ? Color(item.backgroundColor!)
-                : Colors.white70,
+                : const Color(0xFFFEF08A);
+            showDialog(
+              context: context,
+              barrierColor: Colors.black.withValues(alpha: 0.25),
+              builder: (ctx) => CompactColorPickerDialog(
+                title: 'Kutu Arka Planı',
+                initialColor: currentColor,
+                allowOpacity: true,
+                allowClear: true,
+                onClear: () {
+                  controller.updateCanvasTextStyle(
+                    item.id,
+                    (cur) => cur.copyWith(clearBackgroundColor: true),
+                  );
+                },
+                onColorChanged: (newColor) {
+                  controller.updateCanvasTextStyle(
+                    item.id,
+                    (cur) => cur.copyWith(backgroundColor: newColor.toARGB32()),
+                  );
+                },
+              ),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: Icon(
+              Icons.format_color_fill_rounded,
+              size: 15,
+              color: item.backgroundColor != null
+                  ? Color(item.backgroundColor!)
+                  : Colors.white70,
+            ),
           ),
         ),
       ),

@@ -368,7 +368,8 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
   }
 
   Widget _buildSelectionActionPill(Rect canvasBounds, Size viewportSize) {
-    final rot = widget.controller.selectionRotationAngle;
+    final controller = widget.controller;
+    final rot = controller.selectionRotationAngle;
     final corners = [
       _rotateCanvasPoint(canvasBounds.topLeft, canvasBounds.center, rot),
       _rotateCanvasPoint(canvasBounds.topRight, canvasBounds.center, rot),
@@ -382,23 +383,92 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       if (c.dy > maxY) maxY = c.dy;
     }
 
+    final centerViewport = canvasBounds.center * _scale + _panOffset;
     final topCenterViewport = Offset(canvasBounds.center.dx, minY) * _scale + _panOffset;
     final bottomCenterViewport = Offset(canvasBounds.center.dx, maxY) * _scale + _panOffset;
 
+    // Calculate where the 2D rotation handle (↻) currently is in viewport space
+    final localHandleCanvas = Offset(
+      canvasBounds.bottomCenter.dx,
+      canvasBounds.bottomCenter.dy + 34.0 / _scale,
+    );
+    final rotatedHandleCanvas = _rotateCanvasPoint(
+      localHandleCanvas,
+      canvasBounds.center,
+      rot,
+    );
+    final handleViewport = rotatedHandleCanvas * _scale + _panOffset;
+
     const pillWidth = 236.0;
     const pillHeight = 36.0;
+    const handleClearanceRadius = 26.0;
 
-    final left = (topCenterViewport.dx - pillWidth / 2)
+    final left = (centerViewport.dx - pillWidth / 2)
         .clamp(8.0, (viewportSize.width - pillWidth - 8.0).clamp(8.0, viewportSize.width));
-    final top = (topCenterViewport.dy - pillHeight - 14.0 >= 8.0)
-        ? topCenterViewport.dy - pillHeight - 14.0
-        : (bottomCenterViewport.dy + 54.0)
-            .clamp(8.0, (viewportSize.height - pillHeight - 8.0).clamp(8.0, viewportSize.height));
+
+    // Place pill on the opposite side of the rotation handle (↻):
+    // If handle is rotated into the upper half (handleViewport.dy < centerViewport.dy),
+    // place the menu at the bottom of the selection; otherwise place it at the top.
+    final handleInUpperHalf = handleViewport.dy < centerViewport.dy;
+
+    final topCandidate = math.min(
+          topCenterViewport.dy,
+          handleInUpperHalf ? handleViewport.dy - handleClearanceRadius : topCenterViewport.dy,
+        ) -
+        pillHeight -
+        14.0;
+    final bottomCandidate = math.max(
+          bottomCenterViewport.dy,
+          !handleInUpperHalf ? handleViewport.dy + handleClearanceRadius : bottomCenterViewport.dy,
+        ) +
+        14.0;
+
+    double top;
+    if (handleInUpperHalf) {
+      // Prefer bottom of selection when rotation handle is at the top
+      if (bottomCandidate + pillHeight <= viewportSize.height - 8.0) {
+        top = bottomCandidate;
+      } else {
+        top = topCandidate.clamp(
+          8.0,
+          (viewportSize.height - pillHeight - 8.0).clamp(8.0, viewportSize.height),
+        );
+      }
+    } else {
+      // Prefer top of selection when rotation handle is at the bottom
+      if (topCandidate >= 8.0) {
+        top = topCandidate;
+      } else {
+        top = bottomCandidate.clamp(
+          8.0,
+          (viewportSize.height - pillHeight - 8.0).clamp(8.0, viewportSize.height),
+        );
+      }
+    }
+
+    // Extra collision guard: if pill rect still touches the rotation handle circle, flip side
+    final pillRect = Rect.fromLTWH(left, top, pillWidth, pillHeight);
+    final handleRect = Rect.fromCircle(center: handleViewport, radius: handleClearanceRadius);
+    if (pillRect.overlaps(handleRect)) {
+      if (handleInUpperHalf) {
+        top = (bottomCenterViewport.dy + 16.0).clamp(
+          8.0,
+          (viewportSize.height - pillHeight - 8.0).clamp(8.0, viewportSize.height),
+        );
+      } else {
+        top = (topCenterViewport.dy - pillHeight - 16.0).clamp(
+          8.0,
+          (viewportSize.height - pillHeight - 8.0).clamp(8.0, viewportSize.height),
+        );
+      }
+    }
 
     return Positioned(
       left: left,
       top: top,
-      child: Material(
+      child: IgnorePointer(
+        ignoring: controller.isRotatingSelection || controller.activeResizeHandle != null,
+        child: Material(
         color: Colors.transparent,
         child: Container(
           height: pillHeight,
@@ -516,6 +586,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

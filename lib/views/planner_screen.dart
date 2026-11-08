@@ -361,10 +361,11 @@ class _PlannerScreenState extends State<PlannerScreen>
                       ),
 
                       // Sağ Görevler Çubuğu Açma/Kapama Bütünleşik Dil Butonu
-                      AnimatedPositioned(
-                        duration: const Duration(milliseconds: 240),
-                        curve: Curves.easeOutCubic,
-                        right: _showTasksSidebar ? 270 : 0,
+                      if (!_controller.isQuickAccessOpen)
+                        AnimatedPositioned(
+                          duration: const Duration(milliseconds: 240),
+                          curve: Curves.easeOutCubic,
+                          right: _showTasksSidebar ? 270 : 0,
                         top: 0,
                         bottom: 0,
                         child: Center(
@@ -642,209 +643,267 @@ class _PlannerScreenState extends State<PlannerScreen>
                     padding: const EdgeInsets.only(bottom: 6),
                     child: Text(
                       onlySelected
-                          ? 'Seçili öğeler üstten alta sıralanmıştır. Oklarla hangisinin üstte duracağını değiştirebilirsiniz:'
-                          : 'Üstteki öğeler çizimde en önde görünür. Dokunarak seçebilir veya sırasını değiştirebilirsiniz:',
+                          ? 'Basılı tutup sürükleyerek veya oklarla seçili öğelerin katman sırasını değiştirebilirsiniz:'
+                          : 'Üstteki öğeler en önde görünür. Basılı tutup sürükleyerek veya oklarla sırasını değiştirebilirsiniz:',
                       style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600, height: 1.3),
                     ),
                   ),
-                  ...List.generate(layerIndices.length, (listPos) {
-                    final strokeIdx = layerIndices[listPos];
-                    final stroke = allStrokes[strokeIdx];
-                    final isSelected = selectedSet.contains(strokeIdx);
-                    final isTopInList = listPos == 0;
-                    final isBottomInList = listPos == layerIndices.length - 1;
-                    final canMoveUp = onlySelected ? !isTopInList : strokeIdx < allStrokes.length - 1;
-                    final canMoveDown = onlySelected ? !isBottomInList : strokeIdx > 0;
-
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(10),
-                        onTap: () {
-                          if (!onlySelected) {
-                            activeController.selectStrokeFromLayerPanel(strokeIdx);
-                          }
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? const Color(0xFFEFF6FF)
-                                : Colors.white,
+                  ReorderableListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    buildDefaultDragHandles: false,
+                    itemCount: layerIndices.length,
+                    proxyDecorator: (child, index, animation) {
+                      return AnimatedBuilder(
+                        animation: animation,
+                        builder: (ctx, _) {
+                          return Material(
+                            color: Colors.transparent,
+                            elevation: 8,
+                            shadowColor: const Color(0xFF007AFF).withValues(alpha: 0.28),
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: isSelected
-                                  ? const Color(0xFF007AFF).withValues(alpha: 0.45)
-                                  : Colors.black.withValues(alpha: 0.07),
-                              width: isSelected ? 1.3 : 1.0,
+                            child: Transform.scale(
+                              scale: 1.02,
+                              child: child,
                             ),
-                          ),
-                          child: Row(
-                            children: [
-                              // Mini Stroke/Shape Live Preview Box
-                              Container(
-                                width: 34,
-                                height: 34,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF8FAFC),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: Colors.black.withValues(alpha: 0.08),
-                                  ),
-                                ),
-                                child: CustomPaint(
-                                  painter: _StrokeLayerMiniPreviewPainter(stroke: stroke),
+                          );
+                        },
+                      );
+                    },
+                    onReorder: (oldListPos, newListPos) {
+                      if (newListPos > oldListPos) {
+                        newListPos -= 1;
+                      }
+                      if (oldListPos < 0 ||
+                          oldListPos >= layerIndices.length ||
+                          newListPos < 0 ||
+                          newListPos >= layerIndices.length ||
+                          oldListPos == newListPos) {
+                        return;
+                      }
+                      final fromStrokeIdx = layerIndices[oldListPos];
+                      final toStrokeIdx = layerIndices[newListPos];
+                      activeController.moveStrokeToIndex(fromStrokeIdx, toStrokeIdx);
+                    },
+                    itemBuilder: (ctx, listPos) {
+                      final strokeIdx = layerIndices[listPos];
+                      final stroke = allStrokes[strokeIdx];
+                      final isSelected = selectedSet.contains(strokeIdx);
+                      final isTopInList = listPos == 0;
+                      final isBottomInList = listPos == layerIndices.length - 1;
+                      final canMoveUp =
+                          onlySelected ? !isTopInList : strokeIdx < allStrokes.length - 1;
+                      final canMoveDown = onlySelected ? !isBottomInList : strokeIdx > 0;
+
+                      return ReorderableDelayedDragStartListener(
+                        key: ValueKey('layer_item_$strokeIdx'),
+                        index: listPos,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () {
+                              if (!onlySelected) {
+                                activeController.selectStrokeFromLayerPanel(strokeIdx);
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? const Color(0xFFEFF6FF)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? const Color(0xFF007AFF).withValues(alpha: 0.45)
+                                      : Colors.black.withValues(alpha: 0.07),
+                                  width: isSelected ? 1.3 : 1.0,
                                 ),
                               ),
-                              const SizedBox(width: 8),
-
-                              // Layer Info & Top/Bottom Badge
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          width: 8,
-                                          height: 8,
-                                          decoration: BoxDecoration(
-                                            color: stroke.color,
-                                            shape: BoxShape.circle,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 5),
-                                        Expanded(
-                                          child: Text(
-                                            stroke.tool.label,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w700,
-                                              color: Color(0xFF1E293B),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 5,
-                                            vertical: 1.5,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: isTopInList && layerIndices.length > 1
-                                                ? const Color(0xFFDCFCE7)
-                                                : isBottomInList && layerIndices.length > 1
-                                                    ? const Color(0xFFF1F5F9)
-                                                    : const Color(0xFFE0F2FE),
-                                            borderRadius: BorderRadius.circular(5),
-                                          ),
-                                          child: Text(
-                                            isTopInList && layerIndices.length > 1
-                                                ? 'ÜSTTE'
-                                                : isBottomInList && layerIndices.length > 1
-                                                    ? 'ALTTA'
-                                                    : 'ORTADA',
-                                            style: TextStyle(
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.w800,
-                                              color: isTopInList && layerIndices.length > 1
-                                                  ? const Color(0xFF15803D)
-                                                  : isBottomInList && layerIndices.length > 1
-                                                      ? const Color(0xFF475569)
-                                                      : const Color(0xFF0369A1),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          'Katman #${strokeIdx + 1}',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.grey.shade500,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                              // Layer Up / Down / Top / Bottom Action Buttons
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
+                              child: Row(
                                 children: [
-                                  Tooltip(
-                                    message: 'Üste Çıkar',
-                                    child: InkWell(
-                                      borderRadius: BorderRadius.circular(6),
-                                      onTap: canMoveUp
-                                          ? () => activeController.moveStrokeLayerUp(
-                                                strokeIdx,
-                                                relativeToSelection: onlySelected,
-                                              )
-                                          : null,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(5),
-                                        decoration: BoxDecoration(
-                                          color: canMoveUp
-                                              ? const Color(0xFF007AFF).withValues(alpha: 0.1)
-                                              : Colors.grey.withValues(alpha: 0.08),
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Icon(
-                                          Icons.arrow_upward_rounded,
-                                          size: 15,
-                                          color: canMoveUp
-                                              ? const Color(0xFF007AFF)
-                                              : Colors.grey.shade400,
-                                        ),
+                                  // Instant Drag Grip Icon (also works with 0ms drag or hold anywhere on card)
+                                  ReorderableDragStartListener(
+                                    index: listPos,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(right: 4),
+                                      child: Icon(
+                                        Icons.drag_indicator_rounded,
+                                        size: 16,
+                                        color: isSelected
+                                            ? const Color(0xFF007AFF)
+                                            : Colors.grey.shade400,
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 4),
-                                  Tooltip(
-                                    message: 'Alta İndir',
-                                    child: InkWell(
-                                      borderRadius: BorderRadius.circular(6),
-                                      onTap: canMoveDown
-                                          ? () => activeController.moveStrokeLayerDown(
-                                                strokeIdx,
-                                                relativeToSelection: onlySelected,
-                                              )
-                                          : null,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(5),
-                                        decoration: BoxDecoration(
-                                          color: canMoveDown
-                                              ? const Color(0xFF007AFF).withValues(alpha: 0.1)
-                                              : Colors.grey.withValues(alpha: 0.08),
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Icon(
-                                          Icons.arrow_downward_rounded,
-                                          size: 15,
-                                          color: canMoveDown
-                                              ? const Color(0xFF007AFF)
-                                              : Colors.grey.shade400,
-                                        ),
+
+                                  // Mini Stroke/Shape Live Preview Box
+                                  Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF8FAFC),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: Colors.black.withValues(alpha: 0.08),
                                       ),
                                     ),
+                                    child: CustomPaint(
+                                      painter: _StrokeLayerMiniPreviewPainter(stroke: stroke),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+
+                                  // Layer Info & Top/Bottom Badge
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Container(
+                                              width: 8,
+                                              height: 8,
+                                              decoration: BoxDecoration(
+                                                color: stroke.color,
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 5),
+                                            Expanded(
+                                              child: Text(
+                                                stroke.tool.label,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: Color(0xFF1E293B),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 5,
+                                                vertical: 1.5,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: isTopInList && layerIndices.length > 1
+                                                    ? const Color(0xFFDCFCE7)
+                                                    : isBottomInList && layerIndices.length > 1
+                                                        ? const Color(0xFFF1F5F9)
+                                                        : const Color(0xFFE0F2FE),
+                                                borderRadius: BorderRadius.circular(5),
+                                              ),
+                                              child: Text(
+                                                isTopInList && layerIndices.length > 1
+                                                    ? 'ÜSTTE'
+                                                    : isBottomInList && layerIndices.length > 1
+                                                        ? 'ALTTA'
+                                                        : 'ORTADA',
+                                                style: TextStyle(
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: isTopInList && layerIndices.length > 1
+                                                      ? const Color(0xFF15803D)
+                                                      : isBottomInList && layerIndices.length > 1
+                                                          ? const Color(0xFF475569)
+                                                          : const Color(0xFF0369A1),
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              'Katman #${strokeIdx + 1}',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.grey.shade500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+
+                                  // Layer Up / Down Action Buttons
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Tooltip(
+                                        message: 'Üste Çıkar',
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(6),
+                                          onTap: canMoveUp
+                                              ? () => activeController.moveStrokeLayerUp(
+                                                    strokeIdx,
+                                                    relativeToSelection: onlySelected,
+                                                  )
+                                              : null,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(5),
+                                            decoration: BoxDecoration(
+                                              color: canMoveUp
+                                                  ? const Color(0xFF007AFF).withValues(alpha: 0.1)
+                                                  : Colors.grey.withValues(alpha: 0.08),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Icon(
+                                              Icons.arrow_upward_rounded,
+                                              size: 15,
+                                              color: canMoveUp
+                                                  ? const Color(0xFF007AFF)
+                                                  : Colors.grey.shade400,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Tooltip(
+                                        message: 'Alta İndir',
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(6),
+                                          onTap: canMoveDown
+                                              ? () => activeController.moveStrokeLayerDown(
+                                                    strokeIdx,
+                                                    relativeToSelection: onlySelected,
+                                                  )
+                                              : null,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(5),
+                                            decoration: BoxDecoration(
+                                              color: canMoveDown
+                                                  ? const Color(0xFF007AFF).withValues(alpha: 0.1)
+                                                  : Colors.grey.withValues(alpha: 0.08),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Icon(
+                                              Icons.arrow_downward_rounded,
+                                              size: 15,
+                                              color: canMoveDown
+                                                  ? const Color(0xFF007AFF)
+                                                  : Colors.grey.shade400,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  }),
+                      );
+                    },
+                  ),
                 ],
 
                 const Padding(

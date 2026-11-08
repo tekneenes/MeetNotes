@@ -96,6 +96,17 @@ enum DrawingTool {
       this == DrawingTool.deltoid;
 }
 
+enum SelectionHandle {
+  topLeft,
+  topCenter,
+  topRight,
+  centerRight,
+  bottomRight,
+  bottomCenter,
+  bottomLeft,
+  centerLeft,
+}
+
 class DrawingStroke {
   final List<Offset> points;
   final Color color;

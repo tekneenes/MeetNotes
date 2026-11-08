@@ -8,6 +8,7 @@ class DrawingCanvasPainter extends CustomPainter {
   final List<Offset> lassoPoints;
   final Rect? selectionBounds;
   final Set<int> selectedStrokeIndices;
+  final SelectionHandle? activeResizeHandle;
   final double scale;
   final Offset panOffset;
 
@@ -17,6 +18,7 @@ class DrawingCanvasPainter extends CustomPainter {
     this.lassoPoints = const [],
     this.selectionBounds,
     this.selectedStrokeIndices = const {},
+    this.activeResizeHandle,
     this.scale = 1.0,
     this.panOffset = Offset.zero,
   });
@@ -179,24 +181,11 @@ class DrawingCanvasPainter extends CustomPainter {
 
     switch (stroke.tool) {
       case DrawingTool.rectangle:
+      case DrawingTool.square:
         canvas.drawRect(rect, paint);
         break;
 
-      case DrawingTool.square:
-        final side = math.min(rect.width, rect.height);
-        final left = (p2.dx >= p1.dx) ? p1.dx : p1.dx - side;
-        final top = (p2.dy >= p1.dy) ? p1.dy : p1.dy - side;
-        canvas.drawRect(Rect.fromLTWH(left, top, side, side), paint);
-        break;
-
       case DrawingTool.circle:
-        final diameter = math.min(rect.width, rect.height);
-        final radius = diameter / 2;
-        final cx = (p2.dx >= p1.dx) ? p1.dx + radius : p1.dx - radius;
-        final cy = (p2.dy >= p1.dy) ? p1.dy + radius : p1.dy - radius;
-        canvas.drawCircle(Offset(cx, cy), radius, paint);
-        break;
-
       case DrawingTool.ellipse:
         canvas.drawOval(rect, paint);
         break;
@@ -212,12 +201,13 @@ class DrawingCanvasPainter extends CustomPainter {
 
       case DrawingTool.pentagon:
         final center = rect.center;
-        final radius = math.min(rect.width, rect.height) / 2;
+        final rx = rect.width / 2;
+        final ry = rect.height / 2;
         final path = Path();
         for (int i = 0; i < 5; i++) {
           final angle = -math.pi / 2 + i * (2 * math.pi / 5);
-          final x = center.dx + radius * math.cos(angle);
-          final y = center.dy + radius * math.sin(angle);
+          final x = center.dx + rx * math.cos(angle);
+          final y = center.dy + ry * math.sin(angle);
           if (i == 0) {
             path.moveTo(x, y);
           } else {
@@ -230,12 +220,13 @@ class DrawingCanvasPainter extends CustomPainter {
 
       case DrawingTool.hexagon:
         final center = rect.center;
-        final radius = math.min(rect.width, rect.height) / 2;
+        final rx = rect.width / 2;
+        final ry = rect.height / 2;
         final path = Path();
         for (int i = 0; i < 6; i++) {
           final angle = -math.pi / 2 + i * (2 * math.pi / 6);
-          final x = center.dx + radius * math.cos(angle);
-          final y = center.dy + radius * math.sin(angle);
+          final x = center.dx + rx * math.cos(angle);
+          final y = center.dy + ry * math.sin(angle);
           if (i == 0) {
             path.moveTo(x, y);
           } else {
@@ -297,29 +288,36 @@ class DrawingCanvasPainter extends CustomPainter {
     _drawDashedPath(canvas, rectPath, borderPaint, 6.0 / scale, 4.0 / scale);
 
     // Draw 8 resize/drag handles (corners + midpoints)
-    final handlePoints = [
-      bounds.topLeft,
-      bounds.topCenter,
-      bounds.topRight,
-      bounds.centerRight,
-      bounds.bottomRight,
-      bounds.bottomCenter,
-      bounds.bottomLeft,
-      bounds.centerLeft,
+    final handleEntries = <MapEntry<SelectionHandle, Offset>>[
+      MapEntry(SelectionHandle.topLeft, bounds.topLeft),
+      MapEntry(SelectionHandle.topCenter, bounds.topCenter),
+      MapEntry(SelectionHandle.topRight, bounds.topRight),
+      MapEntry(SelectionHandle.centerRight, bounds.centerRight),
+      MapEntry(SelectionHandle.bottomRight, bounds.bottomRight),
+      MapEntry(SelectionHandle.bottomCenter, bounds.bottomCenter),
+      MapEntry(SelectionHandle.bottomLeft, bounds.bottomLeft),
+      MapEntry(SelectionHandle.centerLeft, bounds.centerLeft),
     ];
 
     final handleFill = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.fill;
+    final activeHandleFill = Paint()
+      ..color = const Color(0xFF007AFF)
+      ..style = PaintingStyle.fill;
     final handleStroke = Paint()
       ..color = const Color(0xFF007AFF)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8 / scale;
+      ..strokeWidth = 2.0 / scale;
 
-    final handleRadius = 4.5 / scale;
-    for (final pt in handlePoints) {
-      canvas.drawCircle(pt, handleRadius, handleFill);
-      canvas.drawCircle(pt, handleRadius, handleStroke);
+    final baseRadius = 5.5 / scale;
+    final activeRadius = 7.0 / scale;
+
+    for (final entry in handleEntries) {
+      final isActive = activeResizeHandle == entry.key;
+      final r = isActive ? activeRadius : baseRadius;
+      canvas.drawCircle(entry.value, r, isActive ? activeHandleFill : handleFill);
+      canvas.drawCircle(entry.value, r, handleStroke);
     }
   }
 

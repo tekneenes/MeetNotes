@@ -22,11 +22,15 @@ class PlannerController extends ChangeNotifier {
 
   DrawingStroke? _activeStroke;
 
-  // Lasso Selection State
+  // Lasso Selection & Resize State
   List<Offset> _lassoPoints = [];
   final Set<int> _selectedStrokeIndices = {};
   bool _isDraggingSelection = false;
   Offset? _lastLassoDragPoint;
+  SelectionHandle? _activeResizeHandle;
+  Offset? _resizeStartPoint;
+  Rect? _initialResizeRawBounds;
+  Map<int, DrawingStroke> _initialResizeStrokes = {};
 
   final Map<String, String> _dayNotes = {};
   final Map<String, List<DrawingStroke>> _dayPreviewStrokes = {};
@@ -64,9 +68,10 @@ class PlannerController extends ChangeNotifier {
   List<Offset> get lassoPoints => List.unmodifiable(_lassoPoints);
   Set<int> get selectedStrokeIndices => Set.unmodifiable(_selectedStrokeIndices);
   bool get hasLassoSelection => _selectedStrokeIndices.isNotEmpty;
-  bool get isDraggingSelection => _isDraggingSelection;
+  bool get isDraggingSelection => _isDraggingSelection || _activeResizeHandle != null;
+  SelectionHandle? get activeResizeHandle => _activeResizeHandle;
 
-  Rect? get selectionBounds {
+  Rect? _computeRawSelectionBounds() {
     if (_selectedStrokeIndices.isEmpty) return null;
     double minX = double.infinity;
     double minY = double.infinity;
@@ -86,7 +91,13 @@ class PlannerController extends ChangeNotifier {
       }
     }
     if (!found) return null;
-    return Rect.fromLTRB(minX - 10, minY - 10, maxX + 10, maxY + 10);
+    return Rect.fromLTRB(minX, minY, maxX, maxY);
+  }
+
+  Rect? get selectionBounds {
+    final raw = _computeRawSelectionBounds();
+    if (raw == null) return null;
+    return raw.inflate(10.0);
   }
 
   List<PlannerTaskItem> get tasks => List.unmodifiable(_tasks);
@@ -319,17 +330,38 @@ class PlannerController extends ChangeNotifier {
 
     if (_selectedTool == DrawingTool.lasso) {
       final bounds = selectionBounds;
-      if (bounds != null && bounds.inflate(16.0).contains(point)) {
-        // User touched inside the current selection bounding box -> drag selection!
-        _undoStack.add(List.from(_strokes));
-        _redoStack.clear();
-        _isDraggingSelection = true;
-        _lastLassoDragPoint = point;
-        notifyListeners();
-        return;
+      if (bounds != null) {
+        // 1. First check if user grabbed one of the 8 resize handles (corners or edges)
+        final handle = _findResizeHandleAtPoint(point, bounds);
+        if (handle != null) {
+          _undoStack.add(List.from(_strokes));
+          _redoStack.clear();
+          _activeResizeHandle = handle;
+          _resizeStartPoint = point;
+          _initialResizeRawBounds = _computeRawSelectionBounds();
+          _initialResizeStrokes = {
+            for (final idx in _selectedStrokeIndices)
+              if (idx >= 0 && idx < _strokes.length) idx: _strokes[idx],
+          };
+          _isDraggingSelection = false;
+          _lastLassoDragPoint = null;
+          notifyListeners();
+          return;
+        }
+
+        // 2. Otherwise check if user touched inside the selection box to move/translate
+        if (bounds.inflate(10.0).contains(point)) {
+          _undoStack.add(List.from(_strokes));
+          _redoStack.clear();
+          _isDraggingSelection = true;
+          _lastLassoDragPoint = point;
+          _activeResizeHandle = null;
+          notifyListeners();
+          return;
+        }
       }
 
-      // Check if user directly touched/grabbed an existing stroke or shape
+      // 3. Check if user directly touched/grabbed an existing stroke or shape
       final hitIndex = _findStrokeAtPoint(point);
       if (hitIndex != null) {
         _undoStack.add(List.from(_strokes));
@@ -339,14 +371,16 @@ class PlannerController extends ChangeNotifier {
           ..add(hitIndex);
         _isDraggingSelection = true;
         _lastLassoDragPoint = point;
+        _activeResizeHandle = null;
         _lassoPoints = [];
         notifyListeners();
         return;
       }
 
-      // Otherwise, start drawing a freeform lasso loop in empty space
+      // 4. Otherwise, start drawing a freeform lasso loop in empty space
       _selectedStrokeIndices.clear();
       _isDraggingSelection = false;
+      _activeResizeHandle = null;
       _lastLassoDragPoint = null;
       _lassoPoints = [point];
       notifyListeners();
@@ -381,7 +415,11 @@ class PlannerController extends ChangeNotifier {
     }
 
     if (_selectedTool == DrawingTool.lasso) {
-      if (_isDraggingSelection && _lastLassoDragPoint != null) {
+      if (_activeResizeHandle != null &&
+          _resizeStartPoint != null &&
+          _initialResizeRawBounds != null) {
+        _applyResizeToSelection(point);
+      } else if (_isDraggingSelection && _lastLassoDragPoint != null) {
         final delta = point - _lastLassoDragPoint!;
         _lastLassoDragPoint = point;
         for (final idx in _selectedStrokeIndices) {
@@ -401,7 +439,17 @@ class PlannerController extends ChangeNotifier {
     if (_activeStroke != null) {
       if (_selectedTool.isShape) {
         final startPoint = _activeStroke!.points.first;
-        _activeStroke = _activeStroke!.copyWith(points: [startPoint, point]);
+        Offset targetPoint = point;
+        if (_selectedTool == DrawingTool.square || _selectedTool == DrawingTool.circle) {
+          final dx = point.dx - startPoint.dx;
+          final dy = point.dy - startPoint.dy;
+          final side = dx.abs() < dy.abs() ? dx.abs() : dy.abs();
+          targetPoint = Offset(
+            startPoint.dx + (dx >= 0 ? side : -side),
+            startPoint.dy + (dy >= 0 ? side : -side),
+          );
+        }
+        _activeStroke = _activeStroke!.copyWith(points: [startPoint, targetPoint]);
       } else {
         final updatedPoints = List<Offset>.from(_activeStroke!.points)..add(point);
         _activeStroke = _activeStroke!.copyWith(points: updatedPoints);
@@ -417,7 +465,13 @@ class PlannerController extends ChangeNotifier {
     }
 
     if (_selectedTool == DrawingTool.lasso) {
-      if (_isDraggingSelection) {
+      if (_activeResizeHandle != null) {
+        _activeResizeHandle = null;
+        _resizeStartPoint = null;
+        _initialResizeRawBounds = null;
+        _initialResizeStrokes.clear();
+        _saveCurrentStrokes();
+      } else if (_isDraggingSelection) {
         _isDraggingSelection = false;
         _lastLassoDragPoint = null;
         _saveCurrentStrokes();
@@ -450,10 +504,14 @@ class PlannerController extends ChangeNotifier {
   }
 
   void cancelActiveStroke() {
-    if (_lassoPoints.isNotEmpty || _isDraggingSelection) {
+    if (_lassoPoints.isNotEmpty || _isDraggingSelection || _activeResizeHandle != null) {
       _lassoPoints = [];
-      if (_isDraggingSelection) {
+      if (_isDraggingSelection || _activeResizeHandle != null) {
         _isDraggingSelection = false;
+        _activeResizeHandle = null;
+        _resizeStartPoint = null;
+        _initialResizeRawBounds = null;
+        _initialResizeStrokes.clear();
         _lastLassoDragPoint = null;
         if (_undoStack.isNotEmpty) {
           _strokes = _undoStack.removeLast();
@@ -468,6 +526,127 @@ class PlannerController extends ChangeNotifier {
         _undoStack.removeLast();
       }
       notifyListeners();
+    }
+  }
+
+  SelectionHandle? _findResizeHandleAtPoint(Offset point, Rect bounds) {
+    final handles = <SelectionHandle, Offset>{
+      SelectionHandle.topLeft: bounds.topLeft,
+      SelectionHandle.topCenter: bounds.topCenter,
+      SelectionHandle.topRight: bounds.topRight,
+      SelectionHandle.centerRight: bounds.centerRight,
+      SelectionHandle.bottomRight: bounds.bottomRight,
+      SelectionHandle.bottomCenter: bounds.bottomCenter,
+      SelectionHandle.bottomLeft: bounds.bottomLeft,
+      SelectionHandle.centerLeft: bounds.centerLeft,
+    };
+
+    final hitRadius = 18.0 / _zoomScale;
+    SelectionHandle? closest;
+    double minDistance = hitRadius;
+
+    for (final entry in handles.entries) {
+      final dist = (entry.value - point).distance;
+      if (dist <= minDistance) {
+        minDistance = dist;
+        closest = entry.key;
+      }
+    }
+    return closest;
+  }
+
+  void _applyResizeToSelection(Offset currentPoint) {
+    final handle = _activeResizeHandle!;
+    final initRect = _initialResizeRawBounds!;
+    final delta = currentPoint - _resizeStartPoint!;
+
+    double newLeft = initRect.left;
+    double newTop = initRect.top;
+    double newRight = initRect.right;
+    double newBottom = initRect.bottom;
+
+    switch (handle) {
+      case SelectionHandle.topLeft:
+        newLeft += delta.dx;
+        newTop += delta.dy;
+        break;
+      case SelectionHandle.topCenter:
+        newTop += delta.dy;
+        break;
+      case SelectionHandle.topRight:
+        newRight += delta.dx;
+        newTop += delta.dy;
+        break;
+      case SelectionHandle.centerRight:
+        newRight += delta.dx;
+        break;
+      case SelectionHandle.bottomRight:
+        newRight += delta.dx;
+        newBottom += delta.dy;
+        break;
+      case SelectionHandle.bottomCenter:
+        newBottom += delta.dy;
+        break;
+      case SelectionHandle.bottomLeft:
+        newLeft += delta.dx;
+        newBottom += delta.dy;
+        break;
+      case SelectionHandle.centerLeft:
+        newLeft += delta.dx;
+        break;
+    }
+
+    const minSize = 10.0;
+    if (handle == SelectionHandle.topLeft ||
+        handle == SelectionHandle.centerLeft ||
+        handle == SelectionHandle.bottomLeft) {
+      if (newLeft > initRect.right - minSize) {
+        newLeft = initRect.right - minSize;
+      }
+    }
+    if (handle == SelectionHandle.topRight ||
+        handle == SelectionHandle.centerRight ||
+        handle == SelectionHandle.bottomRight) {
+      if (newRight < initRect.left + minSize) {
+        newRight = initRect.left + minSize;
+      }
+    }
+    if (handle == SelectionHandle.topLeft ||
+        handle == SelectionHandle.topCenter ||
+        handle == SelectionHandle.topRight) {
+      if (newTop > initRect.bottom - minSize) {
+        newTop = initRect.bottom - minSize;
+      }
+    }
+    if (handle == SelectionHandle.bottomLeft ||
+        handle == SelectionHandle.bottomCenter ||
+        handle == SelectionHandle.bottomRight) {
+      if (newBottom < initRect.top + minSize) {
+        newBottom = initRect.top + minSize;
+      }
+    }
+
+    final initW = initRect.width;
+    final initH = initRect.height;
+    final newW = newRight - newLeft;
+    final newH = newBottom - newTop;
+
+    for (final entry in _initialResizeStrokes.entries) {
+      final idx = entry.key;
+      final origStroke = entry.value;
+      if (idx >= 0 && idx < _strokes.length) {
+        final scaledPoints = origStroke.points.map((pt) {
+          final mappedX = initW > 0.001
+              ? newLeft + ((pt.dx - initRect.left) / initW) * newW
+              : newLeft + (pt.dx - initRect.left);
+          final mappedY = initH > 0.001
+              ? newTop + ((pt.dy - initRect.top) / initH) * newH
+              : newTop + (pt.dy - initRect.top);
+          return Offset(mappedX, mappedY);
+        }).toList();
+
+        _strokes[idx] = origStroke.copyWith(points: scaledPoints);
+      }
     }
   }
 

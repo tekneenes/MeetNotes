@@ -244,6 +244,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                       lassoPoints: controller.lassoPoints,
                       selectionBounds: controller.selectionBounds,
                       selectedStrokeIndices: controller.selectedStrokeIndices,
+                      activeResizeHandle: controller.activeResizeHandle,
                       scale: _scale,
                       panOffset: _panOffset,
                     ),

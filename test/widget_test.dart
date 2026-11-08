@@ -108,7 +108,17 @@ void main() {
     expect(controller.strokes.first.points[0], const Offset(150, 130));
     expect(controller.strokes.first.points[1], const Offset(250, 230));
 
-    // 4. Test duplicate and delete selected strokes
+    // 4. Test resizing from bottomRight corner handle (+40 width, +20 height)
+    final boundsBeforeResize = controller.selectionBounds!;
+    controller.startStroke(boundsBeforeResize.bottomRight);
+    expect(controller.activeResizeHandle, SelectionHandle.bottomRight);
+    controller.updateStroke(boundsBeforeResize.bottomRight + const Offset(40, 20));
+    controller.endStroke();
+
+    expect(controller.strokes.first.points[0], const Offset(150, 130));
+    expect(controller.strokes.first.points[1], const Offset(290, 250));
+
+    // 5. Test duplicate and delete selected strokes
     controller.duplicateSelectedStrokes();
     expect(controller.strokes.length, 2);
 

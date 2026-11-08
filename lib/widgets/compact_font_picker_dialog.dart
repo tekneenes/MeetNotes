@@ -19,7 +19,7 @@ class CompactFontPickerDialog extends StatefulWidget {
     super.key,
     required this.currentFontFamily,
     required this.onFontSelected,
-    this.width = 250.0,
+    this.width = 230.0,
   });
 
   /// Displays the font picker anchored directly relative to the clicked button.
@@ -28,18 +28,28 @@ class CompactFontPickerDialog extends StatefulWidget {
     required Rect anchorRect,
     required String currentFontFamily,
     required ValueChanged<String> onFontSelected,
-    double width = 250.0,
+    Rect? boundaryRect,
+    double width = 230.0,
   }) async {
     final mediaQuery = MediaQuery.of(context);
     final screenSize = mediaQuery.size;
     final viewInsets = mediaQuery.viewInsets;
 
-    const popupHeight = 340.0;
+    // Use boundaryRect (e.g. DrawingWorkspace bounds) to avoid overlapping the sidebar
+    final minX = boundaryRect != null ? boundaryRect.left + 8.0 : 8.0;
+    final maxX = boundaryRect != null
+        ? math.min(
+            screenSize.width - width - 8.0, boundaryRect.right - width - 8.0)
+        : screenSize.width - width - 8.0;
 
-    // Horizontal placement: Center on anchor, clamped to screen margins
-    final left = (anchorRect.center.dx - width / 2.0)
-        .clamp(8.0, math.max(8.0, screenSize.width - width - 8.0))
-        .toDouble();
+    final minLeft = minX;
+    final maxLeft = math.max(minLeft, maxX);
+
+    const popupHeight = 330.0;
+
+    // Horizontal placement: Center on anchor, clamped strictly within boundary
+    final left =
+        (anchorRect.center.dx - width / 2.0).clamp(minLeft, maxLeft).toDouble();
 
     // Vertical placement: Prefer below anchorRect.bottom + 6.0
     final spaceBelow =
@@ -321,27 +331,16 @@ class _CompactFontPickerDialogState extends State<CompactFontPickerDialog> {
           Row(
             children: [
               const Expanded(
-                child: Row(
-                  children: [
-                    Text(
-                      'Yazı Tipleri',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                    SizedBox(width: 6),
-                    Text(
-                      '1800+',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF38BDF8),
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'Yazı Tipleri (1800+)',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: -0.2,
+                  ),
                 ),
               ),
               InkWell(
@@ -575,3 +574,4 @@ class _CompactFontPickerDialogState extends State<CompactFontPickerDialog> {
     );
   }
 }
+

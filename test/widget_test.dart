@@ -348,8 +348,7 @@ void main() {
     await tester.tap(find.text('Font Seç'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Yazı Tipleri'), findsOneWidget);
-    expect(find.text('1800+'), findsOneWidget);
+    expect(find.textContaining('Yazı Tipleri'), findsOneWidget);
     expect(find.text('Popüler'), findsOneWidget);
     expect(find.text('El Yazısı'), findsOneWidget);
 

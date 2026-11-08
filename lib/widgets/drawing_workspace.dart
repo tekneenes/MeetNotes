@@ -730,6 +730,12 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     return font;
   }
 
+  Rect? _getWorkspaceGlobalRect() {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
   List<Widget> _buildUnifiedTextAndLassoItems(
       PlannerController controller, CanvasTextItem item) {
     return [
@@ -749,6 +755,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
               CompactFontPickerDialog.showAnchored(
                 context: context,
                 anchorRect: anchorRect,
+                boundaryRect: _getWorkspaceGlobalRect(),
                 currentFontFamily: item.fontFamily,
                 onFontSelected: (selectedFont) {
                   controller.updateCanvasTextStyle(
@@ -883,6 +890,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
               CompactColorPickerDialog.showAnchored(
                 context: context,
                 anchorRect: anchorRect,
+                boundaryRect: _getWorkspaceGlobalRect(),
                 title: 'Yazı Rengi',
                 initialColor: item.color,
                 allowOpacity: false,
@@ -999,6 +1007,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
               CompactColorPickerDialog.showAnchored(
                 context: context,
                 anchorRect: anchorRect,
+                boundaryRect: _getWorkspaceGlobalRect(),
                 title: 'Kutu Arka Planı',
                 initialColor: currentColor,
                 allowOpacity: true,

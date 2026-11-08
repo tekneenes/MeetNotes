@@ -42,19 +42,28 @@ class CompactColorPickerDialog extends StatefulWidget {
     bool allowOpacity = true,
     bool allowClear = false,
     VoidCallback? onClear,
+    Rect? boundaryRect,
     double width = 198.0,
   }) async {
     final mediaQuery = MediaQuery.of(context);
     final screenSize = mediaQuery.size;
     final viewInsets = mediaQuery.viewInsets;
 
+    final minX = boundaryRect != null ? boundaryRect.left + 8.0 : 8.0;
+    final maxX = boundaryRect != null
+        ? math.min(
+            screenSize.width - width - 8.0, boundaryRect.right - width - 8.0)
+        : screenSize.width - width - 8.0;
+
+    final minLeft = minX;
+    final maxLeft = math.max(minLeft, maxX);
+
     // Approximate height based on opacity slider presence
     final estimatedHeight = allowOpacity ? 275.0 : 235.0;
 
-    // Horizontal placement: Center on anchor, clamped to screen margins
-    final left = (anchorRect.center.dx - width / 2.0)
-        .clamp(8.0, math.max(8.0, screenSize.width - width - 8.0))
-        .toDouble();
+    // Horizontal placement: Center on anchor, clamped strictly within boundary
+    final left =
+        (anchorRect.center.dx - width / 2.0).clamp(minLeft, maxLeft).toDouble();
 
     // Vertical placement: Prefer below anchorRect.bottom + 6.0
     final spaceBelow =

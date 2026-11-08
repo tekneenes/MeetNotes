@@ -27,7 +27,7 @@ class CompactColorPickerDialog extends StatefulWidget {
     this.allowOpacity = true,
     this.allowClear = false,
     this.onClear,
-    this.width,
+    this.width = 198.0,
     this.useDialogWrapper = true,
   });
 
@@ -42,14 +42,14 @@ class CompactColorPickerDialog extends StatefulWidget {
     bool allowOpacity = true,
     bool allowClear = false,
     VoidCallback? onClear,
-    double width = 232.0,
+    double width = 198.0,
   }) async {
     final mediaQuery = MediaQuery.of(context);
     final screenSize = mediaQuery.size;
     final viewInsets = mediaQuery.viewInsets;
 
     // Approximate height based on opacity slider presence
-    final estimatedHeight = allowOpacity ? 306.0 : 262.0;
+    final estimatedHeight = allowOpacity ? 275.0 : 235.0;
 
     // Horizontal placement: Center on anchor, clamped to screen margins
     final left = (anchorRect.center.dx - width / 2.0)
@@ -79,7 +79,7 @@ class CompactColorPickerDialog extends StatefulWidget {
       context: context,
       barrierDismissible: true,
       barrierLabel: 'CompactColorPickerBarrier',
-      barrierColor: Colors.black.withValues(alpha: 0.18),
+      barrierColor: Colors.transparent,
       transitionDuration: const Duration(milliseconds: 140),
       pageBuilder: (dialogCtx, anim1, anim2) {
         return Stack(
@@ -199,8 +199,8 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final dialogWidth = widget.width ?? 232.0;
-    const wheelDiameter = 142.0;
+    final dialogWidth = widget.width ?? 198.0;
+    const wheelDiameter = 122.0;
     const wheelRadius = wheelDiameter / 2.0;
     const wheelCenter = Offset(wheelRadius, wheelRadius);
 
@@ -208,19 +208,19 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
 
     final content = Container(
       width: dialogWidth,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
       decoration: BoxDecoration(
         color: const Color(0xFF1E222D),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.12),
+          color: Colors.white.withValues(alpha: 0.14),
           width: 1.0,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.45),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: 0.38),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -237,7 +237,7 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 12,
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w700,
                     color: Colors.white,
                     letterSpacing: -0.2,
@@ -246,34 +246,34 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
               ),
               if (widget.allowClear && widget.onClear != null)
                 InkWell(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(5),
                   onTap: () {
                     widget.onClear!();
                     Navigator.of(context).pop();
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2.5,
+                      horizontal: 5,
+                      vertical: 2,
                     ),
-                    margin: const EdgeInsets.only(right: 6),
+                    margin: const EdgeInsets.only(right: 5),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(5),
+                      borderRadius: BorderRadius.circular(4),
                     ),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.format_color_reset_rounded,
-                          size: 12,
+                          size: 11,
                           color: Colors.white70,
                         ),
-                        SizedBox(width: 3),
+                        SizedBox(width: 2.5),
                         Text(
                           'Şeffaf',
                           style: TextStyle(
-                            fontSize: 10.5,
+                            fontSize: 10,
                             fontWeight: FontWeight.w600,
                             color: Colors.white70,
                           ),
@@ -283,24 +283,24 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
                   ),
                 ),
               InkWell(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
                 onTap: () => Navigator.of(context).pop(),
                 child: Container(
-                  padding: const EdgeInsets.all(3.5),
+                  padding: const EdgeInsets.all(3),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.08),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
                     Icons.close_rounded,
-                    size: 13,
+                    size: 12,
                     color: Colors.white70,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 7),
 
           // 1. Circular HSV Color Wheel with Crosshair ⊕
           GestureDetector(
@@ -327,13 +327,13 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
               ),
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
 
           // 2. Brightness / Value Slider
           Container(
-            height: 12,
+            height: 11,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(5.5),
               gradient: LinearGradient(
                 colors: [
                   pureColor,
@@ -343,12 +343,12 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
             ),
             child: SliderTheme(
               data: SliderThemeData(
-                trackHeight: 12,
+                trackHeight: 11,
                 thumbShape: const RoundSliderThumbShape(
-                  enabledThumbRadius: 7.0,
-                  elevation: 2.5,
+                  enabledThumbRadius: 6.5,
+                  elevation: 2.0,
                 ),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
                 activeTrackColor: Colors.transparent,
                 inactiveTrackColor: Colors.transparent,
                 thumbColor: Colors.white,
@@ -366,7 +366,7 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 7),
 
           // 3. Opacity Slider ("Opaklık")
           if (widget.allowOpacity) ...[
@@ -375,7 +375,7 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
                 const Text(
                   'Opaklık',
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 10.5,
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
                   ),
@@ -383,12 +383,12 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
                 const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
+                    horizontal: 5,
+                    vertical: 1.5,
                   ),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(5),
                     border: Border.all(
                       color: Colors.white.withValues(alpha: 0.1),
                       width: 0.8,
@@ -397,7 +397,7 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
                   child: Text(
                     '%${(_alpha * 100).round()}',
                     style: const TextStyle(
-                      fontSize: 10.5,
+                      fontSize: 10,
                       fontWeight: FontWeight.w700,
                       color: Colors.white,
                     ),
@@ -408,12 +408,12 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
             const SizedBox(height: 2),
             SliderTheme(
               data: SliderThemeData(
-                trackHeight: 3.0,
+                trackHeight: 2.5,
                 thumbShape: const RoundSliderThumbShape(
-                  enabledThumbRadius: 5.5,
-                  elevation: 2,
+                  enabledThumbRadius: 5.0,
+                  elevation: 1.5,
                 ),
-                overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 8),
                 activeTrackColor: const Color(0xFF007AFF),
                 inactiveTrackColor: Colors.white.withValues(alpha: 0.2),
                 thumbColor: Colors.white,
@@ -430,15 +430,15 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
                 },
               ),
             ),
-            const SizedBox(height: 7),
+            const SizedBox(height: 6),
           ],
 
           // 4. Bottom Swatch + Presets Grid
           Container(
-            padding: const EdgeInsets.all(6),
+            padding: const EdgeInsets.all(5),
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.22),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(9),
               border: Border.all(
                 color: Colors.white.withValues(alpha: 0.06),
               ),
@@ -447,10 +447,10 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
               children: [
                 // Active Color Swatch Preview
                 Container(
-                  width: 26,
-                  height: 26,
+                  width: 22,
+                  height: 22,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(5),
                     border: Border.all(
                       color: Colors.white.withValues(alpha: 0.3),
                       width: 1.0,
@@ -461,14 +461,14 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
                     children: [
                       // Checkerboard for transparency
                       CustomPaint(
-                        size: const Size(26, 26),
+                        size: const Size(22, 22),
                         painter: _CheckerboardPainter(),
                       ),
                       Container(color: _resolvedColor),
                     ],
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 5),
 
                 // 16 Presets Grid (2 rows x 8 columns)
                 Expanded(
@@ -482,7 +482,7 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
                             _buildPresetSwatch(i, _presetColors[i]),
                         ],
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 2.5),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -516,19 +516,19 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
 
     return InkWell(
       key: ValueKey('preset_$index'),
-      borderRadius: BorderRadius.circular(3),
+      borderRadius: BorderRadius.circular(2.5),
       onTap: () => _selectPreset(color),
       child: Container(
-        width: 14,
-        height: 14,
+        width: 12.5,
+        height: 12.5,
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(3.0),
+          borderRadius: BorderRadius.circular(2.5),
           border: Border.all(
             color: isSelected
                 ? const Color(0xFF38BDF8)
                 : Colors.white.withValues(alpha: 0.25),
-            width: isSelected ? 1.5 : 0.6,
+            width: isSelected ? 1.4 : 0.6,
           ),
         ),
       ),

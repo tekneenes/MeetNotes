@@ -61,12 +61,8 @@ class DrawingCanvasPainter extends CustomPainter {
         ..strokeJoin = StrokeJoin.round;
       if (stroke.tool.isShape && stroke.points.length >= 2) {
         _drawShapeWithPaint(canvas, stroke, glowPaint);
-      } else if (stroke.points.length >= 2) {
-        final glowPath = Path()..moveTo(stroke.points.first.dx, stroke.points.first.dy);
-        for (int i = 1; i < stroke.points.length; i++) {
-          glowPath.lineTo(stroke.points[i].dx, stroke.points[i].dy);
-        }
-        canvas.drawPath(glowPath, glowPaint);
+      } else {
+        _drawFreehandStrokePath(canvas, stroke.points, glowPaint);
       }
     }
 
@@ -142,28 +138,60 @@ class DrawingCanvasPainter extends CustomPainter {
         break;
     }
 
-    if (stroke.points.length == 1) {
+    _drawFreehandStrokePath(canvas, stroke.points, paint);
+  }
+
+  /// Safely renders freehand points without degenerate zero-length quadratic Beziers
+  /// (which cause Skia/CanvasKit GPU stroke tessellation to drop the path when scaled down).
+  void _drawFreehandStrokePath(Canvas canvas, List<Offset> rawPoints, Paint paint) {
+    if (rawPoints.isEmpty) return;
+
+    // Filter out consecutive duplicate or near-duplicate points (< 0.75px apart)
+    // so quadraticBezierTo never receives P_start == P_ctrl or P_ctrl == P_end.
+    final pts = <Offset>[rawPoints.first];
+    for (int i = 1; i < rawPoints.length; i++) {
+      if ((rawPoints[i] - pts.last).distance >= 0.75) {
+        pts.add(rawPoints[i]);
+      }
+    }
+
+    if (pts.length == 1) {
       canvas.drawCircle(
-        stroke.points.first,
-        stroke.strokeWidth / 2,
+        pts.first,
+        paint.strokeWidth / 2,
         Paint()
           ..color = paint.color
-          ..style = PaintingStyle.fill,
+          ..style = PaintingStyle.fill
+          ..blendMode = paint.blendMode
+          ..maskFilter = paint.maskFilter,
       );
       return;
     }
 
-    final path = Path();
-    path.moveTo(stroke.points.first.dx, stroke.points.first.dy);
+    final path = Path()..moveTo(pts.first.dx, pts.first.dy);
 
-    for (int i = 1; i < stroke.points.length; i++) {
-      final p0 = stroke.points[i - 1];
-      final p1 = stroke.points[i];
-      final midPoint = Offset((p0.dx + p1.dx) / 2, (p0.dy + p1.dy) / 2);
+    if (pts.length == 2) {
+      path.lineTo(pts[1].dx, pts[1].dy);
+      canvas.drawPath(path, paint);
+      return;
+    }
+
+    // First segment: straight line to first midpoint (prevents P_start == P_ctrl at i=1)
+    final firstMid = Offset(
+      (pts[0].dx + pts[1].dx) / 2.0,
+      (pts[0].dy + pts[1].dy) / 2.0,
+    );
+    path.lineTo(firstMid.dx, firstMid.dy);
+
+    // Interior segments: non-degenerate midpoint quadratic Beziers
+    for (int i = 1; i < pts.length - 1; i++) {
+      final p0 = pts[i];
+      final p1 = pts[i + 1];
+      final midPoint = Offset((p0.dx + p1.dx) / 2.0, (p0.dy + p1.dy) / 2.0);
       path.quadraticBezierTo(p0.dx, p0.dy, midPoint.dx, midPoint.dy);
     }
 
-    path.lineTo(stroke.points.last.dx, stroke.points.last.dy);
+    path.lineTo(pts.last.dx, pts.last.dy);
     canvas.drawPath(path, paint);
   }
 

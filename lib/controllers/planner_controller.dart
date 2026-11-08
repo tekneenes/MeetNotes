@@ -560,8 +560,11 @@ class PlannerController extends ChangeNotifier {
         }
         _activeStroke = _activeStroke!.copyWith(points: [startPoint, targetPoint]);
       } else {
-        final updatedPoints = List<Offset>.from(_activeStroke!.points)..add(point);
-        _activeStroke = _activeStroke!.copyWith(points: updatedPoints);
+        if (_activeStroke!.points.isEmpty ||
+            (point - _activeStroke!.points.last).distance >= 0.5) {
+          final updatedPoints = List<Offset>.from(_activeStroke!.points)..add(point);
+          _activeStroke = _activeStroke!.copyWith(points: updatedPoints);
+        }
       }
       notifyListeners();
     }

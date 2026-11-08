@@ -7,6 +7,7 @@ class PlannerStorageService {
   static const String _pageCountPrefix = 'meet_notes_pages_';
   static const String _strokesPrefix = 'meet_notes_strokes_';
   static const String _dayTextPrefix = 'meet_notes_day_';
+  static const String _savedAssetsKey = 'meet_notes_saved_assets';
 
   String _formatWeekKey(DateTime date) {
     return '${date.year}_${date.month}_${date.day}';
@@ -142,6 +143,27 @@ class PlannerStorageService {
     final key = 'meet_notes_images_$prefix${_formatWeekKey(weekStart)}_p$pageIndex';
     final raw = jsonEncode(images.map((img) => img.toMap()).toList());
     await prefs.setString(key, raw);
+  }
+
+  // --- Saved Canvas Assets (Reusable Single/Group Elements) ---
+  Future<List<SavedCanvasAsset>> loadSavedAssets() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_savedAssetsKey);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map((e) => SavedCanvasAsset.fromMap(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveSavedAssets(List<SavedCanvasAsset> assets) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = jsonEncode(assets.map((a) => a.toMap()).toList());
+    await prefs.setString(_savedAssetsKey, raw);
   }
 }
 

@@ -111,6 +111,7 @@ enum QuickAccessSubPage {
   main,
   layers,
   groups,
+  assets,
 }
 
 class DrawingStroke {
@@ -354,5 +355,54 @@ class CanvasImageItem {
     );
   }
 }
+
+class SavedCanvasAsset {
+  final String id;
+  final String title;
+  final List<DrawingStroke> strokes;
+  final DateTime createdAt;
+
+  const SavedCanvasAsset({
+    required this.id,
+    required this.title,
+    required this.strokes,
+    required this.createdAt,
+  });
+
+  SavedCanvasAsset copyWith({
+    String? id,
+    String? title,
+    List<DrawingStroke>? strokes,
+    DateTime? createdAt,
+  }) {
+    return SavedCanvasAsset(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      strokes: strokes ?? this.strokes,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'title': title,
+    'strokes': strokes.map((s) => s.toMap()).toList(),
+    'createdAt': createdAt.toIso8601String(),
+  };
+
+  factory SavedCanvasAsset.fromMap(Map<String, dynamic> map) {
+    final rawStrokes = map['strokes'] as List<dynamic>? ?? const [];
+    return SavedCanvasAsset(
+      id: map['id'] as String? ?? '',
+      title: map['title'] as String? ?? 'Varlık',
+      strokes: rawStrokes
+          .map((e) => DrawingStroke.fromMap(e as Map<String, dynamic>))
+          .toList(),
+      createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ??
+          DateTime.now(),
+    );
+  }
+}
+
 
 

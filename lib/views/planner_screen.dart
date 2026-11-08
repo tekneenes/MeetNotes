@@ -439,7 +439,9 @@ class _PlannerScreenState extends State<PlannerScreen>
     final onlySelected = activeController.showOnlySelectedLayers;
     final isLayersPage = activeController.isQuickAccessLayersPage;
     final isGroupsPage = activeController.isQuickAccessGroupsPage;
+    final isAssetsPage = activeController.isQuickAccessAssetsPage;
     final allGroups = activeController.allStrokeGroups;
+    final savedAssets = activeController.savedAssets;
 
     // Build layer entries from TOPMOST (highest index) to BOTTOMMOST (lowest index)
     final layerIndices = <int>[];
@@ -474,7 +476,7 @@ class _PlannerScreenState extends State<PlannerScreen>
             padding: const EdgeInsets.fromLTRB(10, 10, 8, 8),
             child: Row(
               children: [
-                if (isLayersPage || isGroupsPage) ...[
+                if (isLayersPage || isGroupsPage || isAssetsPage) ...[
                   IconButton(
                     tooltip: 'Hızlı Erişime Dön',
                     icon: const Icon(
@@ -502,7 +504,9 @@ class _PlannerScreenState extends State<PlannerScreen>
                         ? 'Katmanlar'
                         : isGroupsPage
                             ? 'Gruplar'
-                            : 'Hızlı Erişim',
+                            : isAssetsPage
+                                ? 'Varlıklar'
+                                : 'Hızlı Erişim',
                     style: const TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w700,
@@ -511,7 +515,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                     ),
                   ),
                 ),
-                if ((isLayersPage || isGroupsPage) && selectedSet.isNotEmpty)
+                if ((isLayersPage || isGroupsPage || isAssetsPage) && selectedSet.isNotEmpty)
                   Container(
                     margin: const EdgeInsets.only(right: 4),
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
@@ -540,11 +544,14 @@ class _PlannerScreenState extends State<PlannerScreen>
           ),
           const Divider(height: 1),
 
-          // Sayfa 1: Hızlı Erişim Ana Sayfası (Hızlı İşlemler + Katmanlar + Gruplar)
+          // Sayfa 1: Hızlı Erişim Ana Sayfası (Hızlı İşlemler + Katmanlar + Gruplar + Varlıklar)
           // Sayfa 2: Katmanlar Sayfası
           // Sayfa 3: Gruplar Sayfası
+          // Sayfa 4: Varlıklar Sayfası
           Expanded(
-            child: isGroupsPage
+            child: isAssetsPage
+                ? _buildAssetsSubPage(context, activeController)
+                : isGroupsPage
                 ? _buildGroupsSubPage(context, activeController, allGroups)
                 : isLayersPage
                 ? ListView(
@@ -1046,6 +1053,20 @@ class _PlannerScreenState extends State<PlannerScreen>
                           activeController.openQuickAccessGroupsPage(
                             onlySelected: false,
                           );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+
+                      // 0c. Varlıklar Sayfasına Geçiş Kartı
+                      _buildQuickItem(
+                        icon: Icons.collections_bookmark_rounded,
+                        color: const Color(0xFF0D9488),
+                        title: 'Varlıklar',
+                        subtitle: savedAssets.isNotEmpty
+                            ? '${savedAssets.length} kayıtlı varlık • Tek dokunuşla tuvale ekle'
+                            : 'Seçili öğeyi veya grubu tek parça varlık olarak sakla',
+                        onTap: () {
+                          activeController.openQuickAccessAssetsPage();
                         },
                       ),
                       const SizedBox(height: 8),
@@ -1555,6 +1576,316 @@ class _PlannerScreenState extends State<PlannerScreen>
           }),
         ],
       ],
+    );
+  }
+
+  Widget _buildAssetsSubPage(
+    BuildContext context,
+    PlannerController activeController,
+  ) {
+    final savedAssets = activeController.savedAssets;
+    final selectedSet = activeController.selectedStrokeIndices;
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      children: [
+        // Seçili öğeyi veya grubu tek parça varlık olarak kaydetme butonu
+        if (selectedSet.isNotEmpty) ...[
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () {
+              activeController.saveSelectionAsAsset(openAssetsPanel: true);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDFA),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: const Color(0xFF0D9488).withValues(alpha: 0.38),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.bookmark_add_rounded,
+                    size: 18,
+                    color: Color(0xFF0D9488),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      selectedSet.length > 1
+                          ? 'Seçili ${selectedSet.length} Öğeyi Tek Parça Varlık Olarak Kaydet'
+                          : 'Seçili Öğeyi Varlıklara Kaydet',
+                      style: const TextStyle(
+                        fontSize: 11.8,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0D9488),
+                      ),
+                    ),
+                  ),
+                  const Icon(
+                    Icons.add_circle_outline_rounded,
+                    size: 16,
+                    color: Color(0xFF0D9488),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+
+        if (savedAssets.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.collections_bookmark_outlined,
+                  size: 28,
+                  color: Colors.grey.shade400,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Henüz kaydedilmiş bir varlık yok.\nTuvalde beğendiğiniz bir çizimi veya grubu seçip "Varlıklara Kaydet"e basarak istediğiniz her yerde tekrar kullanabilirsiniz.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: Colors.grey.shade500,
+                    height: 1.38,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Kayıtlı varlığa dokunarak veya "+ Ekle" tuşuyla istediğiniz sayfaya tek parça halinde yerleştirebilirsiniz:',
+              style: TextStyle(
+                fontSize: 10.5,
+                color: Colors.grey.shade600,
+                height: 1.3,
+              ),
+            ),
+          ),
+          ...savedAssets.map((asset) {
+            final isMultiStroke = asset.strokes.length > 1;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => activeController.insertSavedAssetToCanvas(asset.id),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFF0D9488).withValues(alpha: 0.22),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(9),
+                          border: Border.all(
+                            color: Colors.black.withValues(alpha: 0.08),
+                          ),
+                        ),
+                        child: CustomPaint(
+                          painter: _GroupMiniPreviewPainter(
+                            strokes: asset.strokes,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              asset.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12.2,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFCCFBF1),
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                  child: Text(
+                                    isMultiStroke
+                                        ? '${asset.strokes.length} PARÇA (GRUP)'
+                                        : 'TEK PARÇA',
+                                    style: const TextStyle(
+                                      fontSize: 8.8,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF0F766E),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Tooltip(
+                        message: 'Tuvale Ekle',
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () =>
+                              activeController.insertSavedAssetToCanvas(asset.id),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0D9488).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.add_rounded,
+                                  size: 14,
+                                  color: Color(0xFF0F766E),
+                                ),
+                                SizedBox(width: 2),
+                                Text(
+                                  'Ekle',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF0F766E),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Tooltip(
+                        message: 'Varlık Adını Değiştir',
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(6),
+                          onTap: () => _showRenameAssetDialog(
+                            context,
+                            activeController,
+                            asset,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(5),
+                            child: Icon(
+                              Icons.edit_outlined,
+                              size: 15,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Tooltip(
+                        message: 'Varlığı Sil',
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(6),
+                          onTap: () => activeController.deleteSavedAsset(asset.id),
+                          child: Padding(
+                            padding: const EdgeInsets.all(5),
+                            child: Icon(
+                              Icons.delete_outline_rounded,
+                              size: 15,
+                              color: Colors.red.shade400,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+        ],
+      ],
+    );
+  }
+
+  void _showRenameAssetDialog(
+    BuildContext context,
+    PlannerController activeController,
+    SavedCanvasAsset asset,
+  ) {
+    final textController = TextEditingController(text: asset.title);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text(
+          'Varlık Adını Düzenle',
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+        ),
+        content: TextField(
+          controller: textController,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Örn: İmzam, Ok Şeması, Yıldız...',
+            isDense: true,
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (val) {
+            activeController.renameSavedAsset(asset.id, val);
+            Navigator.of(ctx).pop();
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('İptal'),
+          ),
+          FilledButton(
+            onPressed: () {
+              activeController.renameSavedAsset(asset.id, textController.text);
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Kaydet'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2545,3 +2876,92 @@ class _StrokeLayerMiniPreviewPainter extends CustomPainter {
     return oldDelegate.stroke != stroke;
   }
 }
+
+class _GroupMiniPreviewPainter extends CustomPainter {
+  final List<DrawingStroke> strokes;
+
+  _GroupMiniPreviewPainter({required this.strokes});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (strokes.isEmpty) return;
+
+    double minX = double.infinity;
+    double minY = double.infinity;
+    double maxX = double.negativeInfinity;
+    double maxY = double.negativeInfinity;
+    bool hasPoints = false;
+
+    for (final s in strokes) {
+      for (final pt in s.points) {
+        hasPoints = true;
+        if (pt.dx < minX) minX = pt.dx;
+        if (pt.dy < minY) minY = pt.dy;
+        if (pt.dx > maxX) maxX = pt.dx;
+        if (pt.dy > maxY) maxY = pt.dy;
+      }
+    }
+    if (!hasPoints) return;
+
+    final w = (maxX - minX).clamp(1.0, double.infinity);
+    final h = (maxY - minY).clamp(1.0, double.infinity);
+    const pad = 5.0;
+    final availW = (size.width - pad * 2).clamp(4.0, size.width);
+    final availH = (size.height - pad * 2).clamp(4.0, size.height);
+    final scale = (availW / w < availH / h ? availW / w : availH / h);
+
+    final offsetX = pad + (availW - w * scale) / 2.0 - minX * scale;
+    final offsetY = pad + (availH - h * scale) / 2.0 - minY * scale;
+
+    for (final stroke in strokes) {
+      if (stroke.points.isEmpty) continue;
+      final paint = Paint()
+        ..color = stroke.color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.8
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+
+      final mapped = stroke.points
+          .map((p) => Offset(p.dx * scale + offsetX, p.dy * scale + offsetY))
+          .toList();
+
+      if (mapped.length == 1) {
+        canvas.drawCircle(
+          mapped.first,
+          2.2,
+          Paint()
+            ..color = stroke.color
+            ..style = PaintingStyle.fill,
+        );
+        continue;
+      }
+
+      if (stroke.tool.isShape && mapped.length == 2) {
+        final rect = Rect.fromPoints(mapped.first, mapped.last);
+        if (stroke.tool == DrawingTool.circle ||
+            stroke.tool == DrawingTool.ellipse) {
+          canvas.drawOval(rect, paint);
+        } else {
+          canvas.drawRect(rect, paint);
+        }
+        continue;
+      }
+
+      final path = Path()..moveTo(mapped.first.dx, mapped.first.dy);
+      for (int i = 1; i < mapped.length; i++) {
+        path.lineTo(mapped[i].dx, mapped[i].dy);
+      }
+      if (stroke.tool.isShape && mapped.length > 2) {
+        path.close();
+      }
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GroupMiniPreviewPainter oldDelegate) {
+    return oldDelegate.strokes != strokes;
+  }
+}
+

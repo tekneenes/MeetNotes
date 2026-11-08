@@ -52,6 +52,7 @@ class PlannerController extends ChangeNotifier {
   final Map<String, List<DrawingStroke>> _dayPreviewStrokes = {};
   List<PlannerTaskItem> _tasks = [];
   List<CanvasTextItem> _canvasTexts = [];
+  List<SavedCanvasAsset> _savedAssets = [];
   double _zoomScale = 1.0;
 
   bool _isLoading = true;
@@ -95,6 +96,8 @@ class PlannerController extends ChangeNotifier {
   QuickAccessSubPage get quickAccessSubPage => _quickAccessSubPage;
   bool get isQuickAccessLayersPage => _quickAccessSubPage == QuickAccessSubPage.layers;
   bool get isQuickAccessGroupsPage => _quickAccessSubPage == QuickAccessSubPage.groups;
+  bool get isQuickAccessAssetsPage => _quickAccessSubPage == QuickAccessSubPage.assets;
+  List<SavedCanvasAsset> get savedAssets => List.unmodifiable(_savedAssets);
   bool get showOnlySelectedLayers =>
       _showOnlySelectedLayers && _selectedStrokeIndices.isNotEmpty;
   bool get showOnlySelectedGroups =>
@@ -170,6 +173,10 @@ class PlannerController extends ChangeNotifier {
         _showOnlySelectedLayers = false;
         _showOnlySelectedGroups = false;
       }
+      _storage.loadSavedAssets().then((assets) {
+        _savedAssets = assets;
+        notifyListeners();
+      });
     }
     notifyListeners();
   }
@@ -207,6 +214,141 @@ class PlannerController extends ChangeNotifier {
 
   void openQuickAccessAllGroups() {
     openQuickAccessGroupsPage(onlySelected: false);
+  }
+
+  void openQuickAccessAssetsPage() {
+    _isQuickAccessOpen = true;
+    _quickAccessSubPage = QuickAccessSubPage.assets;
+    _storage.loadSavedAssets().then((assets) {
+      _savedAssets = assets;
+      notifyListeners();
+    });
+    notifyListeners();
+  }
+
+  // --- Varlıklar (Saved Reusable Single/Group Elements) ---
+
+  Future<SavedCanvasAsset?> saveSelectionAsAsset({
+    String? customTitle,
+    bool openAssetsPanel = true,
+  }) async {
+    if (_selectedStrokeIndices.isEmpty) return null;
+    final sortedIndices = _selectedStrokeIndices
+        .where((i) => i >= 0 && i < _strokes.length)
+        .toList()
+      ..sort();
+    if (sortedIndices.isEmpty) return null;
+
+    final clonedStrokes = sortedIndices
+        .map((i) => _strokes[i].copyWith(
+              points: List<Offset>.from(_strokes[i].points),
+              isLocked: false,
+            ))
+        .toList();
+
+    final latestAssets = await _storage.loadSavedAssets();
+    final nextNumber = latestAssets.length + 1;
+    final defaultTitle = clonedStrokes.length == 1
+        ? '${clonedStrokes.first.tool.label} #$nextNumber'
+        : 'Grup Varlığı (${clonedStrokes.length} parça) #$nextNumber';
+
+    final newAsset = SavedCanvasAsset(
+      id: 'asset_${DateTime.now().microsecondsSinceEpoch}',
+      title: (customTitle != null && customTitle.trim().isNotEmpty)
+          ? customTitle.trim()
+          : defaultTitle,
+      strokes: clonedStrokes,
+      createdAt: DateTime.now(),
+    );
+
+    _savedAssets = [newAsset, ...latestAssets];
+    await _storage.saveSavedAssets(_savedAssets);
+
+    if (openAssetsPanel) {
+      _isQuickAccessOpen = true;
+      _quickAccessSubPage = QuickAccessSubPage.assets;
+    }
+    notifyListeners();
+    return newAsset;
+  }
+
+  void insertSavedAssetToCanvas(String assetId, {Offset? targetCenter}) {
+    final assetIdx = _savedAssets.indexWhere((a) => a.id == assetId);
+    if (assetIdx == -1) return;
+    final asset = _savedAssets[assetIdx];
+    if (asset.strokes.isEmpty) return;
+
+    double minX = double.infinity;
+    double minY = double.infinity;
+    double maxX = double.negativeInfinity;
+    double maxY = double.negativeInfinity;
+    bool hasPoints = false;
+
+    for (final s in asset.strokes) {
+      for (final p in s.points) {
+        hasPoints = true;
+        if (p.dx < minX) minX = p.dx;
+        if (p.dy < minY) minY = p.dy;
+        if (p.dx > maxX) maxX = p.dx;
+        if (p.dy > maxY) maxY = p.dy;
+      }
+    }
+    if (!hasPoints) return;
+
+    final originalCenter = Offset((minX + maxX) / 2.0, (minY + maxY) / 2.0);
+    Offset destination = targetCenter ?? const Offset(340.0, 240.0);
+
+    // If there is already a selection near the destination, cascade by +22px so multiple insertions don't overlap identically
+    final currentBounds = selectionBounds;
+    if (currentBounds != null &&
+        (currentBounds.center - destination).distance < 40.0) {
+      destination = currentBounds.center + const Offset(22.0, 22.0);
+    }
+
+    final delta = destination - originalCenter;
+    final String? newGroupId = asset.strokes.length > 1
+        ? 'grp_${DateTime.now().microsecondsSinceEpoch}'
+        : null;
+
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    final newSelectedIndices = <int>{};
+    for (final s in asset.strokes) {
+      final movedPoints = s.points.map((p) => p + delta).toList();
+      final placedStroke = s.copyWith(
+        points: movedPoints,
+        groupId: newGroupId,
+        clearGroupId: newGroupId == null,
+        isLocked: false,
+      );
+      _strokes.add(placedStroke);
+      newSelectedIndices.add(_strokes.length - 1);
+    }
+
+    _selectedTool = DrawingTool.lasso;
+    _selectedStrokeIndices
+      ..clear()
+      ..addAll(newSelectedIndices);
+    _syncSelectionRotationFromStrokes();
+    _saveCurrentStrokes();
+    notifyListeners();
+  }
+
+  Future<void> renameSavedAsset(String assetId, String newTitle) async {
+    final trimmed = newTitle.trim();
+    if (trimmed.isEmpty) return;
+    final idx = _savedAssets.indexWhere((a) => a.id == assetId);
+    if (idx == -1) return;
+    _savedAssets[idx] = _savedAssets[idx].copyWith(title: trimmed);
+    await _storage.saveSavedAssets(_savedAssets);
+    notifyListeners();
+  }
+
+  Future<void> deleteSavedAsset(String assetId) async {
+    _savedAssets.removeWhere((a) => a.id == assetId);
+    await _storage.saveSavedAssets(_savedAssets);
+    notifyListeners();
   }
 
   void closeQuickAccess() {
@@ -384,6 +526,7 @@ class PlannerController extends ChangeNotifier {
     _strokes = await _storage.loadStrokes(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
     _tasks = await _storage.loadTasks(_currentWeekStart);
     _canvasTexts = await _storage.loadCanvasTexts(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
+    _savedAssets = await _storage.loadSavedAssets();
 
     if (singleDayDate != null) {
       final text = await _storage.loadDayText(singleDayDate!);

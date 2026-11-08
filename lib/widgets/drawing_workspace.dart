@@ -403,7 +403,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     final isLocked = controller.isSelectionLocked;
     final showGroupBtn =
         controller.canGroupSelection || controller.hasGroupedStrokeInSelection;
-    final pillWidth = isLocked ? 210.0 : (showGroupBtn ? 378.0 : 302.0);
+    final pillWidth = isLocked ? 210.0 : (showGroupBtn ? 412.0 : 336.0);
     const pillHeight = 36.0;
     const handleClearanceRadius = 26.0;
 
@@ -697,6 +697,29 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 color: Colors.white.withValues(alpha: 0.2),
               ),
               Tooltip(
+                message: 'Varlıklara Kaydet (Hızlı Erişimde Tek Parça Sakla)',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    widget.controller.saveSelectionAsAsset(openAssetsPanel: true);
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Icon(
+                      Icons.bookmark_add_outlined,
+                      size: 16,
+                      color: Color(0xFF2DD4BF),
+                    ),
+                  ),
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 16,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                color: Colors.white.withValues(alpha: 0.2),
+              ),
+              Tooltip(
                 message: 'Öğeyi Kilitle (Taşınmasını ve Silinmesini Önler)',
                 child: InkWell(
                   borderRadius: BorderRadius.circular(12),
@@ -714,13 +737,19 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 color: Colors.white.withValues(alpha: 0.2),
               ),
               PopupMenuButton<String>(
-                tooltip: 'Grup, Kilit, Katman ve Sıralama Seçenekleri',
+                tooltip: 'Varlık, Grup, Kilit ve Katman Seçenekleri',
                 offset: const Offset(0, 38),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 elevation: 10,
                 padding: EdgeInsets.zero,
                 onSelected: (action) {
                   switch (action) {
+                    case 'save_as_asset':
+                      widget.controller.saveSelectionAsAsset(openAssetsPanel: true);
+                      break;
+                    case 'show_assets':
+                      widget.controller.openQuickAccessAssetsPage();
+                      break;
                     case 'lock_selection':
                       widget.controller.lockSelectedStrokes();
                       break;
@@ -757,6 +786,57 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                   }
                 },
                 itemBuilder: (ctx) => [
+                  PopupMenuItem<String>(
+                    value: 'save_as_asset',
+                    height: 36,
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.bookmark_add_rounded,
+                          size: 17,
+                          color: Color(0xFF0D9488),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            controller.selectedStrokeIndices.length > 1
+                                ? 'Seçimi Tek Parça Varlık Olarak Kaydet (${controller.selectedStrokeIndices.length})'
+                                : 'Öğeyi Varlıklara Kaydet',
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0D9488),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'show_assets',
+                    height: 36,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.collections_bookmark_rounded,
+                          size: 16,
+                          color: Color(0xFF0F766E),
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Kayıtlı Varlıkları Göster',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF0F766E),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(height: 8),
                   const PopupMenuItem<String>(
                     value: 'lock_selection',
                     height: 36,

@@ -823,7 +823,11 @@ class _PlannerScreenState extends State<PlannerScreen>
                                                 ],
                                               ),
                                               const SizedBox(height: 3),
-                                              Row(
+                                              Wrap(
+                                                spacing: 5,
+                                                runSpacing: 3,
+                                                crossAxisAlignment:
+                                                    WrapCrossAlignment.center,
                                                 children: [
                                                   Container(
                                                     padding: const EdgeInsets.symmetric(
@@ -862,7 +866,6 @@ class _PlannerScreenState extends State<PlannerScreen>
                                                       ),
                                                     ),
                                                   ),
-                                                  const SizedBox(width: 6),
                                                   Text(
                                                     'Katman #${strokeIdx + 1}',
                                                     style: TextStyle(
@@ -871,8 +874,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                                                       color: Colors.grey.shade500,
                                                     ),
                                                   ),
-                                                  if (stroke.isLocked) ...[
-                                                    const SizedBox(width: 6),
+                                                  if (stroke.isLocked)
                                                     Container(
                                                       padding:
                                                           const EdgeInsets.symmetric(
@@ -905,7 +907,6 @@ class _PlannerScreenState extends State<PlannerScreen>
                                                         ],
                                                       ),
                                                     ),
-                                                  ],
                                                 ],
                                               ),
                                             ],
@@ -1734,29 +1735,30 @@ class _PlannerScreenState extends State<PlannerScreen>
                               ),
                             ),
                             const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFCCFBF1),
-                                    borderRadius: BorderRadius.circular(5),
-                                  ),
-                                  child: Text(
-                                    isMultiStroke
-                                        ? '${asset.strokes.length} PARÇA (GRUP)'
-                                        : 'TEK PARÇA',
-                                    style: const TextStyle(
-                                      fontSize: 8.8,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF0F766E),
-                                    ),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFCCFBF1),
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child: Text(
+                                  isMultiStroke
+                                      ? '${asset.strokes.length} PARÇA'
+                                      : 'TEK PARÇA',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 8.8,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF0F766E),
                                   ),
                                 ),
-                              ],
+                              ),
                             ),
                           ],
                         ),

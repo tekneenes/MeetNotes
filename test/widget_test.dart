@@ -215,5 +215,9 @@ void main() {
     final selectedSticky = controller.selectedTextItem!;
     expect(controller.selectionBounds!.width, closeTo(selectedSticky.width, 0.01));
     expect(controller.selectionBounds!.height, closeTo(selectedSticky.computeHeight(), 0.01));
+
+    // Test updating canvas text color
+    controller.updateCanvasTextStyle(stickyId, (cur) => cur.copyWith(color: const Color(0xFFDC2626)));
+    expect(controller.selectedTextItem!.color, const Color(0xFFDC2626));
   });
 }

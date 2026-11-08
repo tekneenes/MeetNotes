@@ -486,6 +486,47 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     );
   }
 
+  PopupMenuItem<Color> _buildTextColorMenuItem(
+      Color color, String label, Color currentColor) {
+    final isSelected = color.toARGB32() == currentColor.toARGB32();
+    return PopupMenuItem<Color>(
+      value: color,
+      height: 32,
+      child: Row(
+        children: [
+          Container(
+            width: 16,
+            height: 16,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.black.withValues(alpha: 0.25),
+                width: 1,
+              ),
+            ),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ),
+          if (isSelected)
+            const Icon(
+              Icons.check_rounded,
+              size: 15,
+              color: Color(0xFF007AFF),
+            ),
+        ],
+      ),
+    );
+  }
+
   Offset _rotateCanvasPoint(Offset pt, Offset center, double angle) {
     if (angle == 0.0) return pt;
     final cosA = math.cos(angle);
@@ -883,6 +924,67 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         onTap: () => controller.updateCanvasTextStyle(
           item.id,
           (cur) => cur.copyWith(isUnderline: !cur.isUnderline),
+        ),
+      ),
+      _buildPillDivider(),
+
+      // 3d. Text Color Picker (Canva-style 'A' with color bar)
+      PopupMenuButton<Color>(
+        tooltip: 'Yazı Rengi',
+        offset: const Offset(0, 36),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        onSelected: (newColor) {
+          controller.updateCanvasTextStyle(
+            item.id,
+            (cur) => cur.copyWith(color: newColor),
+          );
+        },
+        itemBuilder: (ctx) => [
+          _buildTextColorMenuItem(const Color(0xFF1E293B), 'Koyu / Siyah', item.color),
+          _buildTextColorMenuItem(const Color(0xFFFFFFFF), 'Beyaz', item.color),
+          _buildTextColorMenuItem(const Color(0xFF64748B), 'Gri', item.color),
+          _buildTextColorMenuItem(const Color(0xFF0284C7), 'Açık Mavi', item.color),
+          _buildTextColorMenuItem(const Color(0xFF1D4ED8), 'Koyu Mavi', item.color),
+          _buildTextColorMenuItem(const Color(0xFF4F46E5), 'İndigo', item.color),
+          _buildTextColorMenuItem(const Color(0xFF059669), 'Zümrüt Yeşili', item.color),
+          _buildTextColorMenuItem(const Color(0xFF16A34A), 'Yeşil', item.color),
+          _buildTextColorMenuItem(const Color(0xFFD97706), 'Kehribar / Turuncu', item.color),
+          _buildTextColorMenuItem(const Color(0xFFDC2626), 'Kırmızı', item.color),
+          _buildTextColorMenuItem(const Color(0xFF9333EA), 'Mor', item.color),
+          _buildTextColorMenuItem(const Color(0xFFDB2777), 'Pembe', item.color),
+        ],
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'A',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  height: 1.0,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Container(
+                width: 14,
+                height: 3,
+                decoration: BoxDecoration(
+                  color: item.color,
+                  borderRadius: BorderRadius.circular(1.5),
+                  border: item.color == Colors.black || item.color == const Color(0xFF1E293B)
+                      ? Border.all(color: Colors.white70, width: 0.6)
+                      : null,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
       _buildPillDivider(),

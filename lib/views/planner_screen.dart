@@ -21,7 +21,6 @@ class _PlannerScreenState extends State<PlannerScreen>
   late final PlannerController _controller;
   bool _showSidebar = true;
   bool _showTasksSidebar = false;
-  bool _showQuickAccessSidebar = false; // Üst barın altından sağdan açılan hızlı erişim paneli
 
   // --- Expanding Day Card Hero Animation State (Nur İslami Yaşam & Instagram Reel Style) ---
   final GlobalKey _rootStackKey = GlobalKey();
@@ -262,12 +261,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                                 // 1a. Unified Planner Toolbar (Dynamically resizes with sidebar state)
                                 PlannerToolbar(
                                   controller: _controller,
-                                  isQuickAccessOpen: _showQuickAccessSidebar,
-                                  onToggleQuickAccess: () {
-                                    setState(() {
-                                      _showQuickAccessSidebar = !_showQuickAccessSidebar;
-                                    });
-                                  },
+                                  isQuickAccessOpen: _controller.isQuickAccessOpen,
+                                  onToggleQuickAccess: _controller.toggleQuickAccess,
                                 ),
 
                                 // 1b. Squared Grid / Lined / Dotted Drawing Workspace + Hızlı Erişim Paneli
@@ -284,9 +279,9 @@ class _PlannerScreenState extends State<PlannerScreen>
                                         curve: Curves.easeOutCubic,
                                         top: 0,
                                         bottom: 0,
-                                        right: _showQuickAccessSidebar ? 0 : -280,
-                                        width: 280,
-                                        child: _buildQuickAccessDrawer(context),
+                                        right: _controller.isQuickAccessOpen ? 0 : -300,
+                                        width: 300,
+                                        child: _buildQuickAccessDrawer(context, _controller),
                                       ),
                                     ],
                                   ),
@@ -437,7 +432,19 @@ class _PlannerScreenState extends State<PlannerScreen>
     );
   }
 
-  Widget _buildQuickAccessDrawer(BuildContext context) {
+  Widget _buildQuickAccessDrawer(BuildContext context, PlannerController activeController) {
+    final allStrokes = activeController.strokes;
+    final selectedSet = activeController.selectedStrokeIndices;
+    final onlySelected = activeController.showOnlySelectedLayers;
+
+    // Build layer entries from TOPMOST (highest index) to BOTTOMMOST (lowest index)
+    final layerIndices = <int>[];
+    for (int i = allStrokes.length - 1; i >= 0; i--) {
+      if (!onlySelected || selectedSet.contains(i)) {
+        layerIndices.add(i);
+      }
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFFFCFCFB),
@@ -464,18 +471,18 @@ class _PlannerScreenState extends State<PlannerScreen>
             child: Row(
               children: [
                 const Icon(
-                  Icons.flash_on_rounded,
+                  Icons.layers_rounded,
                   size: 18,
                   color: Color(0xFF007AFF),
                 ),
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
-                    'Hızlı Erişim',
+                    'Hızlı Erişim & Katmanlar',
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      letterSpacing: 0.4,
+                      letterSpacing: 0.3,
                       color: Color(0xFF1E293B),
                     ),
                   ),
@@ -485,22 +492,377 @@ class _PlannerScreenState extends State<PlannerScreen>
                   icon: const Icon(Icons.close_rounded, size: 18),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                  onPressed: () {
-                    setState(() {
-                      _showQuickAccessSidebar = false;
-                    });
-                  },
+                  onPressed: activeController.closeQuickAccess,
                 ),
               ],
             ),
           ),
           const Divider(height: 1),
 
-          // Drawer İçeriği
+          // Drawer İçeriği: Katmanlar + Hızlı Kısayollar
           Expanded(
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               children: [
+                // --- KATMANLAR (ÇİZİM SIRASI) BÖLÜMÜ ---
+                Row(
+                  children: [
+                    const Icon(Icons.layers_outlined, size: 15, color: Color(0xFF475569)),
+                    const SizedBox(width: 6),
+                    const Expanded(
+                      child: Text(
+                        'KATMAN SIRALAMASI',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                          color: Color(0xFF475569),
+                        ),
+                      ),
+                    ),
+                    if (selectedSet.isNotEmpty)
+                      Text(
+                        '${selectedSet.length} seçili',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF007AFF),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
+                // Filter Toggle: Tüm Katmanlar vs Seçili Öğeler
+                Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE2E8F0).withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => activeController.setShowOnlySelectedLayers(false),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            decoration: BoxDecoration(
+                              color: !onlySelected ? Colors.white : Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: !onlySelected
+                                  ? [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.05),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 1),
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              'Tüm Katmanlar (${allStrokes.length})',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: !onlySelected ? FontWeight.w700 : FontWeight.w600,
+                                color: !onlySelected
+                                    ? const Color(0xFF0F172A)
+                                    : const Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: selectedSet.isNotEmpty
+                              ? () => activeController.setShowOnlySelectedLayers(true)
+                              : null,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            decoration: BoxDecoration(
+                              color: onlySelected ? Colors.white : Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: onlySelected
+                                  ? [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.05),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 1),
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              'Seçili Öğeler (${selectedSet.length})',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: onlySelected ? FontWeight.w700 : FontWeight.w600,
+                                color: selectedSet.isEmpty
+                                    ? Colors.grey.shade400
+                                    : onlySelected
+                                        ? const Color(0xFF007AFF)
+                                        : const Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                if (layerIndices.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(Icons.layers_clear_outlined, size: 24, color: Colors.grey.shade400),
+                        const SizedBox(height: 6),
+                        Text(
+                          onlySelected
+                              ? 'Seçili çizim veya şekil yok.'
+                              : 'Bu sayfada henüz çizim katmanı yok.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500),
+                        ),
+                      ],
+                    ),
+                  )
+                else ...[
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      onlySelected
+                          ? 'Seçili öğeler üstten alta sıralanmıştır. Oklarla hangisinin üstte duracağını değiştirebilirsiniz:'
+                          : 'Üstteki öğeler çizimde en önde görünür. Dokunarak seçebilir veya sırasını değiştirebilirsiniz:',
+                      style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600, height: 1.3),
+                    ),
+                  ),
+                  ...List.generate(layerIndices.length, (listPos) {
+                    final strokeIdx = layerIndices[listPos];
+                    final stroke = allStrokes[strokeIdx];
+                    final isSelected = selectedSet.contains(strokeIdx);
+                    final isTopInList = listPos == 0;
+                    final isBottomInList = listPos == layerIndices.length - 1;
+                    final canMoveUp = onlySelected ? !isTopInList : strokeIdx < allStrokes.length - 1;
+                    final canMoveDown = onlySelected ? !isBottomInList : strokeIdx > 0;
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () {
+                          if (!onlySelected) {
+                            activeController.selectStrokeFromLayerPanel(strokeIdx);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? const Color(0xFFEFF6FF)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isSelected
+                                  ? const Color(0xFF007AFF).withValues(alpha: 0.45)
+                                  : Colors.black.withValues(alpha: 0.07),
+                              width: isSelected ? 1.3 : 1.0,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              // Mini Stroke/Shape Live Preview Box
+                              Container(
+                                width: 34,
+                                height: 34,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.black.withValues(alpha: 0.08),
+                                  ),
+                                ),
+                                child: CustomPaint(
+                                  painter: _StrokeLayerMiniPreviewPainter(stroke: stroke),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+
+                              // Layer Info & Top/Bottom Badge
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: BoxDecoration(
+                                            color: stroke.color,
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Expanded(
+                                          child: Text(
+                                            stroke.tool.label,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF1E293B),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 5,
+                                            vertical: 1.5,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: isTopInList && layerIndices.length > 1
+                                                ? const Color(0xFFDCFCE7)
+                                                : isBottomInList && layerIndices.length > 1
+                                                    ? const Color(0xFFF1F5F9)
+                                                    : const Color(0xFFE0F2FE),
+                                            borderRadius: BorderRadius.circular(5),
+                                          ),
+                                          child: Text(
+                                            isTopInList && layerIndices.length > 1
+                                                ? 'ÜSTTE'
+                                                : isBottomInList && layerIndices.length > 1
+                                                    ? 'ALTTA'
+                                                    : 'ORTADA',
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w800,
+                                              color: isTopInList && layerIndices.length > 1
+                                                  ? const Color(0xFF15803D)
+                                                  : isBottomInList && layerIndices.length > 1
+                                                      ? const Color(0xFF475569)
+                                                      : const Color(0xFF0369A1),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'Katman #${strokeIdx + 1}',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.grey.shade500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Layer Up / Down / Top / Bottom Action Buttons
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Tooltip(
+                                    message: 'Üste Çıkar',
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(6),
+                                      onTap: canMoveUp
+                                          ? () => activeController.moveStrokeLayerUp(
+                                                strokeIdx,
+                                                relativeToSelection: onlySelected,
+                                              )
+                                          : null,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(5),
+                                        decoration: BoxDecoration(
+                                          color: canMoveUp
+                                              ? const Color(0xFF007AFF).withValues(alpha: 0.1)
+                                              : Colors.grey.withValues(alpha: 0.08),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Icon(
+                                          Icons.arrow_upward_rounded,
+                                          size: 15,
+                                          color: canMoveUp
+                                              ? const Color(0xFF007AFF)
+                                              : Colors.grey.shade400,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Tooltip(
+                                    message: 'Alta İndir',
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(6),
+                                      onTap: canMoveDown
+                                          ? () => activeController.moveStrokeLayerDown(
+                                                strokeIdx,
+                                                relativeToSelection: onlySelected,
+                                              )
+                                          : null,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(5),
+                                        decoration: BoxDecoration(
+                                          color: canMoveDown
+                                              ? const Color(0xFF007AFF).withValues(alpha: 0.1)
+                                              : Colors.grey.withValues(alpha: 0.08),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Icon(
+                                          Icons.arrow_downward_rounded,
+                                          size: 15,
+                                          color: canMoveDown
+                                              ? const Color(0xFF007AFF)
+                                              : Colors.grey.shade400,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Divider(height: 1),
+                ),
+
+                const Text(
+                  'HIZLI İŞLEMLER',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                    color: Color(0xFF475569),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
                 // 1. Bugünün Notu Kısayolu
                 _buildQuickItem(
                   icon: Icons.today_rounded,
@@ -508,8 +870,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                   title: 'Bugüne Git',
                   subtitle: 'Mevcut günün planı',
                   onTap: () {
-                    _controller.goToToday();
-                    setState(() => _showQuickAccessSidebar = false);
+                    activeController.goToToday();
+                    activeController.closeQuickAccess();
                   },
                 ),
                 const SizedBox(height: 8),
@@ -521,8 +883,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                   title: 'Yeni Sayfa Ekle',
                   subtitle: 'Boş tuval sayfası aç',
                   onTap: () {
-                    _controller.addNewPage();
-                    setState(() => _showQuickAccessSidebar = false);
+                    activeController.addNewPage();
+                    activeController.closeQuickAccess();
                   },
                 ),
                 const SizedBox(height: 8),
@@ -534,8 +896,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                   title: 'Sayfayı Temizle',
                   subtitle: 'Çizimleri sıfırla',
                   onTap: () {
-                    _controller.clearCanvas();
-                    setState(() => _showQuickAccessSidebar = false);
+                    activeController.clearCanvas();
+                    activeController.closeQuickAccess();
                   },
                 ),
                 const SizedBox(height: 8),
@@ -547,8 +909,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                   title: 'Görünümü Sıfırla',
                   subtitle: 'Tuvali %100 ölçeğe getir',
                   onTap: () {
-                    _controller.resetZoom();
-                    setState(() => _showQuickAccessSidebar = false);
+                    activeController.resetZoom();
+                    activeController.closeQuickAccess();
                   },
                 ),
               ],
@@ -1190,6 +1552,35 @@ class _PlannerScreenState extends State<PlannerScreen>
                                   ),
                                   const SizedBox(width: 8),
 
+                                  // Hızlı Erişim & Katmanlar İkonu
+                                  IconButton(
+                                    tooltip: dayCanvasController.isQuickAccessOpen
+                                        ? 'Hızlı Erişimi Kapat'
+                                        : 'Hızlı Erişim & Katmanlar',
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: dayCanvasController.isQuickAccessOpen
+                                          ? const Color(0xFF007AFF).withValues(alpha: 0.12)
+                                          : Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                        side: BorderSide(
+                                          color: dayCanvasController.isQuickAccessOpen
+                                              ? const Color(0xFF007AFF).withValues(alpha: 0.4)
+                                              : Colors.black.withValues(alpha: 0.08),
+                                        ),
+                                      ),
+                                    ),
+                                    icon: Icon(
+                                      Icons.flash_on_rounded,
+                                      size: 20,
+                                      color: dayCanvasController.isQuickAccessOpen
+                                          ? const Color(0xFF007AFF)
+                                          : const Color(0xFF1E293B),
+                                    ),
+                                    onPressed: dayCanvasController.toggleQuickAccess,
+                                  ),
+                                  const SizedBox(width: 8),
+
                                   // Ayarlar İkonu
                                   IconButton(
                                     tooltip: 'Sayfa Düzeni ve Ayarlar',
@@ -1370,9 +1761,24 @@ class _PlannerScreenState extends State<PlannerScreen>
                         ),
                       ),
 
-                      // Right Column: Full Interactive Day Drawing Canvas with Floating Apple Notes Toolbar
+                      // Right Column: Full Interactive Day Drawing Canvas with Floating Apple Notes Toolbar & Quick Access
                       Expanded(
-                        child: DrawingWorkspace(controller: dayCanvasController),
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: DrawingWorkspace(controller: dayCanvasController),
+                            ),
+                            AnimatedPositioned(
+                              duration: const Duration(milliseconds: 260),
+                              curve: Curves.easeOutCubic,
+                              top: 0,
+                              bottom: 0,
+                              right: dayCanvasController.isQuickAccessOpen ? 0 : -300,
+                              width: 300,
+                              child: _buildQuickAccessDrawer(context, dayCanvasController),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -1422,5 +1828,83 @@ class _PlannerScreenState extends State<PlannerScreen>
         ],
       ),
     );
+  }
+}
+
+class _StrokeLayerMiniPreviewPainter extends CustomPainter {
+  final DrawingStroke stroke;
+
+  _StrokeLayerMiniPreviewPainter({required this.stroke});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (stroke.points.isEmpty) return;
+
+    double minX = stroke.points.first.dx;
+    double minY = stroke.points.first.dy;
+    double maxX = stroke.points.first.dx;
+    double maxY = stroke.points.first.dy;
+    for (final pt in stroke.points) {
+      if (pt.dx < minX) minX = pt.dx;
+      if (pt.dy < minY) minY = pt.dy;
+      if (pt.dx > maxX) maxX = pt.dx;
+      if (pt.dy > maxY) maxY = pt.dy;
+    }
+
+    final w = (maxX - minX).clamp(1.0, double.infinity);
+    final h = (maxY - minY).clamp(1.0, double.infinity);
+    const pad = 5.0;
+    final availW = (size.width - pad * 2).clamp(4.0, size.width);
+    final availH = (size.height - pad * 2).clamp(4.0, size.height);
+    final scale = (availW / w < availH / h ? availW / w : availH / h);
+
+    final offsetX = pad + (availW - w * scale) / 2.0 - minX * scale;
+    final offsetY = pad + (availH - h * scale) / 2.0 - minY * scale;
+
+    final paint = Paint()
+      ..color = stroke.color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final mapped = stroke.points
+        .map((p) => Offset(p.dx * scale + offsetX, p.dy * scale + offsetY))
+        .toList();
+
+    if (mapped.length == 1) {
+      canvas.drawCircle(
+        mapped.first,
+        2.5,
+        Paint()
+          ..color = stroke.color
+          ..style = PaintingStyle.fill,
+      );
+      return;
+    }
+
+    if (stroke.tool.isShape && mapped.length == 2) {
+      final rect = Rect.fromPoints(mapped.first, mapped.last);
+      if (stroke.tool == DrawingTool.circle || stroke.tool == DrawingTool.ellipse) {
+        canvas.drawOval(rect, paint);
+      } else {
+        canvas.drawRect(rect, paint);
+      }
+      return;
+    }
+
+    final path = Path()..moveTo(mapped.first.dx, mapped.first.dy);
+    for (int i = 1; i < mapped.length; i++) {
+      path.lineTo(mapped[i].dx, mapped[i].dy);
+    }
+    if (stroke.tool.isShape && mapped.length > 2) {
+      path.close();
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _StrokeLayerMiniPreviewPainter oldDelegate) {
+    return oldDelegate.stroke != stroke;
   }
 }

@@ -399,7 +399,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     );
     final handleViewport = rotatedHandleCanvas * _scale + _panOffset;
 
-    const pillWidth = 236.0;
+    const pillWidth = 268.0;
     const pillHeight = 36.0;
     const handleClearanceRadius = 26.0;
 
@@ -536,6 +536,139 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                       angle: math.pi / 2,
                       child: const Icon(Icons.flip_rounded, size: 16, color: Colors.white),
                     ),
+                  ),
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 16,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                color: Colors.white.withValues(alpha: 0.2),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Katman ve Sıralama Seçenekleri',
+                offset: const Offset(0, 38),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 10,
+                padding: EdgeInsets.zero,
+                onSelected: (action) {
+                  switch (action) {
+                    case 'show_selected_layers':
+                      widget.controller.openQuickAccessForSelectedLayers();
+                      break;
+                    case 'show_all_layers':
+                      widget.controller.openQuickAccessAllLayers();
+                      break;
+                    case 'bring_front':
+                      widget.controller.bringSelectionToFront();
+                      break;
+                    case 'move_up':
+                      widget.controller.moveSelectionForward();
+                      break;
+                    case 'move_down':
+                      widget.controller.moveSelectionBackward();
+                      break;
+                    case 'send_back':
+                      widget.controller.sendSelectionToBack();
+                      break;
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  PopupMenuItem<String>(
+                    value: 'show_selected_layers',
+                    height: 38,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.layers_rounded, size: 17, color: Color(0xFF007AFF)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Seçili Öğelerin Katmanını Göster (${widget.controller.selectedStrokeIndices.length})',
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF007AFF),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'show_all_layers',
+                    height: 36,
+                    child: Row(
+                      children: [
+                        Icon(Icons.view_agenda_outlined, size: 16, color: Color(0xFF1E293B)),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Tüm Katmanları Göster',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF1E293B),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(height: 8),
+                  const PopupMenuItem<String>(
+                    value: 'bring_front',
+                    height: 34,
+                    child: Row(
+                      children: [
+                        Icon(Icons.flip_to_front_rounded, size: 16, color: Color(0xFF334155)),
+                        SizedBox(width: 10),
+                        Text('En Üste Getir', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'move_up',
+                    height: 34,
+                    child: Row(
+                      children: [
+                        Icon(Icons.arrow_upward_rounded, size: 16, color: Color(0xFF334155)),
+                        SizedBox(width: 10),
+                        Text('Bir Üste Çıkar', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'move_down',
+                    height: 34,
+                    child: Row(
+                      children: [
+                        Icon(Icons.arrow_downward_rounded, size: 16, color: Color(0xFF334155)),
+                        SizedBox(width: 10),
+                        Text('Bir Alta İndir', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'send_back',
+                    height: 34,
+                    child: Row(
+                      children: [
+                        Icon(Icons.flip_to_back_rounded, size: 16, color: Color(0xFF334155)),
+                        SizedBox(width: 10),
+                        Text('En Alta Gönder', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ),
+                ],
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 19,
+                    color: Colors.white,
                   ),
                 ),
               ),

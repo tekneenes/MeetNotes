@@ -42,6 +42,10 @@ class PlannerController extends ChangeNotifier {
   Rect? _rotationAnchorBounds;
   Map<int, DrawingStroke> _initialRotationStrokes = {};
 
+  // Hızlı Erişim & Katman Sıralaması (Z-Order Layering) State
+  bool _isQuickAccessOpen = false;
+  bool _showOnlySelectedLayers = false;
+
   final Map<String, String> _dayNotes = {};
   final Map<String, List<DrawingStroke>> _dayPreviewStrokes = {};
   List<PlannerTaskItem> _tasks = [];
@@ -85,6 +89,41 @@ class PlannerController extends ChangeNotifier {
   double get selectionRotationAngle => _selectionRotationAngle;
   int get currentRotationDegrees => _currentRotationDegrees;
   Rect? get rotationAnchorBounds => _rotationAnchorBounds;
+  bool get isQuickAccessOpen => _isQuickAccessOpen;
+  bool get showOnlySelectedLayers =>
+      _showOnlySelectedLayers && _selectedStrokeIndices.isNotEmpty;
+
+  void toggleQuickAccess() {
+    _isQuickAccessOpen = !_isQuickAccessOpen;
+    if (_isQuickAccessOpen && _selectedStrokeIndices.isEmpty) {
+      _showOnlySelectedLayers = false;
+    }
+    notifyListeners();
+  }
+
+  void openQuickAccessForSelectedLayers() {
+    _isQuickAccessOpen = true;
+    _showOnlySelectedLayers = _selectedStrokeIndices.isNotEmpty;
+    notifyListeners();
+  }
+
+  void openQuickAccessAllLayers() {
+    _isQuickAccessOpen = true;
+    _showOnlySelectedLayers = false;
+    notifyListeners();
+  }
+
+  void closeQuickAccess() {
+    if (_isQuickAccessOpen) {
+      _isQuickAccessOpen = false;
+      notifyListeners();
+    }
+  }
+
+  void setShowOnlySelectedLayers(bool onlySelected) {
+    _showOnlySelectedLayers = onlySelected;
+    notifyListeners();
+  }
 
   Offset _rotatePointAround(Offset pt, Offset center, double angleRadians) {
     if (angleRadians == 0.0) return pt;
@@ -1067,6 +1106,170 @@ class PlannerController extends ChangeNotifier {
       }
     }
     _saveCurrentStrokes();
+    notifyListeners();
+  }
+
+  // --- Katmanlama (Layer Z-Order Management) ---
+
+  void moveStrokeToIndex(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _strokes.length) return;
+    final clampedNew = newIndex.clamp(0, _strokes.length - 1);
+    if (oldIndex == clampedNew) return;
+
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    final selectedSet = <int>{..._selectedStrokeIndices};
+    final indexedStrokes = List<MapEntry<int, DrawingStroke>>.generate(
+      _strokes.length,
+      (i) => MapEntry(i, _strokes[i]),
+    );
+    final movedItem = indexedStrokes.removeAt(oldIndex);
+    indexedStrokes.insert(clampedNew, movedItem);
+
+    _strokes = indexedStrokes.map((e) => e.value).toList();
+    _selectedStrokeIndices
+      ..clear()
+      ..addAll([
+        for (int i = 0; i < indexedStrokes.length; i++)
+          if (selectedSet.contains(indexedStrokes[i].key)) i,
+      ]);
+
+    _saveCurrentStrokes();
+    notifyListeners();
+  }
+
+  void moveStrokeLayerUp(int index, {bool relativeToSelection = false}) {
+    if (index < 0 || index >= _strokes.length - 1) return;
+    if (relativeToSelection &&
+        _selectedStrokeIndices.length > 1 &&
+        _selectedStrokeIndices.contains(index)) {
+      final higherSelected = _selectedStrokeIndices
+          .where((idx) => idx > index)
+          .toList()
+        ..sort();
+      if (higherSelected.isNotEmpty) {
+        moveStrokeToIndex(index, higherSelected.first);
+        return;
+      }
+    }
+    moveStrokeToIndex(index, index + 1);
+  }
+
+  void moveStrokeLayerDown(int index, {bool relativeToSelection = false}) {
+    if (index <= 0 || index >= _strokes.length) return;
+    if (relativeToSelection &&
+        _selectedStrokeIndices.length > 1 &&
+        _selectedStrokeIndices.contains(index)) {
+      final lowerSelected = _selectedStrokeIndices
+          .where((idx) => idx < index)
+          .toList()
+        ..sort();
+      if (lowerSelected.isNotEmpty) {
+        moveStrokeToIndex(index, lowerSelected.last);
+        return;
+      }
+    }
+    moveStrokeToIndex(index, index - 1);
+  }
+
+  void bringStrokeToFront(int index) {
+    if (index < 0 || index >= _strokes.length - 1) return;
+    moveStrokeToIndex(index, _strokes.length - 1);
+  }
+
+  void sendStrokeToBack(int index) {
+    if (index <= 0 || index >= _strokes.length) return;
+    moveStrokeToIndex(index, 0);
+  }
+
+  void bringSelectionToFront() {
+    if (_selectedStrokeIndices.isEmpty || _strokes.length <= 1) return;
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    final unselected = <DrawingStroke>[];
+    final selected = <DrawingStroke>[];
+    for (int i = 0; i < _strokes.length; i++) {
+      if (_selectedStrokeIndices.contains(i)) {
+        selected.add(_strokes[i]);
+      } else {
+        unselected.add(_strokes[i]);
+      }
+    }
+    _strokes = [...unselected, ...selected];
+    _selectedStrokeIndices
+      ..clear()
+      ..addAll(List.generate(selected.length, (i) => unselected.length + i));
+    _saveCurrentStrokes();
+    notifyListeners();
+  }
+
+  void sendSelectionToBack() {
+    if (_selectedStrokeIndices.isEmpty || _strokes.length <= 1) return;
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    final selected = <DrawingStroke>[];
+    final unselected = <DrawingStroke>[];
+    for (int i = 0; i < _strokes.length; i++) {
+      if (_selectedStrokeIndices.contains(i)) {
+        selected.add(_strokes[i]);
+      } else {
+        unselected.add(_strokes[i]);
+      }
+    }
+    _strokes = [...selected, ...unselected];
+    _selectedStrokeIndices
+      ..clear()
+      ..addAll(List.generate(selected.length, (i) => i));
+    _saveCurrentStrokes();
+    notifyListeners();
+  }
+
+  void moveSelectionForward() {
+    if (_selectedStrokeIndices.isEmpty || _strokes.length <= 1) return;
+    final sorted = _selectedStrokeIndices.toList()..sort();
+    if (sorted.length == 1) {
+      moveStrokeLayerUp(sorted.first);
+      return;
+    }
+    if (sorted.last < _strokes.length - 1) {
+      moveStrokeToIndex(sorted.last + 1, sorted.first);
+    } else {
+      moveStrokeLayerUp(sorted.first, relativeToSelection: true);
+    }
+  }
+
+  void moveSelectionBackward() {
+    if (_selectedStrokeIndices.isEmpty || _strokes.length <= 1) return;
+    final sorted = _selectedStrokeIndices.toList()..sort();
+    if (sorted.length == 1) {
+      moveStrokeLayerDown(sorted.first);
+      return;
+    }
+    if (sorted.first > 0) {
+      moveStrokeToIndex(sorted.first - 1, sorted.last);
+    } else {
+      moveStrokeLayerDown(sorted.last, relativeToSelection: true);
+    }
+  }
+
+  void selectStrokeFromLayerPanel(int index, {bool additive = false}) {
+    if (index < 0 || index >= _strokes.length) return;
+    _selectedTool = DrawingTool.lasso;
+    if (additive) {
+      if (_selectedStrokeIndices.contains(index)) {
+        _selectedStrokeIndices.remove(index);
+      } else {
+        _selectedStrokeIndices.add(index);
+      }
+    } else {
+      _selectedStrokeIndices
+        ..clear()
+        ..add(index);
+    }
+    _syncSelectionRotationFromStrokes();
     notifyListeners();
   }
 

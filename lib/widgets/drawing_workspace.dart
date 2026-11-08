@@ -889,15 +889,21 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       _buildPillDivider(),
 
       // 3d. Text Color Picker (Canva-style 'A' with color bar -> opens Compact Color Palette)
-      Tooltip(
-        message: 'Yazı Rengi Paleti',
-        child: InkWell(
-          borderRadius: BorderRadius.circular(7),
-          onTap: () {
-            showDialog(
-              context: context,
-              barrierColor: Colors.black.withValues(alpha: 0.25),
-              builder: (ctx) => CompactColorPickerDialog(
+      Builder(
+        builder: (btnCtx) => Tooltip(
+          message: 'Yazı Rengi Paleti',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(7),
+            onTap: () {
+              final renderBox = btnCtx.findRenderObject() as RenderBox?;
+              final offset =
+                  renderBox?.localToGlobal(Offset.zero) ?? Offset.zero;
+              final size = renderBox?.size ?? Size.zero;
+              final anchorRect = offset & size;
+
+              CompactColorPickerDialog.showAnchored(
+                context: context,
+                anchorRect: anchorRect,
                 title: 'Yazı Rengi',
                 initialColor: item.color,
                 allowOpacity: false,
@@ -907,41 +913,41 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                     (cur) => cur.copyWith(color: newColor),
                   );
                 },
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(7),
               ),
-            );
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(7),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text(
-                  'A',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    height: 1.0,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    'A',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      height: 1.0,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Container(
-                  width: 14,
-                  height: 3,
-                  decoration: BoxDecoration(
-                    color: item.color,
-                    borderRadius: BorderRadius.circular(1.5),
-                    border: item.color == Colors.black ||
-                            item.color == const Color(0xFF1E293B)
-                        ? Border.all(color: Colors.white70, width: 0.6)
-                        : null,
+                  const SizedBox(height: 2),
+                  Container(
+                    width: 14,
+                    height: 3,
+                    decoration: BoxDecoration(
+                      color: item.color,
+                      borderRadius: BorderRadius.circular(1.5),
+                      border: item.color == Colors.black ||
+                              item.color == const Color(0xFF1E293B)
+                          ? Border.all(color: Colors.white70, width: 0.6)
+                          : null,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -996,18 +1002,24 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       _buildPillDivider(),
 
       // 5. Background Color Picker (Opens Compact Color Palette)
-      Tooltip(
-        message: 'Kutu Arka Plan Rengi Paleti',
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () {
-            final currentColor = item.backgroundColor != null
-                ? Color(item.backgroundColor!)
-                : const Color(0xFFFEF08A);
-            showDialog(
-              context: context,
-              barrierColor: Colors.black.withValues(alpha: 0.25),
-              builder: (ctx) => CompactColorPickerDialog(
+      Builder(
+        builder: (btnCtx) => Tooltip(
+          message: 'Kutu Arka Plan Rengi Paleti',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () {
+              final currentColor = item.backgroundColor != null
+                  ? Color(item.backgroundColor!)
+                  : const Color(0xFFFEF08A);
+              final renderBox = btnCtx.findRenderObject() as RenderBox?;
+              final offset =
+                  renderBox?.localToGlobal(Offset.zero) ?? Offset.zero;
+              final size = renderBox?.size ?? Size.zero;
+              final anchorRect = offset & size;
+
+              CompactColorPickerDialog.showAnchored(
+                context: context,
+                anchorRect: anchorRect,
                 title: 'Kutu Arka Planı',
                 initialColor: currentColor,
                 allowOpacity: true,
@@ -1024,17 +1036,17 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                     (cur) => cur.copyWith(backgroundColor: newColor.toARGB32()),
                   );
                 },
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(5),
+              child: Icon(
+                Icons.format_color_fill_rounded,
+                size: 15,
+                color: item.backgroundColor != null
+                    ? Color(item.backgroundColor!)
+                    : Colors.white70,
               ),
-            );
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(5),
-            child: Icon(
-              Icons.format_color_fill_rounded,
-              size: 15,
-              color: item.backgroundColor != null
-                  ? Color(item.backgroundColor!)
-                  : Colors.white70,
             ),
           ),
         ),

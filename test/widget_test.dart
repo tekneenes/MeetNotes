@@ -259,4 +259,56 @@ void main() {
     await tester.pumpAndSettle();
     expect(cleared, isTrue);
   });
+
+  testWidgets('CompactColorPickerDialog.showAnchored opens anchored below button',
+      (WidgetTester tester) async {
+    Color? pickedColor;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Builder(
+              builder: (ctx) => ElevatedButton(
+                onPressed: () {
+                  final renderBox = ctx.findRenderObject() as RenderBox?;
+                  final offset =
+                      renderBox?.localToGlobal(Offset.zero) ?? Offset.zero;
+                  final size = renderBox?.size ?? Size.zero;
+                  CompactColorPickerDialog.showAnchored(
+                    context: ctx,
+                    anchorRect: offset & size,
+                    title: 'Yazı Rengi',
+                    initialColor: const Color(0xFF3B82F6),
+                    allowOpacity: false,
+                    onColorChanged: (c) => pickedColor = c,
+                  );
+                },
+                child: const Text('Renk Seç'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Tap the button to open anchored picker
+    await tester.tap(find.text('Renk Seç'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Yazı Rengi'), findsOneWidget);
+
+    // Pick a preset
+    await tester.tap(find.byKey(const ValueKey('preset_6')));
+    await tester.pumpAndSettle();
+
+    expect(pickedColor, const Color(0xFFEF4444));
+
+    // Close picker via close icon
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Yazı Rengi'), findsNothing);
+  });
 }

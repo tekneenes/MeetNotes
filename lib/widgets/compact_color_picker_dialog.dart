@@ -16,6 +16,8 @@ class CompactColorPickerDialog extends StatefulWidget {
   final bool allowOpacity;
   final bool allowClear;
   final VoidCallback? onClear;
+  final double? width;
+  final bool useDialogWrapper;
 
   const CompactColorPickerDialog({
     super.key,
@@ -25,7 +27,99 @@ class CompactColorPickerDialog extends StatefulWidget {
     this.allowOpacity = true,
     this.allowClear = false,
     this.onClear,
+    this.width,
+    this.useDialogWrapper = true,
   });
+
+  /// Displays the Compact Color Picker anchored directly relative to a target
+  /// button rectangle (e.g. popping open right below the clicked toolbar button).
+  static Future<void> showAnchored({
+    required BuildContext context,
+    required Rect anchorRect,
+    required String title,
+    required Color initialColor,
+    required ValueChanged<Color> onColorChanged,
+    bool allowOpacity = true,
+    bool allowClear = false,
+    VoidCallback? onClear,
+    double width = 232.0,
+  }) async {
+    final mediaQuery = MediaQuery.of(context);
+    final screenSize = mediaQuery.size;
+    final viewInsets = mediaQuery.viewInsets;
+
+    // Approximate height based on opacity slider presence
+    final estimatedHeight = allowOpacity ? 306.0 : 262.0;
+
+    // Horizontal placement: Center on anchor, clamped to screen margins
+    final left = (anchorRect.center.dx - width / 2.0)
+        .clamp(8.0, math.max(8.0, screenSize.width - width - 8.0))
+        .toDouble();
+
+    // Vertical placement: Prefer below anchorRect.bottom + 6.0
+    final spaceBelow =
+        screenSize.height - viewInsets.bottom - (anchorRect.bottom + 6.0);
+    final spaceAbove = anchorRect.top - 6.0;
+
+    double top;
+    if (spaceBelow >= estimatedHeight || spaceBelow >= spaceAbove) {
+      top = anchorRect.bottom + 6.0;
+      if (top + estimatedHeight >
+          screenSize.height - viewInsets.bottom - 8.0) {
+        top = math.max(
+          8.0,
+          screenSize.height - viewInsets.bottom - estimatedHeight - 8.0,
+        );
+      }
+    } else {
+      top = math.max(8.0, anchorRect.top - estimatedHeight - 6.0);
+    }
+
+    await showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'CompactColorPickerBarrier',
+      barrierColor: Colors.black.withValues(alpha: 0.18),
+      transitionDuration: const Duration(milliseconds: 140),
+      pageBuilder: (dialogCtx, anim1, anim2) {
+        return Stack(
+          children: [
+            Positioned(
+              left: left,
+              top: top,
+              child: Material(
+                type: MaterialType.transparency,
+                child: CompactColorPickerDialog(
+                  title: title,
+                  initialColor: initialColor,
+                  onColorChanged: onColorChanged,
+                  allowOpacity: allowOpacity,
+                  allowClear: allowClear,
+                  onClear: onClear,
+                  width: width,
+                  useDialogWrapper: false,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+      transitionBuilder: (dialogCtx, anim, secondaryAnim, child) {
+        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        final isBelow = top >= anchorRect.top;
+        final relAnchorX =
+            ((anchorRect.center.dx - left) / width * 2.0 - 1.0).clamp(-1.0, 1.0);
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.92, end: 1.0).animate(curved),
+            alignment: Alignment(relAnchorX, isBelow ? -1.0 : 1.0),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
 
   @override
   State<CompactColorPickerDialog> createState() =>
@@ -105,310 +199,315 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    const dialogWidth = 286.0;
-    const wheelDiameter = 186.0;
+    final dialogWidth = widget.width ?? 232.0;
+    const wheelDiameter = 142.0;
     const wheelRadius = wheelDiameter / 2.0;
     const wheelCenter = Offset(wheelRadius, wheelRadius);
 
     final pureColor = HSVColor.fromAHSV(1.0, _hue, _saturation, 1.0).toColor();
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      child: Container(
-        width: dialogWidth,
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E222D),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.12),
-            width: 1.0,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.40),
-              blurRadius: 28,
-              offset: const Offset(0, 10),
-            ),
-          ],
+    final content = Container(
+      width: dialogWidth,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E222D),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.12),
+          width: 1.0,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Header Bar
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                      letterSpacing: -0.2,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.45),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Header Bar
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  widget.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              if (widget.allowClear && widget.onClear != null)
+                InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () {
+                    widget.onClear!();
+                    Navigator.of(context).pop();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2.5,
+                    ),
+                    margin: const EdgeInsets.only(right: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.format_color_reset_rounded,
+                          size: 12,
+                          color: Colors.white70,
+                        ),
+                        SizedBox(width: 3),
+                        Text(
+                          'Şeffaf',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-                if (widget.allowClear && widget.onClear != null)
-                  InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: () {
-                      widget.onClear!();
-                      Navigator.of(context).pop();
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 3,
-                      ),
-                      margin: const EdgeInsets.only(right: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.format_color_reset_rounded,
-                            size: 13,
-                            color: Colors.white70,
-                          ),
-                          SizedBox(width: 4),
-                          Text(
-                            'Şeffaf',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white70,
-                            ),
-                          ),
-                        ],
-                      ),
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                  padding: const EdgeInsets.all(3.5),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 13,
+                    color: Colors.white70,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // 1. Circular HSV Color Wheel with Crosshair ⊕
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onPanDown: (details) => _handleWheelTouch(
+              details.localPosition,
+              wheelRadius,
+              wheelCenter,
+            ),
+            onPanUpdate: (details) => _handleWheelTouch(
+              details.localPosition,
+              wheelRadius,
+              wheelCenter,
+            ),
+            child: SizedBox(
+              width: wheelDiameter,
+              height: wheelDiameter,
+              child: CustomPaint(
+                painter: _HsvWheelPainter(
+                  hue: _hue,
+                  saturation: _saturation,
+                  value: _value,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // 2. Brightness / Value Slider
+          Container(
+            height: 12,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(6),
+              gradient: LinearGradient(
+                colors: [
+                  pureColor,
+                  Colors.black,
+                ],
+              ),
+            ),
+            child: SliderTheme(
+              data: SliderThemeData(
+                trackHeight: 12,
+                thumbShape: const RoundSliderThumbShape(
+                  enabledThumbRadius: 7.0,
+                  elevation: 2.5,
+                ),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                activeTrackColor: Colors.transparent,
+                inactiveTrackColor: Colors.transparent,
+                thumbColor: Colors.white,
+              ),
+              child: Slider(
+                value: 1.0 - _value,
+                min: 0.0,
+                max: 1.0,
+                onChanged: (val) {
+                  setState(() {
+                    _value = (1.0 - val).clamp(0.0, 1.0);
+                  });
+                  _notifyChange();
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // 3. Opacity Slider ("Opaklık")
+          if (widget.allowOpacity) ...[
+            Row(
+              children: [
+                const Text(
+                  'Opaklık',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      width: 0.8,
                     ),
                   ),
-                InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () => Navigator.of(context).pop(),
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.08),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.close_rounded,
-                      size: 14,
-                      color: Colors.white70,
+                  child: Text(
+                    '%${(_alpha * 100).round()}',
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-
-            // 1. Circular HSV Color Wheel with Crosshair ⊕
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onPanDown: (details) => _handleWheelTouch(
-                details.localPosition,
-                wheelRadius,
-                wheelCenter,
-              ),
-              onPanUpdate: (details) => _handleWheelTouch(
-                details.localPosition,
-                wheelRadius,
-                wheelCenter,
-              ),
-              child: SizedBox(
-                width: wheelDiameter,
-                height: wheelDiameter,
-                child: CustomPaint(
-                  painter: _HsvWheelPainter(
-                    hue: _hue,
-                    saturation: _saturation,
-                    value: _value,
-                  ),
+            const SizedBox(height: 2),
+            SliderTheme(
+              data: SliderThemeData(
+                trackHeight: 3.0,
+                thumbShape: const RoundSliderThumbShape(
+                  enabledThumbRadius: 5.5,
+                  elevation: 2,
                 ),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                activeTrackColor: const Color(0xFF007AFF),
+                inactiveTrackColor: Colors.white.withValues(alpha: 0.2),
+                thumbColor: Colors.white,
+              ),
+              child: Slider(
+                value: _alpha,
+                min: 0.05,
+                max: 1.0,
+                onChanged: (val) {
+                  setState(() {
+                    _alpha = val;
+                  });
+                  _notifyChange();
+                },
               ),
             ),
-            const SizedBox(height: 12),
-
-            // 2. Brightness / Value Slider
-            Container(
-              height: 14,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(7),
-                gradient: LinearGradient(
-                  colors: [
-                    pureColor,
-                    Colors.black,
-                  ],
-                ),
-              ),
-              child: SliderTheme(
-                data: SliderThemeData(
-                  trackHeight: 14,
-                  thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 8.5,
-                    elevation: 3,
-                  ),
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                  activeTrackColor: Colors.transparent,
-                  inactiveTrackColor: Colors.transparent,
-                  thumbColor: Colors.white,
-                ),
-                child: Slider(
-                  value: 1.0 - _value,
-                  min: 0.0,
-                  max: 1.0,
-                  onChanged: (val) {
-                    setState(() {
-                      _value = (1.0 - val).clamp(0.0, 1.0);
-                    });
-                    _notifyChange();
-                  },
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            // 3. Opacity Slider ("Opaklık")
-            if (widget.allowOpacity) ...[
-              Row(
-                children: [
-                  const Text(
-                    'Opaklık',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2.5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(7),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.1),
-                        width: 0.8,
-                      ),
-                    ),
-                    child: Text(
-                      '%${(_alpha * 100).round()}',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 3),
-              SliderTheme(
-                data: SliderThemeData(
-                  trackHeight: 3.5,
-                  thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 6.5,
-                    elevation: 2,
-                  ),
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                  activeTrackColor: const Color(0xFF007AFF),
-                  inactiveTrackColor: Colors.white.withValues(alpha: 0.2),
-                  thumbColor: Colors.white,
-                ),
-                child: Slider(
-                  value: _alpha,
-                  min: 0.05,
-                  max: 1.0,
-                  onChanged: (val) {
-                    setState(() {
-                      _alpha = val;
-                    });
-                    _notifyChange();
-                  },
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
-
-            // 4. Bottom Swatch + Presets Grid
-            Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.22),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.06),
-                ),
-              ),
-              child: Row(
-                children: [
-                  // Active Color Swatch Preview
-                  Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.3),
-                        width: 1.2,
-                      ),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Stack(
-                      children: [
-                        // Checkerboard for transparency
-                        CustomPaint(
-                          size: const Size(32, 32),
-                          painter: _CheckerboardPainter(),
-                        ),
-                        Container(color: _resolvedColor),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-
-                  // 16 Presets Grid (2 rows x 8 columns)
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            for (int i = 0; i < 8; i++)
-                              _buildPresetSwatch(i, _presetColors[i]),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            for (int i = 8; i < 16; i++)
-                              _buildPresetSwatch(i, _presetColors[i]),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            const SizedBox(height: 7),
           ],
-        ),
+
+          // 4. Bottom Swatch + Presets Grid
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.22),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.06),
+              ),
+            ),
+            child: Row(
+              children: [
+                // Active Color Swatch Preview
+                Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.3),
+                      width: 1.0,
+                    ),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Stack(
+                    children: [
+                      // Checkerboard for transparency
+                      CustomPaint(
+                        size: const Size(26, 26),
+                        painter: _CheckerboardPainter(),
+                      ),
+                      Container(color: _resolvedColor),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+
+                // 16 Presets Grid (2 rows x 8 columns)
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          for (int i = 0; i < 8; i++)
+                            _buildPresetSwatch(i, _presetColors[i]),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          for (int i = 8; i < 16; i++)
+                            _buildPresetSwatch(i, _presetColors[i]),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
+
+    if (widget.useDialogWrapper) {
+      return Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: content,
+      );
+    }
+    return content;
   }
 
   Widget _buildPresetSwatch(int index, Color color) {
@@ -417,19 +516,19 @@ class _CompactColorPickerDialogState extends State<CompactColorPickerDialog> {
 
     return InkWell(
       key: ValueKey('preset_$index'),
-      borderRadius: BorderRadius.circular(4),
+      borderRadius: BorderRadius.circular(3),
       onTap: () => _selectPreset(color),
       child: Container(
-        width: 17,
-        height: 17,
+        width: 14,
+        height: 14,
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(3.5),
+          borderRadius: BorderRadius.circular(3.0),
           border: Border.all(
             color: isSelected
                 ? const Color(0xFF38BDF8)
                 : Colors.white.withValues(alpha: 0.25),
-            width: isSelected ? 1.6 : 0.6,
+            width: isSelected ? 1.5 : 0.6,
           ),
         ),
       ),

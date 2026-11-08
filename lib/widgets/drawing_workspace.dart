@@ -230,18 +230,13 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                   // 1c. Unified Interleaved Canvas Layers (Strokes + Text Boxes in true Z-Order)
                   ..._buildUnifiedCanvasLayers(controller),
 
-                  // 1c-format. Floating Canva Text Formatting Bar when a text box is selected
-                  if (controller.selectedTextItem != null)
-                    _buildTextFormattingPill(
-                      controller.selectedTextItem!,
-                      viewportSize,
-                    ),
-
-                  // 1d. Floating Lasso Selection Action Pill (Copy / Flip / Delete / Clear Selection)
-                  if (controller.hasLassoSelection &&
+                  // 1c-format. Floating Unified Selection & Formatting Pill (Merged Lasso + Text Tools)
+                  if ((controller.hasLassoSelection ||
+                          controller.selectedTextItem != null) &&
                       !controller.isDraggingSelection &&
-                      controller.selectionBounds != null)
-                    _buildSelectionActionPill(controller.selectionBounds!, viewportSize),
+                      !controller.isRotatingSelection &&
+                      controller.activeResizeHandle == null)
+                    _buildUnifiedSelectionPill(viewportSize),
 
                   // 1e. Live Rotation Degree Badge (Non-interactive overlay while rotating)
                   if (controller.hasLassoSelection &&
@@ -354,716 +349,6 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     );
   }
 
-  Widget _buildTextFormattingPill(CanvasTextItem item, Size viewportSize) {
-    final viewportPos = item.position * _scale + _panOffset;
-    final boxWidthViewport = item.width * _scale;
-    final isLocked = item.isLocked;
-    final pillWidth = isLocked ? 210.0 : 595.0;
-    const pillHeight = 38.0;
-
-    final centerX = viewportPos.dx + boxWidthViewport / 2.0;
-    final left = (centerX - pillWidth / 2.0).clamp(
-      8.0,
-      (viewportSize.width - pillWidth - 8.0).clamp(8.0, viewportSize.width),
-    );
-    final popoverExtra = (_showCornerRadiusSlider && !isLocked) ? 48.0 : 0.0;
-    final topCandidate = viewportPos.dy - pillHeight - popoverExtra - 14.0;
-    final bottomCandidate = viewportPos.dy + 90.0 * _scale;
-    final top = topCandidate >= 8.0
-        ? topCandidate
-        : bottomCandidate.clamp(
-            8.0,
-            (viewportSize.height - pillHeight - popoverExtra - 80.0)
-                .clamp(8.0, viewportSize.height),
-          );
-
-    return Positioned(
-      left: left,
-      top: top,
-      child: Material(
-        color: Colors.transparent,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            if (_showCornerRadiusSlider && !isLocked) ...[
-              _buildCornerRadiusAdjustmentBar(item),
-              const SizedBox(height: 6),
-            ],
-            Container(
-              height: pillHeight,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E293B).withValues(alpha: 0.96),
-                borderRadius: BorderRadius.circular(19),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.2),
-                    blurRadius: 14,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: isLocked
-                    ? [
-                        const Padding(
-                          padding:
-                              EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.lock_rounded,
-                                size: 14,
-                                color: Color(0xFFFBBF24),
-                              ),
-                              SizedBox(width: 4),
-                              Text(
-                                'Kilitli Metin',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFFFBBF24),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        _buildPillDivider(),
-                        InkWell(
-                          borderRadius: BorderRadius.circular(10),
-                          onTap: () =>
-                              widget.controller.toggleCanvasTextLock(item.id),
-                          child: const Padding(
-                            padding:
-                                EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.lock_open_rounded,
-                                  size: 14,
-                                  color: Colors.white,
-                                ),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Kilidi Aç',
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        _buildPillDivider(),
-                        InkWell(
-                          borderRadius: BorderRadius.circular(10),
-                          onTap: () => widget.controller.selectCanvasText(null),
-                          child: const Padding(
-                            padding: EdgeInsets.all(4),
-                            child: Icon(
-                              Icons.close_rounded,
-                              size: 15,
-                              color: Colors.white70,
-                            ),
-                          ),
-                        ),
-                      ]
-                    : [
-                        // 1. Font Family Selector (Modern / Serif / El Yazısı / Mono)
-                        PopupMenuButton<String>(
-                          tooltip: 'Yazı Tipi (Font)',
-                          offset: const Offset(0, 36),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          onSelected: (fam) {
-                            widget.controller.updateCanvasTextStyle(
-                              item.id,
-                              (cur) => cur.copyWith(fontFamily: fam),
-                            );
-                          },
-                          itemBuilder: (ctx) => const [
-                            PopupMenuItem(
-                              value: 'sans',
-                              height: 34,
-                              child: Text(
-                                'Modern Sans',
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            PopupMenuItem(
-                              value: 'serif',
-                              height: 34,
-                              child: Text(
-                                'Klasik Serif',
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  fontFamily: 'Georgia',
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            PopupMenuItem(
-                              value: 'hand',
-                              height: 34,
-                              child: Text(
-                                'El Yazısı / Not',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontFamily: ' Chalkboard SE',
-                                  fontStyle: FontStyle.italic,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            PopupMenuItem(
-                              value: 'mono',
-                              height: 34,
-                              child: Text(
-                                'Monospace (Kod)',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontFamily: 'Courier',
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 7,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  item.fontFamily == 'serif'
-                                      ? 'Serif'
-                                      : item.fontFamily == 'hand'
-                                          ? 'El Yazısı'
-                                          : item.fontFamily == 'mono'
-                                              ? 'Mono'
-                                              : 'Modern',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(width: 2),
-                                const Icon(
-                                  Icons.arrow_drop_down_rounded,
-                                  size: 15,
-                                  color: Colors.white70,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        _buildPillDivider(),
-
-                        // 2. Font Size (A- / Size / A+)
-                        Tooltip(
-                          message: 'Yazıyı Küçült',
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(8),
-                            onTap: () => widget.controller.updateCanvasTextStyle(
-                              item.id,
-                              (cur) => cur.copyWith(
-                                fontSize:
-                                    (cur.fontSize - 2.0).clamp(10.0, 72.0),
-                              ),
-                            ),
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(
-                                  horizontal: 5, vertical: 4),
-                              child: Icon(
-                                Icons.remove_rounded,
-                                size: 14,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                        Text(
-                          '${item.fontSize.round()}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF38BDF8),
-                          ),
-                        ),
-                        Tooltip(
-                          message: 'Yazıyı Büyüt',
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(8),
-                            onTap: () => widget.controller.updateCanvasTextStyle(
-                              item.id,
-                              (cur) => cur.copyWith(
-                                fontSize:
-                                    (cur.fontSize + 2.0).clamp(10.0, 72.0),
-                              ),
-                            ),
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(
-                                  horizontal: 5, vertical: 4),
-                              child: Icon(
-                                Icons.add_rounded,
-                                size: 14,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                        _buildPillDivider(),
-
-                        // 3. Bold / Italic / Underline
-                        _buildFormatToggleBtn(
-                          tooltip: 'Kalın (Bold)',
-                          icon: Icons.format_bold_rounded,
-                          isActive: item.isBold,
-                          onTap: () => widget.controller.updateCanvasTextStyle(
-                            item.id,
-                            (cur) => cur.copyWith(isBold: !cur.isBold),
-                          ),
-                        ),
-                        _buildFormatToggleBtn(
-                          tooltip: 'İtalik',
-                          icon: Icons.format_italic_rounded,
-                          isActive: item.isItalic,
-                          onTap: () => widget.controller.updateCanvasTextStyle(
-                            item.id,
-                            (cur) => cur.copyWith(isItalic: !cur.isItalic),
-                          ),
-                        ),
-                        _buildFormatToggleBtn(
-                          tooltip: 'Altı Çizili',
-                          icon: Icons.format_underlined_rounded,
-                          isActive: item.isUnderline,
-                          onTap: () => widget.controller.updateCanvasTextStyle(
-                            item.id,
-                            (cur) => cur.copyWith(isUnderline: !cur.isUnderline),
-                          ),
-                        ),
-                        _buildPillDivider(),
-
-                        // 4. Alignment cycle & Bullet List
-                        Tooltip(
-                          message: 'Hizalama (Sol / Orta / Sağ)',
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(8),
-                            onTap: () {
-                              final nextAlign = item.textAlign == 'left'
-                                  ? 'center'
-                                  : item.textAlign == 'center'
-                                      ? 'right'
-                                      : 'left';
-                              widget.controller.updateCanvasTextStyle(
-                                item.id,
-                                (cur) => cur.copyWith(textAlign: nextAlign),
-                              );
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.all(5),
-                              child: Icon(
-                                item.textAlign == 'center'
-                                    ? Icons.format_align_center_rounded
-                                    : item.textAlign == 'right'
-                                        ? Icons.format_align_right_rounded
-                                        : Icons.format_align_left_rounded,
-                                size: 15,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                        Tooltip(
-                          message: 'Madde İşareti (• Liste)',
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(8),
-                            onTap: () => widget.controller
-                                .toggleCanvasTextBulletList(item.id),
-                            child: const Padding(
-                              padding: EdgeInsets.all(5),
-                              child: Icon(
-                                Icons.format_list_bulleted_rounded,
-                                size: 15,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                        _buildPillDivider(),
-
-                        // 5. Background Highlight / Post-it Color Picker
-                        PopupMenuButton<int>(
-                          tooltip: 'Kutu Arka Plan / Post-it Rengi',
-                          offset: const Offset(0, 36),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          onSelected: (bgVal) {
-                            widget.controller.updateCanvasTextStyle(
-                              item.id,
-                              (cur) => bgVal == 0
-                                  ? cur.copyWith(clearBackgroundColor: true)
-                                  : cur.copyWith(backgroundColor: bgVal),
-                            );
-                          },
-                          itemBuilder: (ctx) => const [
-                            PopupMenuItem(
-                              value: 0,
-                              height: 32,
-                              child: Text(
-                                'Şeffaf (Arka Plansız)',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
-                            PopupMenuItem(
-                              value: 0xFFFEF08A,
-                              height: 32,
-                              child: Text(
-                                '🟨 Sarı Post-it',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
-                            PopupMenuItem(
-                              value: 0xFFDBEAFE,
-                              height: 32,
-                              child: Text(
-                                '🟦 Mavi Not Kutusu',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
-                            PopupMenuItem(
-                              value: 0xFFDCFCE7,
-                              height: 32,
-                              child: Text(
-                                '🟩 Yeşil Not Kutusu',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
-                            PopupMenuItem(
-                              value: 0xFFFCE7F3,
-                              height: 32,
-                              child: Text(
-                                '🟪 Pembe Not Kutusu',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ],
-                          child: Padding(
-                            padding: const EdgeInsets.all(5),
-                            child: Icon(
-                              Icons.format_color_fill_rounded,
-                              size: 15,
-                              color: item.backgroundColor != null
-                                  ? Color(item.backgroundColor!)
-                                  : Colors.white70,
-                            ),
-                          ),
-                        ),
-                        _buildPillDivider(),
-
-                        // 5b. Corner Radius (Kenar Yuvarlatma Slider Barı Aç/Kapa)
-                        Tooltip(
-                          message: 'Kenar Yuvarlatma (Köşeli → Yarım Daire)',
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(8),
-                            onTap: () {
-                              setState(() => _showCornerRadiusSlider =
-                                  !_showCornerRadiusSlider);
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(5),
-                              decoration: BoxDecoration(
-                                color: _showCornerRadiusSlider
-                                    ? const Color(0xFF38BDF8)
-                                        .withValues(alpha: 0.22)
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(7),
-                              ),
-                              child: Icon(
-                                Icons.rounded_corner_rounded,
-                                size: 15,
-                                color: _showCornerRadiusSlider
-                                    ? const Color(0xFF38BDF8)
-                                    : Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                        _buildPillDivider(),
-
-                        // 6. Edit / Duplicate / Lock / Delete
-                        Tooltip(
-                          message: 'Metni Düzenle',
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(8),
-                            onTap: () => widget.controller
-                                .startEditingCanvasText(item.id),
-                            child: const Padding(
-                              padding: EdgeInsets.all(5),
-                              child: Icon(
-                                Icons.edit_rounded,
-                                size: 15,
-                                color: Color(0xFF38BDF8),
-                              ),
-                            ),
-                          ),
-                        ),
-                        Tooltip(
-                          message: 'Metni Çoğalt',
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(8),
-                            onTap: () =>
-                                widget.controller.duplicateCanvasText(item.id),
-                            child: const Padding(
-                              padding: EdgeInsets.all(5),
-                              child: Icon(
-                                Icons.copy_rounded,
-                                size: 14,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                        Tooltip(
-                          message: 'Metni Kilitle',
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(8),
-                            onTap: () =>
-                                widget.controller.toggleCanvasTextLock(item.id),
-                            child: const Padding(
-                              padding: EdgeInsets.all(5),
-                              child: Icon(
-                                Icons.lock_outline_rounded,
-                                size: 14,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                        Tooltip(
-                          message: 'Metni Sil',
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(8),
-                            onTap: () =>
-                                widget.controller.deleteCanvasText(item.id),
-                            child: const Padding(
-                              padding: EdgeInsets.all(5),
-                              child: Icon(
-                                Icons.delete_outline_rounded,
-                                size: 15,
-                                color: Color(0xFFFF453A),
-                              ),
-                            ),
-                          ),
-                        ),
-                        _buildPillDivider(),
-                        PopupMenuButton<String>(
-                          tooltip: 'Katman ve Sıralama Seçenekleri',
-                          offset: const Offset(0, 38),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          elevation: 10,
-                          padding: EdgeInsets.zero,
-                          onSelected: (action) {
-                            switch (action) {
-                              case 'show_selected_layers':
-                                widget.controller
-                                    .openQuickAccessForSelectedLayers();
-                                break;
-                              case 'show_all_layers':
-                                widget.controller.openQuickAccessAllLayers();
-                                break;
-                              case 'bring_front':
-                                widget.controller.bringTextToFront(item.id);
-                                break;
-                              case 'move_up':
-                                widget.controller.moveTextLayerUp(item.id);
-                                break;
-                              case 'move_down':
-                                widget.controller.moveTextLayerDown(item.id);
-                                break;
-                              case 'send_back':
-                                widget.controller.sendTextToBack(item.id);
-                                break;
-                            }
-                          },
-                          itemBuilder: (ctx) => [
-                            const PopupMenuItem<String>(
-                              value: 'show_selected_layers',
-                              height: 38,
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.layers_rounded,
-                                    size: 17,
-                                    color: Color(0xFF007AFF),
-                                  ),
-                                  SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      'Seçili Metnin Katmanını Göster',
-                                      style: TextStyle(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF007AFF),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const PopupMenuItem<String>(
-                              value: 'show_all_layers',
-                              height: 36,
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.view_agenda_outlined,
-                                    size: 16,
-                                    color: Color(0xFF1E293B),
-                                  ),
-                                  SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      'Tüm Katmanları Göster',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF1E293B),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const PopupMenuDivider(height: 8),
-                            const PopupMenuItem<String>(
-                              value: 'bring_front',
-                              height: 34,
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.flip_to_front_rounded,
-                                    size: 16,
-                                    color: Color(0xFF334155),
-                                  ),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    'En Üste Getir',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const PopupMenuItem<String>(
-                              value: 'move_up',
-                              height: 34,
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.arrow_upward_rounded,
-                                    size: 16,
-                                    color: Color(0xFF334155),
-                                  ),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    'Bir Üste Çıkar',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const PopupMenuItem<String>(
-                              value: 'move_down',
-                              height: 34,
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.arrow_downward_rounded,
-                                    size: 16,
-                                    color: Color(0xFF334155),
-                                  ),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    'Bir Alta İndir',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const PopupMenuItem<String>(
-                              value: 'send_back',
-                              height: 34,
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.flip_to_back_rounded,
-                                    size: 16,
-                                    color: Color(0xFF334155),
-                                  ),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    'En Alta Gönder',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              size: 19,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildCornerRadiusAdjustmentBar(CanvasTextItem item) {
     return Container(
@@ -1209,14 +494,29 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     );
   }
 
-  Widget _buildSelectionActionPill(Rect canvasBounds, Size viewportSize) {
+  Widget _buildUnifiedSelectionPill(Size viewportSize) {
     final controller = widget.controller;
-    final rot = controller.selectionRotationAngle;
+    final textItem = controller.selectedTextItem;
+    final bounds = controller.selectionBounds ??
+        (textItem != null
+            ? Rect.fromLTWH(
+                textItem.position.dx,
+                textItem.position.dy,
+                textItem.width,
+                math.max(38.0, textItem.computeHeight()),
+              )
+            : null);
+    if (bounds == null) return const SizedBox.shrink();
+
+    final rot = controller.selectionRotationAngle != 0.0
+        ? controller.selectionRotationAngle
+        : (textItem?.rotation ?? 0.0);
+
     final corners = [
-      _rotateCanvasPoint(canvasBounds.topLeft, canvasBounds.center, rot),
-      _rotateCanvasPoint(canvasBounds.topRight, canvasBounds.center, rot),
-      _rotateCanvasPoint(canvasBounds.bottomLeft, canvasBounds.center, rot),
-      _rotateCanvasPoint(canvasBounds.bottomRight, canvasBounds.center, rot),
+      _rotateCanvasPoint(bounds.topLeft, bounds.center, rot),
+      _rotateCanvasPoint(bounds.topRight, bounds.center, rot),
+      _rotateCanvasPoint(bounds.bottomLeft, bounds.center, rot),
+      _rotateCanvasPoint(bounds.bottomRight, bounds.center, rot),
     ];
     double minY = corners.first.dy;
     double maxY = corners.first.dy;
@@ -1225,42 +525,45 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       if (c.dy > maxY) maxY = c.dy;
     }
 
-    final centerViewport = canvasBounds.center * _scale + _panOffset;
-    final topCenterViewport = Offset(canvasBounds.center.dx, minY) * _scale + _panOffset;
-    final bottomCenterViewport = Offset(canvasBounds.center.dx, maxY) * _scale + _panOffset;
+    final centerViewport = bounds.center * _scale + _panOffset;
+    final topCenterViewport = Offset(bounds.center.dx, minY) * _scale + _panOffset;
+    final bottomCenterViewport = Offset(bounds.center.dx, maxY) * _scale + _panOffset;
 
-    // Calculate where the 2D rotation handle (↻) currently is in viewport space
     final localHandleCanvas = Offset(
-      canvasBounds.bottomCenter.dx,
-      canvasBounds.bottomCenter.dy + 34.0 / _scale,
+      bounds.bottomCenter.dx,
+      bounds.bottomCenter.dy + 34.0 / _scale,
     );
     final rotatedHandleCanvas = _rotateCanvasPoint(
       localHandleCanvas,
-      canvasBounds.center,
+      bounds.center,
       rot,
     );
     final handleViewport = rotatedHandleCanvas * _scale + _panOffset;
 
-    final isLocked = controller.isSelectionLocked;
-    final showGroupBtn =
-        controller.canGroupSelection || controller.hasGroupedStrokeInSelection;
-    final pillWidth = isLocked ? 210.0 : (showGroupBtn ? 412.0 : 336.0);
-    const pillHeight = 36.0;
+    final isLocked = controller.isSelectionLocked || (textItem != null && textItem.isLocked);
+    const pillHeight = 38.0;
     const handleClearanceRadius = 26.0;
 
-    final left = (centerViewport.dx - pillWidth / 2)
-        .clamp(8.0, (viewportSize.width - pillWidth - 8.0).clamp(8.0, viewportSize.width));
+    final maxAvailableWidth = (viewportSize.width - 16.0).clamp(120.0, viewportSize.width);
+    final estimatedWidth = isLocked
+        ? 210.0
+        : (textItem != null ? 760.0 : 420.0);
+    final actualWidth = math.min(estimatedWidth, maxAvailableWidth);
 
-    // Place pill on the opposite side of the rotation handle (↻):
-    // If handle is rotated into the upper half (handleViewport.dy < centerViewport.dy),
-    // place the menu at the bottom of the selection; otherwise place it at the top.
+    final double left = (centerViewport.dx - actualWidth / 2.0).clamp(
+      8.0,
+      math.max(8.0, viewportSize.width - actualWidth - 8.0),
+    ).toDouble();
+
     final handleInUpperHalf = handleViewport.dy < centerViewport.dy;
+    final popoverExtra = (_showCornerRadiusSlider && textItem != null && !isLocked) ? 48.0 : 0.0;
 
     final topCandidate = math.min(
           topCenterViewport.dy,
           handleInUpperHalf ? handleViewport.dy - handleClearanceRadius : topCenterViewport.dy,
         ) -
         pillHeight -
+        popoverExtra -
         14.0;
     final bottomCandidate = math.max(
           bottomCenterViewport.dy,
@@ -1270,41 +573,22 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
 
     double top;
     if (handleInUpperHalf) {
-      // Prefer bottom of selection when rotation handle is at the top
-      if (bottomCandidate + pillHeight <= viewportSize.height - 8.0) {
+      if (bottomCandidate + pillHeight + popoverExtra <= viewportSize.height - 8.0) {
         top = bottomCandidate;
       } else {
         top = topCandidate.clamp(
           8.0,
-          (viewportSize.height - pillHeight - 8.0).clamp(8.0, viewportSize.height),
-        );
+          math.max(8.0, viewportSize.height - pillHeight - popoverExtra - 8.0),
+        ).toDouble();
       }
     } else {
-      // Prefer top of selection when rotation handle is at the bottom
       if (topCandidate >= 8.0) {
         top = topCandidate;
       } else {
         top = bottomCandidate.clamp(
           8.0,
-          (viewportSize.height - pillHeight - 8.0).clamp(8.0, viewportSize.height),
-        );
-      }
-    }
-
-    // Extra collision guard: if pill rect still touches the rotation handle circle, flip side
-    final pillRect = Rect.fromLTWH(left, top, pillWidth, pillHeight);
-    final handleRect = Rect.fromCircle(center: handleViewport, radius: handleClearanceRadius);
-    if (pillRect.overlaps(handleRect)) {
-      if (handleInUpperHalf) {
-        top = (bottomCenterViewport.dy + 16.0).clamp(
-          8.0,
-          (viewportSize.height - pillHeight - 8.0).clamp(8.0, viewportSize.height),
-        );
-      } else {
-        top = (topCenterViewport.dy - pillHeight - 16.0).clamp(
-          8.0,
-          (viewportSize.height - pillHeight - 8.0).clamp(8.0, viewportSize.height),
-        );
+          math.max(8.0, viewportSize.height - pillHeight - 8.0),
+        ).toDouble();
       }
     }
 
@@ -1314,614 +598,40 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       child: IgnorePointer(
         ignoring: controller.isRotatingSelection || controller.activeResizeHandle != null,
         child: Material(
-        color: Colors.transparent,
-        child: Container(
-          height: pillHeight,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E293B).withValues(alpha: 0.94),
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.18),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
+          color: Colors.transparent,
+          child: Column(
             mainAxisSize: MainAxisSize.min,
-            children: isLocked
-                ? [
-                    // Canva-Style Locked Selection Bar: [🔒 Kilitli | 🔓 Kilidi Aç | ✕]
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.lock_rounded,
-                            size: 14,
-                            color: Color(0xFFFBBF24),
-                          ),
-                          SizedBox(width: 4),
-                          Text(
-                            'Kilitli',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFFFBBF24),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      width: 1,
-                      height: 16,
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      color: Colors.white.withValues(alpha: 0.2),
-                    ),
-                    Tooltip(
-                      message: 'Öğenin Kilidini Aç',
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: widget.controller.unlockSelectedStrokes,
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.lock_open_rounded,
-                                size: 15,
-                                color: Colors.white,
-                              ),
-                              SizedBox(width: 4),
-                              Text(
-                                'Kilidi Aç',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Container(
-                      width: 1,
-                      height: 16,
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      color: Colors.white.withValues(alpha: 0.2),
-                    ),
-                    Tooltip(
-                      message: 'Seçimi Kaldır',
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: widget.controller.clearLassoSelection,
-                        child: const Padding(
-                          padding: EdgeInsets.all(4),
-                          child: Icon(
-                            Icons.close_rounded,
-                            size: 15,
-                            color: Colors.white70,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ]
-                : [
-              Tooltip(
-                message: 'Seçimi Çoğalt',
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: widget.controller.duplicateSelectedStrokes,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.copy_rounded, size: 15, color: Colors.white),
-                        SizedBox(width: 4),
-                        Text(
-                          'Çoğalt',
-                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.white),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              if (controller.canGroupSelection) ...[
-                Container(
-                  width: 1,
-                  height: 16,
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  color: Colors.white.withValues(alpha: 0.2),
-                ),
-                Tooltip(
-                  message: 'Seçili Öğeleri Grupla',
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: widget.controller.groupSelectedStrokes,
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.link_rounded, size: 16, color: Color(0xFF38BDF8)),
-                          SizedBox(width: 4),
-                          Text(
-                            'Grupla',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF38BDF8),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ] else if (controller.hasGroupedStrokeInSelection) ...[
-                Container(
-                  width: 1,
-                  height: 16,
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  color: Colors.white.withValues(alpha: 0.2),
-                ),
-                Tooltip(
-                  message: 'Grubu Çöz',
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: widget.controller.ungroupSelectedStrokes,
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.link_off_rounded, size: 16, color: Color(0xFFFBBF24)),
-                          SizedBox(width: 4),
-                          Text(
-                            'Grubu Çöz',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFFFBBF24),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (_showCornerRadiusSlider && textItem != null && !isLocked) ...[
+                _buildCornerRadiusAdjustmentBar(textItem),
+                const SizedBox(height: 8),
               ],
               Container(
-                width: 1,
-                height: 16,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                color: Colors.white.withValues(alpha: 0.2),
-              ),
-              Tooltip(
-                message: 'Yatay Aynala (Sağa / Sola Çevir)',
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: widget.controller.flipSelectionHorizontally,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    child: Icon(Icons.flip_rounded, size: 16, color: Colors.white),
-                  ),
-                ),
-              ),
-              Tooltip(
-                message: 'Dikey Aynala (Yukarı / Aşağı Çevir)',
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: widget.controller.flipSelectionVertically,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    child: Transform.rotate(
-                      angle: math.pi / 2,
-                      child: const Icon(Icons.flip_rounded, size: 16, color: Colors.white),
-                    ),
-                  ),
-                ),
-              ),
-              Container(
-                width: 1,
-                height: 16,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                color: Colors.white.withValues(alpha: 0.2),
-              ),
-              Tooltip(
-                message: 'Varlıklara Kaydet (Hızlı Erişimde Tek Parça Sakla)',
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () {
-                    widget.controller.saveSelectionAsAsset(openAssetsPanel: true);
-                  },
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    child: Icon(
-                      Icons.bookmark_add_outlined,
-                      size: 16,
-                      color: Color(0xFF2DD4BF),
-                    ),
-                  ),
-                ),
-              ),
-              Container(
-                width: 1,
-                height: 16,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                color: Colors.white.withValues(alpha: 0.2),
-              ),
-              Tooltip(
-                message: 'Öğeyi Kilitle (Taşınmasını ve Silinmesini Önler)',
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: widget.controller.lockSelectedStrokes,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    child: Icon(Icons.lock_outline_rounded, size: 15, color: Colors.white),
-                  ),
-                ),
-              ),
-              Container(
-                width: 1,
-                height: 16,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                color: Colors.white.withValues(alpha: 0.2),
-              ),
-              PopupMenuButton<String>(
-                tooltip: 'Varlık, Grup, Kilit ve Katman Seçenekleri',
-                offset: const Offset(0, 38),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                elevation: 10,
-                padding: EdgeInsets.zero,
-                onSelected: (action) {
-                  switch (action) {
-                    case 'save_as_asset':
-                      widget.controller.saveSelectionAsAsset(openAssetsPanel: true);
-                      break;
-                    case 'show_assets':
-                      widget.controller.openQuickAccessAssetsPage();
-                      break;
-                    case 'lock_selection':
-                      widget.controller.lockSelectedStrokes();
-                      break;
-                    case 'group_selection':
-                      widget.controller.groupSelectedStrokes();
-                      break;
-                    case 'ungroup_selection':
-                      widget.controller.ungroupSelectedStrokes();
-                      break;
-                    case 'show_selected_group':
-                      widget.controller.openQuickAccessForSelectedGroup();
-                      break;
-                    case 'show_all_groups':
-                      widget.controller.openQuickAccessAllGroups();
-                      break;
-                    case 'show_selected_layers':
-                      widget.controller.openQuickAccessForSelectedLayers();
-                      break;
-                    case 'show_all_layers':
-                      widget.controller.openQuickAccessAllLayers();
-                      break;
-                    case 'bring_front':
-                      widget.controller.bringSelectionToFront();
-                      break;
-                    case 'move_up':
-                      widget.controller.moveSelectionForward();
-                      break;
-                    case 'move_down':
-                      widget.controller.moveSelectionBackward();
-                      break;
-                    case 'send_back':
-                      widget.controller.sendSelectionToBack();
-                      break;
-                  }
-                },
-                itemBuilder: (ctx) => [
-                  PopupMenuItem<String>(
-                    value: 'save_as_asset',
-                    height: 36,
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.bookmark_add_rounded,
-                          size: 17,
-                          color: Color(0xFF0D9488),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            controller.selectedLayerCount > 1
-                                ? 'Seçimi Tek Parça Varlık Olarak Kaydet (${controller.selectedLayerCount})'
-                                : 'Öğeyi Varlıklara Kaydet',
-                            style: const TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF0D9488),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'show_assets',
-                    height: 36,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.collections_bookmark_rounded,
-                          size: 16,
-                          color: Color(0xFF0F766E),
-                        ),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Kayıtlı Varlıkları Göster',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF0F766E),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuDivider(height: 8),
-                  const PopupMenuItem<String>(
-                    value: 'lock_selection',
-                    height: 36,
-                    child: Row(
-                      children: [
-                        Icon(Icons.lock_outline_rounded, size: 17, color: Color(0xFFD97706)),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Seçili Öğeyi Kilitle',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFFD97706),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuDivider(height: 8),
-                  if (controller.canGroupSelection)
-                    PopupMenuItem<String>(
-                      value: 'group_selection',
-                      height: 36,
-                      child: Row(
-                        children: [
-                          const Icon(Icons.link_rounded, size: 17, color: Color(0xFF0284C7)),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Seçili Öğeleri Grupla (${controller.selectedStrokeIndices.length})',
-                              style: const TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF0284C7),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  if (controller.hasGroupedStrokeInSelection) ...[
-                    const PopupMenuItem<String>(
-                      value: 'ungroup_selection',
-                      height: 36,
-                      child: Row(
-                        children: [
-                          Icon(Icons.link_off_rounded, size: 17, color: Color(0xFFD97706)),
-                          SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Grubu Çöz',
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFFD97706),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const PopupMenuItem<String>(
-                      value: 'show_selected_group',
-                      height: 36,
-                      child: Row(
-                        children: [
-                          Icon(Icons.workspaces_rounded, size: 16, color: Color(0xFF4F46E5)),
-                          SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Seçili Gruptaki Öğeleri Göster',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF4F46E5),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                height: pillHeight,
+                constraints: BoxConstraints(maxWidth: maxAvailableWidth),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B).withValues(alpha: 0.94),
+                  borderRadius: BorderRadius.circular(19),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.20),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
                     ),
                   ],
-                  const PopupMenuItem<String>(
-                    value: 'show_all_groups',
-                    height: 36,
-                    child: Row(
-                      children: [
-                        Icon(Icons.workspaces_outline, size: 16, color: Color(0xFF1E293B)),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Tüm Grupları Göster',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF1E293B),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuDivider(height: 8),
-                  PopupMenuItem<String>(
-                    value: 'show_selected_layers',
-                    height: 38,
-                    child: Row(
-                      children: [
-                        const Icon(Icons.layers_rounded, size: 17, color: Color(0xFF007AFF)),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Seçili Öğelerin Katmanını Göster (${widget.controller.selectedLayerCount})',
-                            style: const TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF007AFF),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'show_all_layers',
-                    height: 36,
-                    child: Row(
-                      children: [
-                        Icon(Icons.view_agenda_outlined, size: 16, color: Color(0xFF1E293B)),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Tüm Katmanları Göster',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF1E293B),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuDivider(height: 8),
-                  const PopupMenuItem<String>(
-                    value: 'bring_front',
-                    height: 34,
-                    child: Row(
-                      children: [
-                        Icon(Icons.flip_to_front_rounded, size: 16, color: Color(0xFF334155)),
-                        SizedBox(width: 10),
-                        Text('En Üste Getir', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'move_up',
-                    height: 34,
-                    child: Row(
-                      children: [
-                        Icon(Icons.arrow_upward_rounded, size: 16, color: Color(0xFF334155)),
-                        SizedBox(width: 10),
-                        Text('Bir Üste Çıkar', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'move_down',
-                    height: 34,
-                    child: Row(
-                      children: [
-                        Icon(Icons.arrow_downward_rounded, size: 16, color: Color(0xFF334155)),
-                        SizedBox(width: 10),
-                        Text('Bir Alta İndir', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'send_back',
-                    height: 34,
-                    child: Row(
-                      children: [
-                        Icon(Icons.flip_to_back_rounded, size: 16, color: Color(0xFF334155)),
-                        SizedBox(width: 10),
-                        Text('En Alta Gönder', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-                      ],
-                    ),
-                  ),
-                ],
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    size: 19,
-                    color: Colors.white,
-                  ),
                 ),
-              ),
-              Container(
-                width: 1,
-                height: 16,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                color: Colors.white.withValues(alpha: 0.2),
-              ),
-              Tooltip(
-                message: 'Seçimi Sil',
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: widget.controller.deleteSelectedStrokes,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFFF453A)),
-                        SizedBox(width: 4),
-                        Text(
-                          'Sil',
-                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFFFF453A)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Container(
-                width: 1,
-                height: 16,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                color: Colors.white.withValues(alpha: 0.2),
-              ),
-              Tooltip(
-                message: 'Seçimi Kaldır',
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: widget.controller.clearLassoSelection,
-                  child: const Padding(
-                    padding: EdgeInsets.all(4),
-                    child: Icon(Icons.close_rounded, size: 15, color: Colors.white70),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: isLocked
+                        ? _buildLockedPillItems(controller, textItem)
+                        : (textItem != null
+                            ? _buildUnifiedTextAndLassoItems(controller, textItem)
+                            : _buildStrokeLassoItems(controller)),
                   ),
                 ),
               ),
@@ -1929,6 +639,1093 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           ),
         ),
       ),
+    );
+  }
+
+  List<Widget> _buildLockedPillItems(
+      PlannerController controller, CanvasTextItem? textItem) {
+    return [
+      const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.lock_rounded, size: 14, color: Color(0xFFFBBF24)),
+            SizedBox(width: 4),
+            Text(
+              'Kilitli',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFFFBBF24),
+              ),
+            ),
+          ],
+        ),
+      ),
+      _buildPillDivider(),
+      Tooltip(
+        message: 'Öğenin Kilidini Aç',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            controller.unlockSelectedStrokes();
+            if (textItem != null) {
+              controller.updateCanvasTextStyle(
+                textItem.id,
+                (cur) => cur.copyWith(isLocked: false),
+              );
+            }
+          },
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.lock_open_rounded, size: 15, color: Colors.white),
+                SizedBox(width: 4),
+                Text(
+                  'Kilidi Aç',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+      Tooltip(
+        message: 'Seçimi Kaldır',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            controller.clearLassoSelection();
+            controller.selectCanvasText(null);
+          },
+          child: const Padding(
+            padding: EdgeInsets.all(4),
+            child: Icon(Icons.close_rounded, size: 15, color: Colors.white70),
+          ),
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _buildUnifiedTextAndLassoItems(
+      PlannerController controller, CanvasTextItem item) {
+    return [
+      // 1. Font Family Dropdown
+      PopupMenuButton<String>(
+        tooltip: 'Yazı Tipi / Font',
+        offset: const Offset(0, 36),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        onSelected: (font) {
+          controller.updateCanvasTextStyle(
+            item.id,
+            (cur) => cur.copyWith(fontFamily: font),
+          );
+        },
+        itemBuilder: (ctx) => const [
+          PopupMenuItem(
+            value: 'modern',
+            height: 34,
+            child: Text(
+              'Modern (Sans-Serif)',
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+            ),
+          ),
+          PopupMenuItem(
+            value: 'serif',
+            height: 34,
+            child: Text(
+              'Klasik Serif',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontFamily: 'Georgia',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          PopupMenuItem(
+            value: 'hand',
+            height: 34,
+            child: Text(
+              'El Yazısı / Not',
+              style: TextStyle(
+                fontSize: 13,
+                fontStyle: FontStyle.italic,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          PopupMenuItem(
+            value: 'mono',
+            height: 34,
+            child: Text(
+              'Monospace (Kod)',
+              style: TextStyle(
+                fontSize: 12,
+                fontFamily: 'Courier',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                item.fontFamily == 'serif'
+                    ? 'Serif'
+                    : item.fontFamily == 'hand'
+                        ? 'El Yazısı'
+                        : item.fontFamily == 'mono'
+                            ? 'Mono'
+                            : 'Modern',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 2),
+              const Icon(
+                Icons.arrow_drop_down_rounded,
+                size: 15,
+                color: Colors.white70,
+              ),
+            ],
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+
+      // 2. Font Size ( - size + )
+      Tooltip(
+        message: 'Yazıyı Küçült',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => controller.updateCanvasTextStyle(
+            item.id,
+            (cur) => cur.copyWith(
+              fontSize: (cur.fontSize - 2.0).clamp(10.0, 72.0),
+            ),
+          ),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+            child: Icon(Icons.remove_rounded, size: 14, color: Colors.white),
+          ),
+        ),
+      ),
+      Text(
+        '${item.fontSize.round()}',
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF38BDF8),
+        ),
+      ),
+      Tooltip(
+        message: 'Yazıyı Büyüt',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => controller.updateCanvasTextStyle(
+            item.id,
+            (cur) => cur.copyWith(
+              fontSize: (cur.fontSize + 2.0).clamp(10.0, 72.0),
+            ),
+          ),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+            child: Icon(Icons.add_rounded, size: 14, color: Colors.white),
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+
+      // 3. Bold, Italic, Underline
+      _buildFormatToggleBtn(
+        tooltip: 'Kalın (Bold)',
+        icon: Icons.format_bold_rounded,
+        isActive: item.isBold,
+        onTap: () => controller.updateCanvasTextStyle(
+          item.id,
+          (cur) => cur.copyWith(isBold: !cur.isBold),
+        ),
+      ),
+      _buildFormatToggleBtn(
+        tooltip: 'İtalik',
+        icon: Icons.format_italic_rounded,
+        isActive: item.isItalic,
+        onTap: () => controller.updateCanvasTextStyle(
+          item.id,
+          (cur) => cur.copyWith(isItalic: !cur.isItalic),
+        ),
+      ),
+      _buildFormatToggleBtn(
+        tooltip: 'Altı Çizili',
+        icon: Icons.format_underlined_rounded,
+        isActive: item.isUnderline,
+        onTap: () => controller.updateCanvasTextStyle(
+          item.id,
+          (cur) => cur.copyWith(isUnderline: !cur.isUnderline),
+        ),
+      ),
+      _buildPillDivider(),
+
+      // 4. Alignment & Bullet List
+      Tooltip(
+        message: 'Hizalama (Sol / Orta / Sağ)',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () {
+            final nextAlign = item.textAlign == 'left'
+                ? 'center'
+                : item.textAlign == 'center'
+                    ? 'right'
+                    : 'left';
+            controller.updateCanvasTextStyle(
+              item.id,
+              (cur) => cur.copyWith(textAlign: nextAlign),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(5),
+            child: Icon(
+              item.textAlign == 'center'
+                  ? Icons.format_align_center_rounded
+                  : item.textAlign == 'right'
+                      ? Icons.format_align_right_rounded
+                      : Icons.format_align_left_rounded,
+              size: 15,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ),
+      Tooltip(
+        message: 'Madde İşareti (• Liste)',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => controller.toggleCanvasTextBulletList(item.id),
+          child: const Padding(
+            padding: EdgeInsets.all(5),
+            child: Icon(
+              Icons.format_list_bulleted_rounded,
+              size: 15,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+
+      // 5. Background Color Picker
+      PopupMenuButton<int>(
+        tooltip: 'Kutu Arka Plan / Post-it Rengi',
+        offset: const Offset(0, 36),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        onSelected: (bgVal) {
+          controller.updateCanvasTextStyle(
+            item.id,
+            (cur) => bgVal == 0
+                ? cur.copyWith(clearBackgroundColor: true)
+                : cur.copyWith(backgroundColor: bgVal),
+          );
+        },
+        itemBuilder: (ctx) => const [
+          PopupMenuItem(
+            value: 0,
+            height: 32,
+            child: Text('Şeffaf (Arka Plansız)', style: TextStyle(fontSize: 12)),
+          ),
+          PopupMenuItem(
+            value: 0xFFFEF08A,
+            height: 32,
+            child: Text('🟨 Sarı Post-it', style: TextStyle(fontSize: 12)),
+          ),
+          PopupMenuItem(
+            value: 0xFFDBEAFE,
+            height: 32,
+            child: Text('🟦 Mavi Not Kutusu', style: TextStyle(fontSize: 12)),
+          ),
+          PopupMenuItem(
+            value: 0xFFDCFCE7,
+            height: 32,
+            child: Text('🟩 Yeşil Not Kutusu', style: TextStyle(fontSize: 12)),
+          ),
+          PopupMenuItem(
+            value: 0xFFFCE7F3,
+            height: 32,
+            child: Text('🟪 Pembe Not Kutusu', style: TextStyle(fontSize: 12)),
+          ),
+        ],
+        child: Padding(
+          padding: const EdgeInsets.all(5),
+          child: Icon(
+            Icons.format_color_fill_rounded,
+            size: 15,
+            color: item.backgroundColor != null
+                ? Color(item.backgroundColor!)
+                : Colors.white70,
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+
+      // 6. Corner Radius Slider Toggle
+      Tooltip(
+        message: 'Kenar Yuvarlatma (${item.borderRadius.round()} px)',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () {
+            setState(() => _showCornerRadiusSlider = !_showCornerRadiusSlider);
+          },
+          child: Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: _showCornerRadiusSlider
+                  ? const Color(0xFF38BDF8).withValues(alpha: 0.22)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(7),
+            ),
+            child: Icon(
+              Icons.rounded_corner_rounded,
+              size: 15,
+              color: _showCornerRadiusSlider
+                  ? const Color(0xFF38BDF8)
+                  : Colors.white,
+            ),
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+
+      // 7. Quick Edit Text
+      Tooltip(
+        message: 'Metni Düzenle',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => controller.startEditingCanvasText(item.id),
+          child: const Padding(
+            padding: EdgeInsets.all(5),
+            child: Icon(
+              Icons.edit_rounded,
+              size: 15,
+              color: Color(0xFF38BDF8),
+            ),
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+
+      // 8. Duplicate
+      Tooltip(
+        message: 'Seçimi Çoğalt',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: controller.duplicateSelectedStrokes,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.copy_rounded, size: 15, color: Colors.white),
+                SizedBox(width: 4),
+                Text(
+                  'Çoğalt',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+
+      // 9. Group / Ungroup (if multi-selection)
+      if (controller.canGroupSelection) ...[
+        _buildPillDivider(),
+        Tooltip(
+          message: 'Seçili Öğeleri Grupla',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: controller.groupSelectedStrokes,
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.link_rounded, size: 16, color: Color(0xFF38BDF8)),
+                  SizedBox(width: 4),
+                  Text(
+                    'Grupla',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF38BDF8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ] else if (controller.hasGroupedStrokeInSelection) ...[
+        _buildPillDivider(),
+        Tooltip(
+          message: 'Grubu Çöz',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: controller.ungroupSelectedStrokes,
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.link_off_rounded, size: 16, color: Color(0xFFFBBF24)),
+                  SizedBox(width: 4),
+                  Text(
+                    'Grubu Çöz',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFFBBF24),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+      _buildPillDivider(),
+
+      // 10. Horizontal & Vertical Flip
+      Tooltip(
+        message: 'Yatay Aynala (Sağa / Sola Çevir)',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: controller.flipSelectionHorizontally,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Icon(Icons.flip_rounded, size: 16, color: Colors.white),
+          ),
+        ),
+      ),
+      Tooltip(
+        message: 'Dikey Aynala (Yukarı / Aşağı Çevir)',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: controller.flipSelectionVertically,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Transform.rotate(
+              angle: math.pi / 2,
+              child: const Icon(Icons.flip_rounded, size: 16, color: Colors.white),
+            ),
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+
+      // 11. Save Selection as Asset
+      Tooltip(
+        message: 'Varlıklara Kaydet (Hızlı Erişimde Tek Parça Sakla)',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => controller.saveSelectionAsAsset(openAssetsPanel: true),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Icon(
+              Icons.bookmark_add_outlined,
+              size: 16,
+              color: Color(0xFF2DD4BF),
+            ),
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+
+      // 12. Lock
+      Tooltip(
+        message: 'Öğeyi Kilitle (Taşınmasını ve Silinmesini Önler)',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            controller.lockSelectedStrokes();
+            controller.updateCanvasTextStyle(
+              item.id,
+              (cur) => cur.copyWith(isLocked: true),
+            );
+          },
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Icon(Icons.lock_outline_rounded, size: 15, color: Colors.white),
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+
+      // 13. More Options Popup
+      _buildUnifiedMoreOptionsMenu(controller, item),
+      _buildPillDivider(),
+
+      // 14. Delete
+      Tooltip(
+        message: 'Seçimi Sil',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            controller.deleteSelectedStrokes();
+            controller.deleteCanvasText(item.id);
+          },
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFFF453A)),
+                SizedBox(width: 4),
+                Text(
+                  'Sil',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFFF453A),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+
+      // 15. Close selection
+      Tooltip(
+        message: 'Seçimi Kaldır',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            controller.clearLassoSelection();
+            controller.selectCanvasText(null);
+          },
+          child: const Padding(
+            padding: EdgeInsets.all(4),
+            child: Icon(Icons.close_rounded, size: 15, color: Colors.white70),
+          ),
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _buildStrokeLassoItems(PlannerController controller) {
+    return [
+      Tooltip(
+        message: 'Seçimi Çoğalt',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: controller.duplicateSelectedStrokes,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.copy_rounded, size: 15, color: Colors.white),
+                SizedBox(width: 4),
+                Text(
+                  'Çoğalt',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      if (controller.canGroupSelection) ...[
+        _buildPillDivider(),
+        Tooltip(
+          message: 'Seçili Öğeleri Grupla',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: controller.groupSelectedStrokes,
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.link_rounded, size: 16, color: Color(0xFF38BDF8)),
+                  SizedBox(width: 4),
+                  Text(
+                    'Grupla',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF38BDF8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ] else if (controller.hasGroupedStrokeInSelection) ...[
+        _buildPillDivider(),
+        Tooltip(
+          message: 'Grubu Çöz',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: controller.ungroupSelectedStrokes,
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.link_off_rounded, size: 16, color: Color(0xFFFBBF24)),
+                  SizedBox(width: 4),
+                  Text(
+                    'Grubu Çöz',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFFBBF24),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+      _buildPillDivider(),
+      Tooltip(
+        message: 'Yatay Aynala (Sağa / Sola Çevir)',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: controller.flipSelectionHorizontally,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Icon(Icons.flip_rounded, size: 16, color: Colors.white),
+          ),
+        ),
+      ),
+      Tooltip(
+        message: 'Dikey Aynala (Yukarı / Aşağı Çevir)',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: controller.flipSelectionVertically,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Transform.rotate(
+              angle: math.pi / 2,
+              child: const Icon(Icons.flip_rounded, size: 16, color: Colors.white),
+            ),
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+      Tooltip(
+        message: 'Varlıklara Kaydet (Hızlı Erişimde Tek Parça Sakla)',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => controller.saveSelectionAsAsset(openAssetsPanel: true),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Icon(
+              Icons.bookmark_add_outlined,
+              size: 16,
+              color: Color(0xFF2DD4BF),
+            ),
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+      Tooltip(
+        message: 'Öğeyi Kilitle (Taşınmasını ve Silinmesini Önler)',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: controller.lockSelectedStrokes,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Icon(Icons.lock_outline_rounded, size: 15, color: Colors.white),
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+      _buildUnifiedMoreOptionsMenu(controller, null),
+      _buildPillDivider(),
+      Tooltip(
+        message: 'Seçimi Sil',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: controller.deleteSelectedStrokes,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFFF453A)),
+                SizedBox(width: 4),
+                Text(
+                  'Sil',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFFF453A),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+      Tooltip(
+        message: 'Seçimi Kaldır',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: controller.clearLassoSelection,
+          child: const Padding(
+            padding: EdgeInsets.all(4),
+            child: Icon(Icons.close_rounded, size: 15, color: Colors.white70),
+          ),
+        ),
+      ),
+    ];
+  }
+
+  Widget _buildUnifiedMoreOptionsMenu(
+      PlannerController controller, CanvasTextItem? textItem) {
+    return PopupMenuButton<String>(
+      tooltip: 'Varlık, Grup, Kilit ve Katman Seçenekleri',
+      offset: const Offset(0, 38),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      elevation: 10,
+      padding: EdgeInsets.zero,
+      onSelected: (action) {
+        switch (action) {
+          case 'save_as_asset':
+            controller.saveSelectionAsAsset(openAssetsPanel: true);
+            break;
+          case 'show_assets':
+            controller.openQuickAccessAssetsPage();
+            break;
+          case 'lock_selection':
+            controller.lockSelectedStrokes();
+            if (textItem != null) {
+              controller.updateCanvasTextStyle(
+                textItem.id,
+                (cur) => cur.copyWith(isLocked: true),
+              );
+            }
+            break;
+          case 'group_selection':
+            controller.groupSelectedStrokes();
+            break;
+          case 'ungroup_selection':
+            controller.ungroupSelectedStrokes();
+            break;
+          case 'show_selected_group':
+            controller.openQuickAccessForSelectedGroup();
+            break;
+          case 'show_all_groups':
+            controller.openQuickAccessAllGroups();
+            break;
+          case 'show_selected_layers':
+            controller.openQuickAccessForSelectedLayers();
+            break;
+          case 'show_all_layers':
+            controller.openQuickAccessAllLayers();
+            break;
+          case 'bring_front':
+            controller.bringSelectionToFront();
+            if (textItem != null) controller.bringTextToFront(textItem.id);
+            break;
+          case 'move_up':
+            controller.moveSelectionForward();
+            if (textItem != null) controller.moveTextLayerUp(textItem.id);
+            break;
+          case 'move_down':
+            controller.moveSelectionBackward();
+            if (textItem != null) controller.moveTextLayerDown(textItem.id);
+            break;
+          case 'send_back':
+            controller.sendSelectionToBack();
+            if (textItem != null) controller.sendTextToBack(textItem.id);
+            break;
+        }
+      },
+      itemBuilder: (ctx) => [
+        PopupMenuItem<String>(
+          value: 'save_as_asset',
+          height: 36,
+          child: Row(
+            children: [
+              const Icon(
+                Icons.bookmark_add_rounded,
+                size: 17,
+                color: Color(0xFF0D9488),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  controller.selectedLayerCount > 1
+                      ? 'Seçimi Tek Parça Varlık Olarak Kaydet (${controller.selectedLayerCount})'
+                      : 'Öğeyi Varlıklara Kaydet',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0D9488),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuItem<String>(
+          value: 'show_assets',
+          height: 36,
+          child: Row(
+            children: [
+              Icon(
+                Icons.collections_bookmark_rounded,
+                size: 16,
+                color: Color(0xFF0F766E),
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Kayıtlı Varlıkları Göster',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F766E),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(height: 8),
+        const PopupMenuItem<String>(
+          value: 'lock_selection',
+          height: 36,
+          child: Row(
+            children: [
+              Icon(Icons.lock_outline_rounded, size: 17, color: Color(0xFFD97706)),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Seçili Öğeyi Kilitle',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFD97706),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(height: 8),
+        if (controller.canGroupSelection)
+          PopupMenuItem<String>(
+            value: 'group_selection',
+            height: 36,
+            child: Row(
+              children: [
+                const Icon(Icons.link_rounded, size: 17, color: Color(0xFF0284C7)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Seçili Öğeleri Grupla (${controller.selectedStrokeIndices.length})',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0284C7),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (controller.hasGroupedStrokeInSelection) ...[
+          const PopupMenuItem<String>(
+            value: 'ungroup_selection',
+            height: 36,
+            child: Row(
+              children: [
+                Icon(Icons.link_off_rounded, size: 17, color: Color(0xFFD97706)),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Grubu Çöz',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFD97706),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const PopupMenuItem<String>(
+            value: 'show_selected_group',
+            height: 36,
+            child: Row(
+              children: [
+                Icon(Icons.workspaces_rounded, size: 16, color: Color(0xFF4F46E5)),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Seçili Gruptaki Öğeleri Göster',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF4F46E5),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        const PopupMenuItem<String>(
+          value: 'show_all_groups',
+          height: 36,
+          child: Row(
+            children: [
+              Icon(Icons.workspaces_outline, size: 16, color: Color(0xFF1E293B)),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Tüm Grupları Göster',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(height: 8),
+        PopupMenuItem<String>(
+          value: 'show_selected_layers',
+          height: 38,
+          child: Row(
+            children: [
+              const Icon(Icons.layers_rounded, size: 17, color: Color(0xFF007AFF)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Seçili Öğelerin Katmanını Göster (${controller.selectedLayerCount})',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF007AFF),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuItem<String>(
+          value: 'show_all_layers',
+          height: 36,
+          child: Row(
+            children: [
+              Icon(Icons.view_agenda_outlined, size: 16, color: Color(0xFF1E293B)),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Tüm Katmanları Göster',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(height: 8),
+        const PopupMenuItem<String>(
+          value: 'bring_front',
+          height: 34,
+          child: Row(
+            children: [
+              Icon(Icons.flip_to_front_rounded, size: 16, color: Color(0xFF334155)),
+              SizedBox(width: 10),
+              Text('En Üste Getir', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+        const PopupMenuItem<String>(
+          value: 'move_up',
+          height: 34,
+          child: Row(
+            children: [
+              Icon(Icons.arrow_upward_rounded, size: 16, color: Color(0xFF334155)),
+              SizedBox(width: 10),
+              Text('Bir Üste Çıkar', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+        const PopupMenuItem<String>(
+          value: 'move_down',
+          height: 34,
+          child: Row(
+            children: [
+              Icon(Icons.arrow_downward_rounded, size: 16, color: Color(0xFF334155)),
+              SizedBox(width: 10),
+              Text('Bir Alta İndir', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+        const PopupMenuItem<String>(
+          value: 'send_back',
+          height: 34,
+          child: Row(
+            children: [
+              Icon(Icons.flip_to_back_rounded, size: 16, color: Color(0xFF334155)),
+              SizedBox(width: 10),
+              Text('En Alta Gönder', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Icon(
+          Icons.keyboard_arrow_down_rounded,
+          size: 19,
+          color: Colors.white,
+        ),
       ),
     );
   }
@@ -2153,7 +1950,6 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
     final isEditing = widget.isEditing;
     final isLocked = item.isLocked;
     final isLassoSelected = widget.controller.isTextLassoSelected(item.id);
-    final hasLasso = widget.controller.hasLassoSelection;
 
     final textStyle = TextStyle(
       fontSize: item.fontSize,
@@ -2170,11 +1966,14 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
         ? const Color(0xFFF59E0B)
         : const Color(0xFF007AFF);
 
-    final showIndividualHandles = (isSelected || isEditing) && !hasLasso;
-    final showSelectionBox = showIndividualHandles || isLassoSelected;
+    final isBoundsDrawnByCanvas = widget.controller.selectionBounds != null &&
+        (isLassoSelected || widget.controller.selectedTextId == item.id);
+    final showInnerDashedBox =
+        (isSelected || isEditing) && !isBoundsDrawnByCanvas;
+    final showIndividualHandles = showInnerDashedBox && !isLocked;
     final selectionFill = item.backgroundColor != null
         ? Color(item.backgroundColor!)
-        : showSelectionBox
+        : showInnerDashedBox
             ? themeColor.withValues(alpha: 0.08)
             : Colors.transparent;
 
@@ -2217,7 +2016,7 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
                         );
                       },
                 child: CustomPaint(
-                  painter: showSelectionBox
+                  painter: showInnerDashedBox
                       ? _DashedBoxPainter(
                           borderColor: themeColor,
                           fillColor: selectionFill,
@@ -2234,7 +2033,7 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
                       horizontal: 12,
                       vertical: 8,
                     ),
-                    decoration: !showSelectionBox && item.backgroundColor != null
+                    decoration: !showInnerDashedBox && item.backgroundColor != null
                         ? BoxDecoration(
                             color: Color(item.backgroundColor!),
                             borderRadius:

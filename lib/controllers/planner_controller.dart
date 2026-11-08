@@ -578,9 +578,14 @@ class PlannerController extends ChangeNotifier {
   String? get selectedTextId => _selectedTextId;
   String? get editingTextId => _editingTextId;
   CanvasTextItem? get selectedTextItem {
-    if (_selectedTextId == null) return null;
-    for (final item in _canvasTexts) {
-      if (item.id == _selectedTextId) return item;
+    if (_selectedTextId != null) {
+      for (final item in _canvasTexts) {
+        if (item.id == _selectedTextId) return item;
+      }
+    }
+    for (final id in _selectedTextIds) {
+      final idx = _canvasTexts.indexWhere((t) => t.id == id);
+      if (idx != -1) return _canvasTexts[idx];
     }
     return null;
   }
@@ -2650,11 +2655,14 @@ class PlannerController extends ChangeNotifier {
     );
 
     _selectedStrokeIndices.clear();
-    _selectedTextIds.clear();
+    _selectedTextIds
+      ..clear()
+      ..add(newItem.id);
     _canvasTexts.add(newItem);
     _normalizeUnifiedLayerOrders();
     _selectedTextId = newItem.id;
     _editingTextId = startEditing ? newItem.id : null;
+    _syncSelectionRotationFromStrokes();
     _saveCurrentStrokes();
     _saveCurrentCanvasTexts();
     notifyListeners();
@@ -2671,11 +2679,14 @@ class PlannerController extends ChangeNotifier {
       layerOrder: _nextTopLayerOrder(),
     );
     _selectedStrokeIndices.clear();
-    _selectedTextIds.clear();
+    _selectedTextIds
+      ..clear()
+      ..add(newItem.id);
     _canvasTexts.add(newItem);
     _normalizeUnifiedLayerOrders();
     _selectedTextId = newItem.id;
     _editingTextId = newItem.id;
+    _syncSelectionRotationFromStrokes();
     _saveCurrentStrokes();
     _saveCurrentCanvasTexts();
     notifyListeners();
@@ -2684,7 +2695,13 @@ class PlannerController extends ChangeNotifier {
   void selectCanvasText(String? id, {bool startEditing = false}) {
     if (id != null) {
       _selectedStrokeIndices.clear();
+      _selectedTextIds
+        ..clear()
+        ..add(id);
+      _syncSelectionRotationFromStrokes();
+    } else {
       _selectedTextIds.clear();
+      _selectionRotationAngle = 0.0;
     }
     if (_editingTextId != null && _editingTextId != id) {
       _cleanupEmptyEditingText(_editingTextId!);
@@ -2698,7 +2715,10 @@ class PlannerController extends ChangeNotifier {
     final idx = _canvasTexts.indexWhere((t) => t.id == id);
     if (idx == -1 || _canvasTexts[idx].isLocked) return;
     _selectedStrokeIndices.clear();
-    _selectedTextIds.clear();
+    _selectedTextIds
+      ..clear()
+      ..add(id);
+    _syncSelectionRotationFromStrokes();
     _selectedTextId = id;
     _editingTextId = id;
     notifyListeners();
@@ -2712,6 +2732,8 @@ class PlannerController extends ChangeNotifier {
     }
     if (deselect) {
       _selectedTextId = null;
+      _selectedTextIds.clear();
+      _selectionRotationAngle = 0.0;
     }
     _saveCurrentCanvasTexts();
     notifyListeners();

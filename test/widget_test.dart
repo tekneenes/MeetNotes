@@ -198,5 +198,17 @@ void main() {
     // 6. Test delete of duplicate text items
     controller.deleteSelectedStrokes();
     expect(controller.canvasTexts.length, 2);
+
+    // 7. Test unified selection behavior on direct canvas text selection
+    controller.clearLassoSelection();
+    expect(controller.hasLassoSelection, isFalse);
+    expect(controller.selectedTextItem, isNull);
+
+    controller.selectCanvasText(stickyId);
+    expect(controller.hasLassoSelection, isTrue);
+    expect(controller.selectedTextItem, isNotNull);
+    expect(controller.selectedTextItem!.id, stickyId);
+    expect(controller.selectionBounds, isNotNull);
+    expect(controller.isTextLassoSelected(stickyId), isTrue);
   });
 }

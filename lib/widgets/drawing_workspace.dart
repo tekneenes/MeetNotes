@@ -213,87 +213,122 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           _toolbarPosition!.dy.clamp(10.0, (constraints.maxHeight - 60).clamp(10.0, constraints.maxHeight)),
         );
 
-        return ClipRect(
-          child: Stack(
-            children: [
-              // 1a. Realistic Paper Background Painter (Transforms directly on Canvas, fills 100% viewport)
-              Positioned.fill(
-                child: CustomPaint(
-                  painter: PaperBackgroundPainter(
-                    config: controller.paperConfig,
-                    scale: _scale,
-                    panOffset: _panOffset,
-                  ),
-                ),
-              ),
-
-              // 1b. Direct Untransformed Viewport Pointer Listener & Drawing Canvas Painter
-              // Zero double-transformation: pointer localPosition is pure viewport space!
-              Positioned.fill(
-                child: Listener(
-                  behavior: HitTestBehavior.opaque,
-                  onPointerDown: _handlePointerDown,
-                  onPointerMove: _handlePointerMove,
-                  onPointerUp: _handlePointerUpOrCancel,
-                  onPointerCancel: _handlePointerUpOrCancel,
-                  onPointerPanZoomStart: _handleTrackpadPanZoomStart,
-                  onPointerPanZoomUpdate: (event) => _handleTrackpadPanZoomUpdate(event, viewportSize),
-                  child: CustomPaint(
-                    painter: DrawingCanvasPainter(
-                      strokes: controller.strokes,
-                      activeStroke: controller.activeStroke,
-                      lassoPoints: controller.lassoPoints,
-                      selectionBounds: controller.selectionBounds,
-                      selectionRotationAngle: controller.selectionRotationAngle,
-                      selectedStrokeIndices: controller.selectedStrokeIndices,
-                      activeResizeHandle: controller.activeResizeHandle,
-                      isRotatingSelection: controller.isRotatingSelection,
-                      isSelectionLocked: controller.isSelectionLocked,
-                      scale: _scale,
-                      panOffset: _panOffset,
+        return DragTarget<SavedCanvasAsset>(
+          onWillAcceptWithDetails: (_) => true,
+          onAcceptWithDetails: (details) {
+            final box = context.findRenderObject() as RenderBox?;
+            if (box != null) {
+              final localViewportPos = box.globalToLocal(details.offset);
+              final canvasPos = (localViewportPos - _panOffset) / _scale;
+              controller.insertSavedAssetToCanvas(
+                details.data.id,
+                targetCenter: canvasPos,
+              );
+            } else {
+              controller.insertSavedAssetToCanvas(details.data.id);
+            }
+          },
+          builder: (dropContext, candidateAssets, _) {
+            final isHoveringAsset = candidateAssets.isNotEmpty;
+            return ClipRect(
+              child: Stack(
+                children: [
+                  // 1a. Realistic Paper Background Painter (Transforms directly on Canvas, fills 100% viewport)
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: PaperBackgroundPainter(
+                        config: controller.paperConfig,
+                        scale: _scale,
+                        panOffset: _panOffset,
+                      ),
                     ),
                   ),
-                ),
+
+                  // 1b. Direct Untransformed Viewport Pointer Listener & Drawing Canvas Painter
+                  // Zero double-transformation: pointer localPosition is pure viewport space!
+                  Positioned.fill(
+                    child: Listener(
+                      behavior: HitTestBehavior.opaque,
+                      onPointerDown: _handlePointerDown,
+                      onPointerMove: _handlePointerMove,
+                      onPointerUp: _handlePointerUpOrCancel,
+                      onPointerCancel: _handlePointerUpOrCancel,
+                      onPointerPanZoomStart: _handleTrackpadPanZoomStart,
+                      onPointerPanZoomUpdate: (event) => _handleTrackpadPanZoomUpdate(event, viewportSize),
+                      child: CustomPaint(
+                        painter: DrawingCanvasPainter(
+                          strokes: controller.strokes,
+                          activeStroke: controller.activeStroke,
+                          lassoPoints: controller.lassoPoints,
+                          selectionBounds: controller.selectionBounds,
+                          selectionRotationAngle: controller.selectionRotationAngle,
+                          selectedStrokeIndices: controller.selectedStrokeIndices,
+                          activeResizeHandle: controller.activeResizeHandle,
+                          isRotatingSelection: controller.isRotatingSelection,
+                          isSelectionLocked: controller.isSelectionLocked,
+                          scale: _scale,
+                          panOffset: _panOffset,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // 1b-drop. Subtle Drop-Zone Highlight when dragging a Saved Asset over the canvas
+                  if (isHoveringAsset)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: const Color(0xFF0D9488).withValues(alpha: 0.55),
+                              width: 2.5,
+                            ),
+                            color: const Color(0xFF0D9488).withValues(alpha: 0.03),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // 1c. Canvas Text Items (Mapped cleanly from Canvas Space to Viewport Space)
+                  ...controller.canvasTexts.map((textItem) => _buildCanvasTextWidget(textItem)),
+
+                  // 1d. Floating Lasso Selection Action Pill (Copy / Flip / Delete / Clear Selection)
+                  if (controller.hasLassoSelection &&
+                      !controller.isDraggingSelection &&
+                      controller.selectionBounds != null)
+                    _buildSelectionActionPill(controller.selectionBounds!, viewportSize),
+
+                  // 1e. Live Rotation Degree Badge (Non-interactive overlay while rotating)
+                  if (controller.hasLassoSelection &&
+                      controller.isRotatingSelection &&
+                      controller.selectionBounds != null)
+                    _buildRotationDegreeBadge(controller.selectionBounds!, viewportSize),
+
+                  // 2. Truly Floating & Draggable Apple Notes Toolbar
+                  Positioned(
+                    left: activeToolbarPos.dx,
+                    top: activeToolbarPos.dy,
+                    child: AppleNotesFloatingToolbar(
+                      controller: controller,
+                      onDragDelta: (delta) {
+                        setState(() {
+                          final newX = (_toolbarPosition!.dx + delta.dx).clamp(
+                            10.0,
+                            (constraints.maxWidth - 60).clamp(10.0, constraints.maxWidth),
+                          );
+                          final newY = (_toolbarPosition!.dy + delta.dy).clamp(
+                            10.0,
+                            (constraints.maxHeight - 60).clamp(10.0, constraints.maxHeight),
+                          );
+                          _toolbarPosition = Offset(newX, newY);
+                        });
+                      },
+                    ),
+                  ),
+                ],
               ),
-
-              // 1c. Canvas Text Items (Mapped cleanly from Canvas Space to Viewport Space)
-              ...controller.canvasTexts.map((textItem) => _buildCanvasTextWidget(textItem)),
-
-              // 1d. Floating Lasso Selection Action Pill (Copy / Flip / Delete / Clear Selection)
-              if (controller.hasLassoSelection &&
-                  !controller.isDraggingSelection &&
-                  controller.selectionBounds != null)
-                _buildSelectionActionPill(controller.selectionBounds!, viewportSize),
-
-              // 1e. Live Rotation Degree Badge (Non-interactive overlay while rotating)
-              if (controller.hasLassoSelection &&
-                  controller.isRotatingSelection &&
-                  controller.selectionBounds != null)
-                _buildRotationDegreeBadge(controller.selectionBounds!, viewportSize),
-
-              // 2. Truly Floating & Draggable Apple Notes Toolbar
-              Positioned(
-                left: activeToolbarPos.dx,
-                top: activeToolbarPos.dy,
-                child: AppleNotesFloatingToolbar(
-                  controller: controller,
-                  onDragDelta: (delta) {
-                    setState(() {
-                      final newX = (_toolbarPosition!.dx + delta.dx).clamp(
-                        10.0,
-                        (constraints.maxWidth - 60).clamp(10.0, constraints.maxWidth),
-                      );
-                      final newY = (_toolbarPosition!.dy + delta.dy).clamp(
-                        10.0,
-                        (constraints.maxHeight - 60).clamp(10.0, constraints.maxHeight),
-                      );
-                      _toolbarPosition = Offset(newX, newY);
-                    });
-                  },
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );

@@ -298,11 +298,13 @@ class PlannerController extends ChangeNotifier {
     final originalCenter = Offset((minX + maxX) / 2.0, (minY + maxY) / 2.0);
     Offset destination = targetCenter ?? const Offset(340.0, 240.0);
 
-    // If there is already a selection near the destination, cascade by +22px so multiple insertions don't overlap identically
-    final currentBounds = selectionBounds;
-    if (currentBounds != null &&
-        (currentBounds.center - destination).distance < 40.0) {
-      destination = currentBounds.center + const Offset(22.0, 22.0);
+    // If inserted via button click (no explicit drop point) and there is already a selection near the destination, cascade by +22px
+    if (targetCenter == null) {
+      final currentBounds = selectionBounds;
+      if (currentBounds != null &&
+          (currentBounds.center - destination).distance < 40.0) {
+        destination = currentBounds.center + const Offset(22.0, 22.0);
+      }
     }
 
     final delta = destination - originalCenter;

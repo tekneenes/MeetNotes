@@ -1668,9 +1668,9 @@ class _PlannerScreenState extends State<PlannerScreen>
           )
         else ...[
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.only(bottom: 10),
             child: Text(
-              'Kayıtlı varlığa dokunarak veya "+ Ekle" tuşuyla istediğiniz sayfaya tek parça halinde yerleştirebilirsiniz:',
+              'Basılı tutup tuvalde istediğiniz noktaya sürükleyebilir veya "+" tuşuyla hemen ekleyebilirsiniz:',
               style: TextStyle(
                 fontSize: 10.5,
                 color: Colors.grey.shade600,
@@ -1678,170 +1678,319 @@ class _PlannerScreenState extends State<PlannerScreen>
               ),
             ),
           ),
-          ...savedAssets.map((asset) {
-            final isMultiStroke = asset.strokes.length > 1;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () => activeController.insertSavedAssetToCanvas(asset.id),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: const Color(0xFF0D9488).withValues(alpha: 0.22),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.03),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: savedAssets.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              childAspectRatio: 0.88,
+            ),
+            itemBuilder: (ctx, index) {
+              final asset = savedAssets[index];
+              final isMultiStroke = asset.strokes.length > 1;
+
+              final cardContent = Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFF0D9488).withValues(alpha: 0.26),
+                    width: 1.1,
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 7,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Üst: Belirgin Büyük Varlık Önizleme Alanı + Sağ Üst "+" ve "⋯" Butonları
+                    Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.fromLTRB(5, 5, 5, 4),
                         decoration: BoxDecoration(
                           color: const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(9),
                           border: Border.all(
-                            color: Colors.black.withValues(alpha: 0.08),
+                            color: Colors.black.withValues(alpha: 0.06),
                           ),
                         ),
-                        child: CustomPaint(
-                          painter: _GroupMiniPreviewPainter(
-                            strokes: asset.strokes,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Stack(
                           children: [
-                            Text(
-                              asset.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 12.2,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF0F172A),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFCCFBF1),
-                                  borderRadius: BorderRadius.circular(5),
-                                ),
-                                child: Text(
-                                  isMultiStroke
-                                      ? '${asset.strokes.length} PARÇA'
-                                      : 'TEK PARÇA',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 8.8,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF0F766E),
+                            Positioned.fill(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(6, 22, 6, 6),
+                                child: CustomPaint(
+                                  painter: _GroupMiniPreviewPainter(
+                                    strokes: asset.strokes,
                                   ),
                                 ),
+                              ),
+                            ),
+                            // Sağ Üst: Sadece "+" ve "⋯" (3 Nokta Menüsü)
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Tooltip(
+                                    message: 'Tuvale Ekle',
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(7),
+                                      onTap: () => activeController
+                                          .insertSavedAssetToCanvas(asset.id),
+                                      child: Container(
+                                        width: 24,
+                                        height: 24,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF0D9488)
+                                              .withValues(alpha: 0.14),
+                                          borderRadius:
+                                              BorderRadius.circular(7),
+                                        ),
+                                        child: const Icon(
+                                          Icons.add_rounded,
+                                          size: 16,
+                                          color: Color(0xFF0F766E),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 3),
+                                  PopupMenuButton<String>(
+                                    tooltip: 'Varlık Seçenekleri',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(
+                                      minWidth: 130,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    offset: const Offset(0, 26),
+                                    onSelected: (value) {
+                                      if (value == 'rename') {
+                                        _showRenameAssetDialog(
+                                          context,
+                                          activeController,
+                                          asset,
+                                        );
+                                      } else if (value == 'insert') {
+                                        activeController
+                                            .insertSavedAssetToCanvas(asset.id);
+                                      } else if (value == 'delete') {
+                                        activeController
+                                            .deleteSavedAsset(asset.id);
+                                      }
+                                    },
+                                    itemBuilder: (menuCtx) => [
+                                      const PopupMenuItem<String>(
+                                        value: 'rename',
+                                        height: 34,
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.edit_outlined,
+                                              size: 15,
+                                              color: Color(0xFF1E293B),
+                                            ),
+                                            SizedBox(width: 8),
+                                            Text(
+                                              'Adını Değiştir',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const PopupMenuItem<String>(
+                                        value: 'insert',
+                                        height: 34,
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.add_circle_outline_rounded,
+                                              size: 15,
+                                              color: Color(0xFF0D9488),
+                                            ),
+                                            SizedBox(width: 8),
+                                            Text(
+                                              'Tuvale Ekle',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: Color(0xFF0D9488),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const PopupMenuDivider(height: 6),
+                                      PopupMenuItem<String>(
+                                        value: 'delete',
+                                        height: 34,
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.delete_outline_rounded,
+                                              size: 15,
+                                              color: Colors.red.shade500,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              'Varlığı Sil',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.red.shade600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                    child: Container(
+                                      width: 24,
+                                      height: 24,
+                                      decoration: BoxDecoration(
+                                        color:
+                                            Colors.white.withValues(alpha: 0.9),
+                                        borderRadius: BorderRadius.circular(7),
+                                        border: Border.all(
+                                          color: Colors.black
+                                              .withValues(alpha: 0.08),
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        Icons.more_horiz_rounded,
+                                        size: 15,
+                                        color: Colors.grey.shade700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      Tooltip(
-                        message: 'Tuvale Ekle',
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(8),
-                          onTap: () =>
-                              activeController.insertSavedAssetToCanvas(asset.id),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 7,
-                              vertical: 5,
+                    ),
+                    // Alt: Başlık ve Parça Rozeti
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(7, 2, 7, 7),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            asset.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11.2,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0F172A),
                             ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF0D9488).withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.add_rounded,
-                                  size: 14,
-                                  color: Color(0xFF0F766E),
-                                ),
-                                SizedBox(width: 2),
-                                Text(
-                                  'Ekle',
-                                  style: TextStyle(
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF0F766E),
+                          ),
+                          const SizedBox(height: 3),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 1.5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFCCFBF1),
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                  child: Text(
+                                    isMultiStroke
+                                        ? '${asset.strokes.length} PARÇA'
+                                        : 'TEK PARÇA',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 8.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF0F766E),
+                                    ),
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                              const Spacer(),
+                              Icon(
+                                Icons.drag_indicator_rounded,
+                                size: 13,
+                                color: Colors.grey.shade400,
+                              ),
+                            ],
                           ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+
+              return LongPressDraggable<SavedCanvasAsset>(
+                data: asset,
+                delay: const Duration(milliseconds: 140),
+                dragAnchorStrategy: pointerDragAnchorStrategy,
+                feedback: Transform.translate(
+                  offset: const Offset(-48, -48),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      width: 96,
+                      height: 96,
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.92),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: const Color(0xFF0D9488),
+                          width: 1.8,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                const Color(0xFF0D9488).withValues(alpha: 0.28),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: CustomPaint(
+                        painter: _GroupMiniPreviewPainter(
+                          strokes: asset.strokes,
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      Tooltip(
-                        message: 'Varlık Adını Değiştir',
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(6),
-                          onTap: () => _showRenameAssetDialog(
-                            context,
-                            activeController,
-                            asset,
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(5),
-                            child: Icon(
-                              Icons.edit_outlined,
-                              size: 15,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ),
-                      ),
-                      Tooltip(
-                        message: 'Varlığı Sil',
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(6),
-                          onTap: () => activeController.deleteSavedAsset(asset.id),
-                          child: Padding(
-                            padding: const EdgeInsets.all(5),
-                            child: Icon(
-                              Icons.delete_outline_rounded,
-                              size: 15,
-                              color: Colors.red.shade400,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            );
-          }),
+                childWhenDragging: Opacity(
+                  opacity: 0.4,
+                  child: cardContent,
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () =>
+                      activeController.insertSavedAssetToCanvas(asset.id),
+                  child: cardContent,
+                ),
+              );
+            },
+          ),
         ],
       ],
     );
@@ -2920,7 +3069,7 @@ class _GroupMiniPreviewPainter extends CustomPainter {
       final paint = Paint()
         ..color = stroke.color
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.8
+        ..strokeWidth = 2.6
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round;
 

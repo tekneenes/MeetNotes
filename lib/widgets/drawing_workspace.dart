@@ -7,6 +7,8 @@ import '../painters/paper_background_painter.dart';
 import '../painters/drawing_canvas_painter.dart';
 import 'apple_notes_toolbar.dart';
 import 'compact_color_picker_dialog.dart';
+import 'compact_font_picker_dialog.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class DrawingWorkspace extends StatefulWidget {
   final PlannerController controller;
@@ -720,96 +722,73 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     ];
   }
 
+  String _getFontDisplayName(String font) {
+    if (font == 'modern' || font == 'sans') return 'Modern';
+    if (font == 'serif') return 'Serif';
+    if (font == 'hand') return 'El Yazısı';
+    if (font == 'mono') return 'Mono';
+    return font;
+  }
+
   List<Widget> _buildUnifiedTextAndLassoItems(
       PlannerController controller, CanvasTextItem item) {
     return [
-      // 1. Font Family Dropdown
-      PopupMenuButton<String>(
-        tooltip: 'Yazı Tipi / Font',
-        offset: const Offset(0, 36),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        onSelected: (font) {
-          controller.updateCanvasTextStyle(
-            item.id,
-            (cur) => cur.copyWith(fontFamily: font),
-          );
-        },
-        itemBuilder: (ctx) => const [
-          PopupMenuItem(
-            value: 'modern',
-            height: 34,
-            child: Text(
-              'Modern (Sans-Serif)',
-              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
-            ),
-          ),
-          PopupMenuItem(
-            value: 'serif',
-            height: 34,
-            child: Text(
-              'Klasik Serif',
-              style: TextStyle(
-                fontSize: 12.5,
-                fontFamily: 'Georgia',
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          PopupMenuItem(
-            value: 'hand',
-            height: 34,
-            child: Text(
-              'El Yazısı / Not',
-              style: TextStyle(
-                fontSize: 13,
-                fontStyle: FontStyle.italic,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          PopupMenuItem(
-            value: 'mono',
-            height: 34,
-            child: Text(
-              'Monospace (Kod)',
-              style: TextStyle(
-                fontSize: 12,
-                fontFamily: 'Courier',
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1),
+      // 1. Font Family Picker (Anchored Google Fonts Dialog matching dark toolbar theme)
+      Builder(
+        builder: (btnCtx) => Tooltip(
+          message: 'Yazı Tipi / Font (1800+ Font)',
+          child: InkWell(
             borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                item.fontFamily == 'serif'
-                    ? 'Serif'
-                    : item.fontFamily == 'hand'
-                        ? 'El Yazısı'
-                        : item.fontFamily == 'mono'
-                            ? 'Mono'
-                            : 'Modern',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
+            onTap: () {
+              final renderBox = btnCtx.findRenderObject() as RenderBox?;
+              final offset =
+                  renderBox?.localToGlobal(Offset.zero) ?? Offset.zero;
+              final size = renderBox?.size ?? Size.zero;
+              final anchorRect = offset & size;
+
+              CompactFontPickerDialog.showAnchored(
+                context: context,
+                anchorRect: anchorRect,
+                currentFontFamily: item.fontFamily,
+                onFontSelected: (selectedFont) {
+                  controller.updateCanvasTextStyle(
+                    item.id,
+                    (cur) => cur.copyWith(fontFamily: selectedFont),
+                  );
+                },
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
               ),
-              const SizedBox(width: 2),
-              const Icon(
-                Icons.arrow_drop_down_rounded,
-                size: 15,
-                color: Colors.white70,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 82),
+                    child: Text(
+                      _getFontDisplayName(item.fontFamily),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  const Icon(
+                    Icons.arrow_drop_down_rounded,
+                    size: 15,
+                    color: Colors.white70,
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1912,16 +1891,39 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
     super.dispose();
   }
 
-  String? _resolveFontFamily(String code) {
-    switch (code) {
-      case 'serif':
-        return 'Georgia';
-      case 'hand':
-        return 'Chalkboard SE';
-      case 'mono':
-        return 'Courier';
-      default:
-        return null;
+  TextStyle _resolveCanvasTextStyle(CanvasTextItem item) {
+    final baseStyle = TextStyle(
+      fontSize: item.fontSize,
+      fontWeight: item.isBold ? FontWeight.w800 : FontWeight.w500,
+      fontStyle: item.isItalic ? FontStyle.italic : FontStyle.normal,
+      decoration:
+          item.isUnderline ? TextDecoration.underline : TextDecoration.none,
+      color: item.color,
+      height: 1.32,
+    );
+
+    final family = item.fontFamily.trim();
+    if (family.isEmpty || family == 'modern' || family == 'sans') {
+      return baseStyle;
+    }
+    if (family == 'serif') {
+      return baseStyle.copyWith(fontFamily: 'Georgia');
+    }
+    if (family == 'mono') {
+      return baseStyle.copyWith(fontFamily: 'Courier');
+    }
+    if (family == 'hand') {
+      try {
+        return GoogleFonts.caveat(textStyle: baseStyle);
+      } catch (_) {
+        return baseStyle.copyWith(fontFamily: 'Chalkboard SE');
+      }
+    }
+
+    try {
+      return GoogleFonts.getFont(family, textStyle: baseStyle);
+    } catch (_) {
+      return baseStyle.copyWith(fontFamily: family);
     }
   }
 
@@ -1944,16 +1946,7 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
     final isLocked = item.isLocked;
     final isLassoSelected = widget.controller.isTextLassoSelected(item.id);
 
-    final textStyle = TextStyle(
-      fontSize: item.fontSize,
-      fontFamily: _resolveFontFamily(item.fontFamily),
-      fontWeight: item.isBold ? FontWeight.w800 : FontWeight.w500,
-      fontStyle: item.isItalic ? FontStyle.italic : FontStyle.normal,
-      decoration:
-          item.isUnderline ? TextDecoration.underline : TextDecoration.none,
-      color: item.color,
-      height: 1.32,
-    );
+    final textStyle = _resolveCanvasTextStyle(item);
 
     final themeColor = isLocked
         ? const Color(0xFFF59E0B)

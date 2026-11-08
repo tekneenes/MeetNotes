@@ -5,6 +5,7 @@ import 'package:meet_notes/controllers/planner_controller.dart';
 import 'package:meet_notes/main.dart';
 import 'package:meet_notes/models/planner_models.dart';
 import 'package:meet_notes/widgets/compact_color_picker_dialog.dart';
+import 'package:meet_notes/widgets/compact_font_picker_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -310,5 +311,58 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Yazı Rengi'), findsNothing);
+  });
+
+  testWidgets('CompactFontPickerDialog.showAnchored displays categories and selects font',
+      (WidgetTester tester) async {
+    String? chosenFont;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Builder(
+              builder: (ctx) => ElevatedButton(
+                onPressed: () {
+                  final renderBox = ctx.findRenderObject() as RenderBox?;
+                  final offset =
+                      renderBox?.localToGlobal(Offset.zero) ?? Offset.zero;
+                  final size = renderBox?.size ?? Size.zero;
+                  CompactFontPickerDialog.showAnchored(
+                    context: ctx,
+                    anchorRect: offset & size,
+                    currentFontFamily: 'modern',
+                    onFontSelected: (f) => chosenFont = f,
+                  );
+                },
+                child: const Text('Font Seç'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Open font dialog
+    await tester.tap(find.text('Font Seç'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Yazı Tipleri'), findsOneWidget);
+    expect(find.text('1800+'), findsOneWidget);
+    expect(find.text('Popüler'), findsOneWidget);
+    expect(find.text('El Yazısı'), findsOneWidget);
+
+    // Switch to El Yazısı category
+    await tester.tap(find.text('El Yazısı'));
+    await tester.pumpAndSettle();
+
+    // Find and select Caveat
+    expect(find.text('Caveat'), findsWidgets);
+    await tester.tap(find.text('Caveat').first);
+    await tester.pumpAndSettle();
+
+    expect(chosenFont, 'Caveat');
+    expect(find.text('Yazı Tipleri'), findsNothing);
   });
 }

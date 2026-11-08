@@ -570,7 +570,12 @@ class PlannerController extends ChangeNotifier {
   Rect? get selectionBounds {
     final raw = _computeRawSelectionBounds();
     if (raw == null) return null;
-    return raw.inflate(10.0);
+    // When only text items are selected (no drawing strokes), the selection box
+    // hugs the exact outer edges of the text box without inflation padding.
+    if (_selectedStrokeIndices.isEmpty && _selectedTextIds.isNotEmpty) {
+      return raw;
+    }
+    return raw.inflate(8.0);
   }
 
   List<PlannerTaskItem> get tasks => List.unmodifiable(_tasks);

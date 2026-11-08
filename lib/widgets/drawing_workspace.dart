@@ -294,6 +294,10 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 activeStroke: controller.activeStroke,
                 lassoPoints: controller.lassoPoints,
                 selectionBounds: controller.selectionBounds,
+                selectionBorderRadius: controller.selectedTextItem != null &&
+                        controller.selectedStrokeIndices.isEmpty
+                    ? controller.selectedTextItem!.borderRadius
+                    : null,
                 selectionRotationAngle: controller.selectionRotationAngle,
                 selectedStrokeIndices: controller.selectedStrokeIndices,
                 activeResizeHandle: controller.activeResizeHandle,

@@ -14,6 +14,7 @@ class DrawingCanvasPainter extends CustomPainter {
   final SelectionHandle? activeResizeHandle;
   final bool isRotatingSelection;
   final bool isSelectionLocked;
+  final double? selectionBorderRadius;
   final double scale;
   final Offset panOffset;
 
@@ -29,6 +30,7 @@ class DrawingCanvasPainter extends CustomPainter {
     this.activeResizeHandle,
     this.isRotatingSelection = false,
     this.isSelectionLocked = false,
+    this.selectionBorderRadius,
     this.scale = 1.0,
     this.panOffset = Offset.zero,
   });
@@ -343,11 +345,14 @@ class DrawingCanvasPainter extends CustomPainter {
     final themeColor =
         isSelectionLocked ? const Color(0xFFF59E0B) : const Color(0xFF007AFF);
 
+    final double radiusVal = selectionBorderRadius ?? (6.0 / scale);
+    final radius = Radius.circular(radiusVal);
+
     final fillPaint = Paint()
       ..color = themeColor.withValues(alpha: 0.04)
       ..style = PaintingStyle.fill;
     canvas.drawRRect(
-      RRect.fromRectAndRadius(bounds, Radius.circular(6.0 / scale)),
+      RRect.fromRectAndRadius(bounds, radius),
       fillPaint,
     );
 
@@ -357,7 +362,7 @@ class DrawingCanvasPainter extends CustomPainter {
       ..strokeWidth = 1.6 / scale;
 
     final rectPath = Path()
-      ..addRRect(RRect.fromRectAndRadius(bounds, Radius.circular(6.0 / scale)));
+      ..addRRect(RRect.fromRectAndRadius(bounds, radius));
     _drawDashedPath(canvas, rectPath, borderPaint, 6.0 / scale, 4.0 / scale);
 
     if (isSelectionLocked) {

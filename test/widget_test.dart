@@ -210,5 +210,10 @@ void main() {
     expect(controller.selectedTextItem!.id, stickyId);
     expect(controller.selectionBounds, isNotNull);
     expect(controller.isTextLassoSelected(stickyId), isTrue);
+
+    // Verify selection bounds tightly hug the text box without inflation gap
+    final selectedSticky = controller.selectedTextItem!;
+    expect(controller.selectionBounds!.width, closeTo(selectedSticky.width, 0.01));
+    expect(controller.selectionBounds!.height, closeTo(selectedSticky.computeHeight(), 0.01));
   });
 }

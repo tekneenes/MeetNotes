@@ -229,7 +229,6 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
             }
           },
           builder: (dropContext, candidateAssets, _) {
-            final isHoveringAsset = candidateAssets.isNotEmpty;
             return ClipRect(
               child: Stack(
                 children: [
@@ -272,22 +271,6 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                       ),
                     ),
                   ),
-
-                  // 1b-drop. Subtle Drop-Zone Highlight when dragging a Saved Asset over the canvas
-                  if (isHoveringAsset)
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: const Color(0xFF0D9488).withValues(alpha: 0.55),
-                              width: 2.5,
-                            ),
-                            color: const Color(0xFF0D9488).withValues(alpha: 0.03),
-                          ),
-                        ),
-                      ),
-                    ),
 
                   // 1c. Canvas Text Items (Mapped cleanly from Canvas Space to Viewport Space)
                   ...controller.canvasTexts.map((textItem) => _buildCanvasTextWidget(textItem)),

@@ -1697,8 +1697,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: const Color(0xFF0D9488).withValues(alpha: 0.26),
-                    width: 1.1,
+                    color: Colors.black.withValues(alpha: 0.08),
+                    width: 1.0,
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -1948,28 +1948,10 @@ class _PlannerScreenState extends State<PlannerScreen>
                 dragAnchorStrategy: pointerDragAnchorStrategy,
                 feedback: Transform.translate(
                   offset: const Offset(-48, -48),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: Container(
+                  child: IgnorePointer(
+                    child: SizedBox(
                       width: 96,
                       height: 96,
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.92),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: const Color(0xFF0D9488),
-                          width: 1.8,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color:
-                                const Color(0xFF0D9488).withValues(alpha: 0.28),
-                            blurRadius: 16,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
-                      ),
                       child: CustomPaint(
                         painter: _GroupMiniPreviewPainter(
                           strokes: asset.strokes,
@@ -1979,7 +1961,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                   ),
                 ),
                 childWhenDragging: Opacity(
-                  opacity: 0.4,
+                  opacity: 0.35,
                   child: cardContent,
                 ),
                 child: InkWell(

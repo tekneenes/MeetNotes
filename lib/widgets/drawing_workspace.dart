@@ -1738,10 +1738,15 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
       height: 1.32,
     );
 
-    final borderColor = isLocked
+    final themeColor = isLocked
         ? const Color(0xFFF59E0B)
-        : isSelected
-            ? const Color(0xFF007AFF)
+        : const Color(0xFF007AFF);
+
+    final showSelectionBox = isSelected || isEditing;
+    final selectionFill = item.backgroundColor != null
+        ? Color(item.backgroundColor!)
+        : showSelectionBox
+            ? themeColor.withValues(alpha: 0.08)
             : Colors.transparent;
 
     return Transform.rotate(
@@ -1753,7 +1758,7 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
           Stack(
             clipBehavior: Clip.none,
             children: [
-              // Main Text Box Body
+              // Main Text Box Body with Dashed Blue Border & Light Blue Tint
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () {
@@ -1782,67 +1787,90 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
                           ),
                         );
                       },
-                child: Container(
-                  width: item.width,
-                  constraints: const BoxConstraints(minHeight: 38),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: item.backgroundColor != null
-                        ? Color(item.backgroundColor!)
-                        : (isSelected || isEditing)
-                            ? Colors.white.withValues(alpha: 0.88)
-                            : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: (isSelected || isEditing)
-                          ? borderColor
-                          : item.backgroundColor != null
-                              ? Colors.black.withValues(alpha: 0.08)
-                              : Colors.transparent,
-                      width: (isSelected || isEditing) ? 1.6 : 1.0,
-                    ),
-                    boxShadow: item.backgroundColor != null || isSelected
-                        ? [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.07),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: isEditing
-                      ? TextField(
-                          controller: _textController,
-                          focusNode: _focusNode,
-                          maxLines: null,
-                          textAlign: _resolveTextAlign(item.textAlign),
-                          style: textStyle,
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            isDense: true,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          onChanged: (val) =>
-                              widget.controller.updateCanvasText(item.id, val),
+                child: CustomPaint(
+                  painter: showSelectionBox
+                      ? _DashedBoxPainter(
+                          borderColor: themeColor,
+                          fillColor: selectionFill,
+                          strokeWidth: 1.6,
+                          dashLength: 6.0,
+                          gapLength: 4.0,
+                          borderRadius: 6.0,
                         )
-                      : Text(
-                          item.text,
-                          textAlign: _resolveTextAlign(item.textAlign),
-                          style: textStyle,
-                        ),
+                      : null,
+                  child: Container(
+                    width: item.width,
+                    constraints: const BoxConstraints(minHeight: 38),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: !showSelectionBox && item.backgroundColor != null
+                        ? BoxDecoration(
+                            color: Color(item.backgroundColor!),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: Colors.black.withValues(alpha: 0.08),
+                            ),
+                          )
+                        : null,
+                    child: isEditing
+                        ? TextField(
+                            controller: _textController,
+                            focusNode: _focusNode,
+                            maxLines: null,
+                            textAlign: _resolveTextAlign(item.textAlign),
+                            style: textStyle,
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              isDense: true,
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                            onChanged: (val) =>
+                                widget.controller.updateCanvasText(item.id, val),
+                          )
+                        : Text(
+                            item.text,
+                            textAlign: _resolveTextAlign(item.textAlign),
+                            style: textStyle,
+                          ),
+                  ),
                 ),
               ),
 
-              // Right-Edge Width Resize Handle (↔)
-              if (isSelected && !isLocked)
+              // 8 Selection Circle Handles (matching stroke selection frame)
+              if (isSelected && !isLocked) ...[
+                // Top-Left
                 Positioned(
-                  right: -7,
+                  top: -5.5,
+                  left: -5.5,
+                  child: _buildHandleCircle(themeColor),
+                ),
+                // Top-Center
+                Positioned(
+                  top: -5.5,
+                  left: 0,
+                  right: 0,
+                  child: Center(child: _buildHandleCircle(themeColor)),
+                ),
+                // Top-Right
+                Positioned(
+                  top: -5.5,
+                  right: -5.5,
+                  child: _buildHandleCircle(themeColor),
+                ),
+                // Center-Left
+                Positioned(
                   top: 0,
                   bottom: 0,
+                  left: -5.5,
+                  child: Center(child: _buildHandleCircle(themeColor)),
+                ),
+                // Center-Right (Width Resize Handle ↔)
+                Positioned(
+                  top: 0,
+                  bottom: 0,
+                  right: -5.5,
                   child: Center(
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
@@ -1857,34 +1885,28 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
                       },
                       child: Tooltip(
                         message: 'Genişliği Ayarla',
-                        child: Container(
-                          width: 14,
-                          height: 26,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(7),
-                            border: Border.all(
-                              color: const Color(0xFF007AFF),
-                              width: 1.6,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.12),
-                                blurRadius: 4,
-                              ),
-                            ],
-                          ),
-                        ),
+                        child: _buildHandleCircle(themeColor),
                       ),
                     ),
                   ),
                 ),
-
-              // Bottom-Right Font Size Scale Handle (⤡)
-              if (isSelected && !isLocked)
+                // Bottom-Left
                 Positioned(
-                  right: -7,
-                  bottom: -7,
+                  bottom: -5.5,
+                  left: -5.5,
+                  child: _buildHandleCircle(themeColor),
+                ),
+                // Bottom-Center
+                Positioned(
+                  bottom: -5.5,
+                  left: 0,
+                  right: 0,
+                  child: Center(child: _buildHandleCircle(themeColor)),
+                ),
+                // Bottom-Right (Font Size Scale Handle ⤡)
+                Positioned(
+                  bottom: -5.5,
+                  right: -5.5,
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onPanUpdate: (details) {
@@ -1899,36 +1921,23 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
                     },
                     child: Tooltip(
                       message: 'Sürükleyerek Yazı Boyutunu Büyüt / Küçült',
-                      child: Container(
-                        width: 15,
-                        height: 15,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF007AFF),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.18),
-                              blurRadius: 4,
-                            ),
-                          ],
-                        ),
-                      ),
+                      child: _buildHandleCircle(themeColor),
                     ),
                   ),
                 ),
+              ],
             ],
           ),
 
-          // Canva-style Bottom Stem + 2D Rotation Handle (↻)
+          // Selection Connector Stem + 2D Rotation Handle (↻)
           if (isSelected && !isLocked)
             Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 1.5,
-                  height: 12,
-                  color: const Color(0xFF007AFF),
+                  width: 1.6,
+                  height: 18,
+                  color: themeColor,
                 ),
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
@@ -1942,12 +1951,15 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
                   child: Tooltip(
                     message: 'Metni Döndür',
                     child: Container(
-                      width: 24,
-                      height: 24,
+                      width: 28,
+                      height: 28,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E293B),
+                        color: const Color(0xFF1E293B).withValues(alpha: 0.95),
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 1.5),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          width: 1.5,
+                        ),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.2),
@@ -1958,7 +1970,7 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
                       ),
                       child: const Icon(
                         Icons.refresh_rounded,
-                        size: 14,
+                        size: 16,
                         color: Colors.white,
                       ),
                     ),
@@ -1969,6 +1981,79 @@ class _CanvaCanvasTextBoxState extends State<_CanvaCanvasTextBox> {
         ],
       ),
     );
+  }
+
+  Widget _buildHandleCircle(Color themeColor) {
+    return Container(
+      width: 11,
+      height: 11,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: themeColor, width: 2.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 2,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashedBoxPainter extends CustomPainter {
+  final Color borderColor;
+  final Color? fillColor;
+  final double strokeWidth;
+  final double dashLength;
+  final double gapLength;
+  final double borderRadius;
+
+  const _DashedBoxPainter({
+    required this.borderColor,
+    this.fillColor,
+    this.strokeWidth = 1.6,
+    this.dashLength = 6.0,
+    this.gapLength = 4.0,
+    this.borderRadius = 6.0,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(borderRadius));
+
+    if (fillColor != null && fillColor != Colors.transparent) {
+      canvas.drawRRect(
+        rrect,
+        Paint()
+          ..color = fillColor!
+          ..style = PaintingStyle.fill,
+      );
+    }
+
+    final borderPaint = Paint()
+      ..color = borderColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+
+    final path = Path()..addRRect(rrect);
+    for (final metric in path.computeMetrics()) {
+      double distance = 0.0;
+      while (distance < metric.length) {
+        final next = math.min(distance + dashLength, metric.length);
+        canvas.drawPath(metric.extractPath(distance, next), borderPaint);
+        distance += dashLength + gapLength;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedBoxPainter oldDelegate) {
+    return oldDelegate.borderColor != borderColor ||
+        oldDelegate.fillColor != fillColor ||
+        oldDelegate.strokeWidth != strokeWidth;
   }
 }
 

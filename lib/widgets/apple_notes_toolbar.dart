@@ -19,6 +19,7 @@ class AppleNotesFloatingToolbar extends StatefulWidget {
 
 class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar> {
   bool _isMinimized = false;
+  bool _showTextPresetPopover = false;
 
   static const List<Color> _applePalette = [
     Color(0xFF1C1C1E), // Dark Slate
@@ -128,83 +129,217 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar> {
 
   Widget _buildExpandedDock(BuildContext context) {
     final controller = widget.controller;
+    final showTextBar =
+        _showTextPresetPopover || controller.selectedTool == DrawingTool.text;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(32),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-        child: Container(
-          height: 52,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.90),
-            borderRadius: BorderRadius.circular(32),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.7),
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 24,
-                spreadRadius: 1,
-                offset: const Offset(0, 8),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showTextBar) ...[
+          _buildCanvaTextPresetPopover(controller),
+          const SizedBox(height: 6),
+        ],
+        ClipRRect(
+          borderRadius: BorderRadius.circular(32),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+            child: Container(
+              height: 52,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.90),
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  width: 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 24,
+                    spreadRadius: 1,
+                    offset: const Offset(0, 8),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 1. Dedicated Drag Handle (Only this handle starts pan dragging!)
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onPanUpdate: (details) => widget.onDragDelta(details.delta),
-                child: Tooltip(
-                  message: 'Barı Taşımak İçin Sürükleyin\nKüçültmek İçin Dokunun',
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: () => setState(() => _isMinimized = true),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                      child: Container(
-                        width: 5,
-                        height: 22,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF8E8E93),
-                          borderRadius: BorderRadius.circular(2.5),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 1. Dedicated Drag Handle (Only this handle starts pan dragging!)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onPanUpdate: (details) => widget.onDragDelta(details.delta),
+                    child: Tooltip(
+                      message: 'Barı Taşımak İçin Sürükleyin\nKüçültmek İçin Dokunun',
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => setState(() => _isMinimized = true),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                          child: Container(
+                            width: 5,
+                            height: 22,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF8E8E93),
+                              borderRadius: BorderRadius.circular(2.5),
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 2),
+
+                  // 2. Comprehensive Pen Tools (9 tools with direct, instant taps!)
+                  ..._penTools.map((tool) => _buildToolItem(tool)),
+
+                  _buildDivider(),
+
+                  // 3. Stroke Width Picker
+                  _buildWidthPicker(context),
+
+                  // 4. Color Picker (hidden only if eraser is selected)
+                  if (controller.selectedTool != DrawingTool.eraser) ...[
+                    const SizedBox(width: 4),
+                    _buildColorPicker(context),
+                  ],
+
+                  const SizedBox(width: 4),
+
+                  // 5. En Sağdaki 3 Nokta Menüsü (Ayarlar & Seçenekler)
+                  _buildMoreMenu(context),
+                ],
               ),
-              const SizedBox(width: 2),
-
-              // 2. Comprehensive Pen Tools (9 tools with direct, instant taps!)
-              ..._penTools.map((tool) => _buildToolItem(tool)),
-
-              _buildDivider(),
-
-              // 3. Stroke Width Picker
-              _buildWidthPicker(context),
-
-              // 4. Color Picker (hidden only if eraser is selected)
-              if (controller.selectedTool != DrawingTool.eraser) ...[
-                const SizedBox(width: 4),
-                _buildColorPicker(context),
-              ],
-
-              const SizedBox(width: 4),
-
-              // 5. En Sağdaki 3 Nokta Menüsü (Ayarlar & Seçenekler)
-              _buildMoreMenu(context),
-            ],
+            ),
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCanvaTextPresetPopover(PlannerController controller) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B).withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildPresetChip(
+            icon: Icons.title_rounded,
+            label: 'Başlık Ekle',
+            color: const Color(0xFF38BDF8),
+            onTap: () {
+              controller.setTool(DrawingTool.text);
+              controller.addPresetCanvasText(CanvaTextPreset.heading);
+            },
+          ),
+          const SizedBox(width: 4),
+          _buildPresetChip(
+            icon: Icons.subtitles_outlined,
+            label: 'Alt Başlık',
+            color: const Color(0xFFA78BFA),
+            onTap: () {
+              controller.setTool(DrawingTool.text);
+              controller.addPresetCanvasText(CanvaTextPreset.subheading);
+            },
+          ),
+          const SizedBox(width: 4),
+          _buildPresetChip(
+            icon: Icons.notes_rounded,
+            label: 'Düz Metin',
+            color: Colors.white,
+            onTap: () {
+              controller.setTool(DrawingTool.text);
+              controller.addPresetCanvasText(CanvaTextPreset.body);
+            },
+          ),
+          const SizedBox(width: 4),
+          _buildPresetChip(
+            icon: Icons.sticky_note_2_outlined,
+            label: 'Post-it Not',
+            color: const Color(0xFFFDE047),
+            onTap: () {
+              controller.setTool(DrawingTool.text);
+              controller.addPresetCanvasText(CanvaTextPreset.stickyNote);
+            },
+          ),
+          const SizedBox(width: 4),
+          _buildPresetChip(
+            icon: Icons.format_list_bulleted_rounded,
+            label: 'Madde Listesi',
+            color: const Color(0xFF34D399),
+            onTap: () {
+              controller.setTool(DrawingTool.text);
+              controller.addPresetCanvasText(CanvaTextPreset.bulletList);
+            },
+          ),
+          const SizedBox(width: 4),
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () {
+              setState(() => _showTextPresetPopover = false);
+              if (controller.selectedTool == DrawingTool.text) {
+                controller.setTool(DrawingTool.lasso);
+              }
+            },
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Icon(
+                Icons.close_rounded,
+                size: 14,
+                color: Colors.white60,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPresetChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13.5, color: color),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -217,12 +352,27 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 1.5),
       child: Tooltip(
-        message: tool.label,
+        message: tool == DrawingTool.text
+            ? 'Tek Tıkla Metin Ekle (Şablonlar İçin Basılı Tutun)'
+            : tool.label,
         child: InkResponse(
           radius: 20,
           onTap: () {
-            controller.setTool(tool);
+            if (tool == DrawingTool.text) {
+              setState(() => _showTextPresetPopover = true);
+              controller.setTool(DrawingTool.text);
+              controller.addPresetCanvasText(CanvaTextPreset.body);
+            } else {
+              setState(() => _showTextPresetPopover = false);
+              controller.setTool(tool);
+            }
           },
+          onLongPress: tool == DrawingTool.text
+              ? () {
+                  setState(() => _showTextPresetPopover = !_showTextPresetPopover);
+                  controller.setTool(DrawingTool.text);
+                }
+              : null,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,

@@ -248,19 +248,59 @@ class PlannerTaskItem {
   }
 }
 
+enum CanvaTextPreset {
+  heading('Başlık Ekle', 'Başlık', 26.0, true, null),
+  subheading('Alt Başlık Ekle', 'Alt Başlık', 19.0, true, null),
+  body('Metin Kutusu Ekle', 'Metin yazın...', 15.0, false, null),
+  stickyNote('Not Kutusu (Post-it)', 'Notunuzu yazın...', 15.0, false, 0xFFFEF08A),
+  bulletList('Madde Listesi Ekle', '• Birinci madde\n• İkinci madde', 15.0, false, null);
+
+  final String label;
+  final String defaultText;
+  final double defaultFontSize;
+  final bool defaultBold;
+  final int? defaultBgColor;
+
+  const CanvaTextPreset(
+    this.label,
+    this.defaultText,
+    this.defaultFontSize,
+    this.defaultBold,
+    this.defaultBgColor,
+  );
+}
+
 class CanvasTextItem {
   final String id;
   final Offset position;
   final String text;
   final Color color;
   final double fontSize;
+  final String fontFamily;
+  final bool isBold;
+  final bool isItalic;
+  final bool isUnderline;
+  final String textAlign; // 'left' | 'center' | 'right'
+  final int? backgroundColor;
+  final double rotation;
+  final double width;
+  final bool isLocked;
 
   const CanvasTextItem({
     required this.id,
     required this.position,
     required this.text,
     this.color = const Color(0xFF1E293B),
-    this.fontSize = 15.0,
+    this.fontSize = 16.0,
+    this.fontFamily = 'sans',
+    this.isBold = false,
+    this.isItalic = false,
+    this.isUnderline = false,
+    this.textAlign = 'left',
+    this.backgroundColor,
+    this.rotation = 0.0,
+    this.width = 220.0,
+    this.isLocked = false,
   });
 
   CanvasTextItem copyWith({
@@ -269,6 +309,16 @@ class CanvasTextItem {
     String? text,
     Color? color,
     double? fontSize,
+    String? fontFamily,
+    bool? isBold,
+    bool? isItalic,
+    bool? isUnderline,
+    String? textAlign,
+    int? backgroundColor,
+    bool clearBackgroundColor = false,
+    double? rotation,
+    double? width,
+    bool? isLocked,
   }) {
     return CanvasTextItem(
       id: id ?? this.id,
@@ -276,6 +326,16 @@ class CanvasTextItem {
       text: text ?? this.text,
       color: color ?? this.color,
       fontSize: fontSize ?? this.fontSize,
+      fontFamily: fontFamily ?? this.fontFamily,
+      isBold: isBold ?? this.isBold,
+      isItalic: isItalic ?? this.isItalic,
+      isUnderline: isUnderline ?? this.isUnderline,
+      textAlign: textAlign ?? this.textAlign,
+      backgroundColor:
+          clearBackgroundColor ? null : (backgroundColor ?? this.backgroundColor),
+      rotation: rotation ?? this.rotation,
+      width: width ?? this.width,
+      isLocked: isLocked ?? this.isLocked,
     );
   }
 
@@ -286,6 +346,15 @@ class CanvasTextItem {
     'text': text,
     'color': color.toARGB32(),
     'fontSize': fontSize,
+    'fontFamily': fontFamily,
+    'isBold': isBold,
+    'isItalic': isItalic,
+    'isUnderline': isUnderline,
+    'textAlign': textAlign,
+    if (backgroundColor != null) 'backgroundColor': backgroundColor,
+    'rotation': rotation,
+    'width': width,
+    'isLocked': isLocked,
   };
 
   factory CanvasTextItem.fromMap(Map<String, dynamic> map) {
@@ -297,7 +366,16 @@ class CanvasTextItem {
       ),
       text: map['text'] as String? ?? '',
       color: Color((map['color'] as num?)?.toInt() ?? 0xFF1E293B),
-      fontSize: (map['fontSize'] as num?)?.toDouble() ?? 15.0,
+      fontSize: (map['fontSize'] as num?)?.toDouble() ?? 16.0,
+      fontFamily: map['fontFamily'] as String? ?? 'sans',
+      isBold: map['isBold'] as bool? ?? false,
+      isItalic: map['isItalic'] as bool? ?? false,
+      isUnderline: map['isUnderline'] as bool? ?? false,
+      textAlign: map['textAlign'] as String? ?? 'left',
+      backgroundColor: (map['backgroundColor'] as num?)?.toInt(),
+      rotation: (map['rotation'] as num?)?.toDouble() ?? 0.0,
+      width: (map['width'] as num?)?.toDouble() ?? 220.0,
+      isLocked: map['isLocked'] as bool? ?? false,
     );
   }
 }

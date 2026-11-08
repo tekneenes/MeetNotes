@@ -52,6 +52,8 @@ class PlannerController extends ChangeNotifier {
   final Map<String, List<DrawingStroke>> _dayPreviewStrokes = {};
   List<PlannerTaskItem> _tasks = [];
   List<CanvasTextItem> _canvasTexts = [];
+  String? _selectedTextId;
+  String? _editingTextId;
   List<SavedCanvasAsset> _savedAssets = [];
   double _zoomScale = 1.0;
 
@@ -458,6 +460,15 @@ class PlannerController extends ChangeNotifier {
 
   List<PlannerTaskItem> get tasks => List.unmodifiable(_tasks);
   List<CanvasTextItem> get canvasTexts => List.unmodifiable(_canvasTexts);
+  String? get selectedTextId => _selectedTextId;
+  String? get editingTextId => _editingTextId;
+  CanvasTextItem? get selectedTextItem {
+    if (_selectedTextId == null) return null;
+    for (final item in _canvasTexts) {
+      if (item.id == _selectedTextId) return item;
+    }
+    return null;
+  }
   double get zoomScale => _zoomScale;
   bool get isLoading => _isLoading;
   bool get canUndo => _undoStack.isNotEmpty;
@@ -644,6 +655,18 @@ class PlannerController extends ChangeNotifier {
 
   void setColor(Color color) {
     _selectedColor = color;
+    if (_selectedTextId != null) {
+      final idx = _canvasTexts.indexWhere((t) => t.id == _selectedTextId);
+      if (idx != -1 && !_canvasTexts[idx].isLocked) {
+        _canvasTexts[idx] = _canvasTexts[idx].copyWith(color: color);
+        _storage.saveCanvasTexts(
+          _currentWeekStart,
+          _currentPageIndex,
+          _canvasTexts,
+          prefix: _storagePrefix,
+        );
+      }
+    }
     if (_selectedStrokeIndices.isNotEmpty && !isSelectionLocked) {
       _undoStack.add(List.from(_strokes));
       _redoStack.clear();
@@ -680,6 +703,9 @@ class PlannerController extends ChangeNotifier {
 
   // Drawing Gesture Handlers
   void startStroke(Offset point) {
+    if (_selectedTextId != null || _editingTextId != null) {
+      stopEditingCanvasText(deselect: true);
+    }
     if (_selectedTool == DrawingTool.eraser) {
       _eraseNear(point);
       return;
@@ -1898,40 +1924,236 @@ class PlannerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Canvas Text Items
-  void addCanvasText(Offset position, String text) {
-    if (text.trim().isEmpty) return;
-    _canvasTexts.add(CanvasTextItem(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
-      position: position,
-      text: text,
-      color: _selectedColor,
-    ));
-    _storage.saveCanvasTexts(_currentWeekStart, _currentPageIndex, _canvasTexts, prefix: _storagePrefix);
+  // Canvas Text Items (Canva-style Inline Editable & Rich Formatted Text)
+  CanvasTextItem addPresetCanvasText(
+    CanvaTextPreset preset, {
+    Offset? position,
+    bool startEditing = true,
+  }) {
+    Offset targetPos = position ?? const Offset(240.0, 180.0);
+    // Cascade slightly if another text box is already near targetPos
+    for (final existing in _canvasTexts) {
+      if ((existing.position - targetPos).distance < 28.0) {
+        targetPos += const Offset(24.0, 24.0);
+      }
+    }
+
+    final newItem = CanvasTextItem(
+      id: 'txt_${DateTime.now().microsecondsSinceEpoch}',
+      position: targetPos,
+      text: preset.defaultText,
+      color: preset == CanvaTextPreset.stickyNote
+          ? const Color(0xFF1E293B)
+          : _selectedColor,
+      fontSize: preset.defaultFontSize,
+      isBold: preset.defaultBold,
+      backgroundColor: preset.defaultBgColor,
+      width: preset == CanvaTextPreset.heading ? 280.0 : 230.0,
+    );
+
+    _selectedStrokeIndices.clear();
+    _canvasTexts.add(newItem);
+    _selectedTextId = newItem.id;
+    _editingTextId = startEditing ? newItem.id : null;
+    _storage.saveCanvasTexts(
+      _currentWeekStart,
+      _currentPageIndex,
+      _canvasTexts,
+      prefix: _storagePrefix,
+    );
     notifyListeners();
+    return newItem;
+  }
+
+  void addCanvasText(Offset position, String text) {
+    final trimmed = text.trim();
+    final newItem = CanvasTextItem(
+      id: 'txt_${DateTime.now().microsecondsSinceEpoch}',
+      position: position,
+      text: trimmed.isEmpty ? 'Metin yazın...' : trimmed,
+      color: _selectedColor,
+    );
+    _selectedStrokeIndices.clear();
+    _canvasTexts.add(newItem);
+    _selectedTextId = newItem.id;
+    _editingTextId = newItem.id;
+    _storage.saveCanvasTexts(
+      _currentWeekStart,
+      _currentPageIndex,
+      _canvasTexts,
+      prefix: _storagePrefix,
+    );
+    notifyListeners();
+  }
+
+  void selectCanvasText(String? id, {bool startEditing = false}) {
+    if (id != null) {
+      _selectedStrokeIndices.clear();
+    }
+    if (_editingTextId != null && _editingTextId != id) {
+      _cleanupEmptyEditingText(_editingTextId!);
+    }
+    _selectedTextId = id;
+    _editingTextId = startEditing ? id : null;
+    notifyListeners();
+  }
+
+  void startEditingCanvasText(String id) {
+    final idx = _canvasTexts.indexWhere((t) => t.id == id);
+    if (idx == -1 || _canvasTexts[idx].isLocked) return;
+    _selectedStrokeIndices.clear();
+    _selectedTextId = id;
+    _editingTextId = id;
+    notifyListeners();
+  }
+
+  void stopEditingCanvasText({bool deselect = false}) {
+    final prevEditId = _editingTextId;
+    _editingTextId = null;
+    if (prevEditId != null) {
+      _cleanupEmptyEditingText(prevEditId);
+    }
+    if (deselect) {
+      _selectedTextId = null;
+    }
+    _storage.saveCanvasTexts(
+      _currentWeekStart,
+      _currentPageIndex,
+      _canvasTexts,
+      prefix: _storagePrefix,
+    );
+    notifyListeners();
+  }
+
+  void _cleanupEmptyEditingText(String id) {
+    final idx = _canvasTexts.indexWhere((t) => t.id == id);
+    if (idx != -1 && _canvasTexts[idx].text.trim().isEmpty) {
+      _canvasTexts.removeAt(idx);
+      if (_selectedTextId == id) {
+        _selectedTextId = null;
+      }
+    }
   }
 
   void updateCanvasText(String id, String text) {
     final idx = _canvasTexts.indexWhere((t) => t.id == id);
-    if (idx != -1) {
+    if (idx != -1 && !_canvasTexts[idx].isLocked) {
       _canvasTexts[idx] = _canvasTexts[idx].copyWith(text: text);
-      _storage.saveCanvasTexts(_currentWeekStart, _currentPageIndex, _canvasTexts, prefix: _storagePrefix);
+      _storage.saveCanvasTexts(
+        _currentWeekStart,
+        _currentPageIndex,
+        _canvasTexts,
+        prefix: _storagePrefix,
+      );
       notifyListeners();
     }
   }
 
+  void updateCanvasTextStyle(
+    String id,
+    CanvasTextItem Function(CanvasTextItem current) updater,
+  ) {
+    final idx = _canvasTexts.indexWhere((t) => t.id == id);
+    if (idx == -1) return;
+    _canvasTexts[idx] = updater(_canvasTexts[idx]);
+    _storage.saveCanvasTexts(
+      _currentWeekStart,
+      _currentPageIndex,
+      _canvasTexts,
+      prefix: _storagePrefix,
+    );
+    notifyListeners();
+  }
+
+  void duplicateCanvasText(String id) {
+    final idx = _canvasTexts.indexWhere((t) => t.id == id);
+    if (idx == -1) return;
+    final src = _canvasTexts[idx];
+    final copy = src.copyWith(
+      id: 'txt_${DateTime.now().microsecondsSinceEpoch}',
+      position: src.position + const Offset(22.0, 22.0),
+      isLocked: false,
+    );
+    _canvasTexts.add(copy);
+    _selectedTextId = copy.id;
+    _editingTextId = null;
+    _storage.saveCanvasTexts(
+      _currentWeekStart,
+      _currentPageIndex,
+      _canvasTexts,
+      prefix: _storagePrefix,
+    );
+    notifyListeners();
+  }
+
+  void toggleCanvasTextLock(String id) {
+    final idx = _canvasTexts.indexWhere((t) => t.id == id);
+    if (idx == -1) return;
+    final nextLock = !_canvasTexts[idx].isLocked;
+    _canvasTexts[idx] = _canvasTexts[idx].copyWith(isLocked: nextLock);
+    if (nextLock && _editingTextId == id) {
+      _editingTextId = null;
+    }
+    _storage.saveCanvasTexts(
+      _currentWeekStart,
+      _currentPageIndex,
+      _canvasTexts,
+      prefix: _storagePrefix,
+    );
+    notifyListeners();
+  }
+
+  void toggleCanvasTextBulletList(String id) {
+    final idx = _canvasTexts.indexWhere((t) => t.id == id);
+    if (idx == -1 || _canvasTexts[idx].isLocked) return;
+    final lines = _canvasTexts[idx].text.split('\n');
+    final allBulleted =
+        lines.every((l) => l.trimLeft().startsWith('• ') || l.trim().isEmpty);
+    final updatedLines = lines.map((l) {
+      if (l.trim().isEmpty) return l;
+      if (allBulleted) {
+        return l.replaceFirst(RegExp(r'^\s*•\s*'), '');
+      } else {
+        return l.trimLeft().startsWith('• ') ? l : '• $l';
+      }
+    }).toList();
+    _canvasTexts[idx] =
+        _canvasTexts[idx].copyWith(text: updatedLines.join('\n'));
+    _storage.saveCanvasTexts(
+      _currentWeekStart,
+      _currentPageIndex,
+      _canvasTexts,
+      prefix: _storagePrefix,
+    );
+    notifyListeners();
+  }
+
   void moveCanvasText(String id, Offset newPos) {
     final idx = _canvasTexts.indexWhere((t) => t.id == id);
-    if (idx != -1) {
+    if (idx != -1 && !_canvasTexts[idx].isLocked) {
       _canvasTexts[idx] = _canvasTexts[idx].copyWith(position: newPos);
-      _storage.saveCanvasTexts(_currentWeekStart, _currentPageIndex, _canvasTexts, prefix: _storagePrefix);
+      _storage.saveCanvasTexts(
+        _currentWeekStart,
+        _currentPageIndex,
+        _canvasTexts,
+        prefix: _storagePrefix,
+      );
       notifyListeners();
     }
   }
 
   void deleteCanvasText(String id) {
+    final idx = _canvasTexts.indexWhere((t) => t.id == id);
+    if (idx != -1 && _canvasTexts[idx].isLocked) return;
     _canvasTexts.removeWhere((t) => t.id == id);
-    _storage.saveCanvasTexts(_currentWeekStart, _currentPageIndex, _canvasTexts, prefix: _storagePrefix);
+    if (_selectedTextId == id) _selectedTextId = null;
+    if (_editingTextId == id) _editingTextId = null;
+    _storage.saveCanvasTexts(
+      _currentWeekStart,
+      _currentPageIndex,
+      _canvasTexts,
+      prefix: _storagePrefix,
+    );
     notifyListeners();
   }
 

@@ -282,6 +282,7 @@ class CanvasTextItem {
   final bool isUnderline;
   final String textAlign; // 'left' | 'center' | 'right'
   final int? backgroundColor;
+  final double borderRadius;
   final double rotation;
   final double width;
   final bool isLocked;
@@ -298,6 +299,7 @@ class CanvasTextItem {
     this.isUnderline = false,
     this.textAlign = 'left',
     this.backgroundColor,
+    this.borderRadius = 0.0,
     this.rotation = 0.0,
     this.width = 220.0,
     this.isLocked = false,
@@ -316,6 +318,7 @@ class CanvasTextItem {
     String? textAlign,
     int? backgroundColor,
     bool clearBackgroundColor = false,
+    double? borderRadius,
     double? rotation,
     double? width,
     bool? isLocked,
@@ -333,6 +336,7 @@ class CanvasTextItem {
       textAlign: textAlign ?? this.textAlign,
       backgroundColor:
           clearBackgroundColor ? null : (backgroundColor ?? this.backgroundColor),
+      borderRadius: borderRadius ?? this.borderRadius,
       rotation: rotation ?? this.rotation,
       width: width ?? this.width,
       isLocked: isLocked ?? this.isLocked,
@@ -352,6 +356,7 @@ class CanvasTextItem {
     'isUnderline': isUnderline,
     'textAlign': textAlign,
     if (backgroundColor != null) 'backgroundColor': backgroundColor,
+    'borderRadius': borderRadius,
     'rotation': rotation,
     'width': width,
     'isLocked': isLocked,
@@ -373,6 +378,7 @@ class CanvasTextItem {
       isUnderline: map['isUnderline'] as bool? ?? false,
       textAlign: map['textAlign'] as String? ?? 'left',
       backgroundColor: (map['backgroundColor'] as num?)?.toInt(),
+      borderRadius: (map['borderRadius'] as num?)?.toDouble() ?? 0.0,
       rotation: (map['rotation'] as num?)?.toDouble() ?? 0.0,
       width: (map['width'] as num?)?.toDouble() ?? 220.0,
       isLocked: map['isLocked'] as bool? ?? false,

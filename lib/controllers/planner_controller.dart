@@ -31,10 +31,13 @@ class PlannerController extends ChangeNotifier {
   SelectionHandle? _activeResizeHandle;
   Offset? _resizeStartPoint;
   Rect? _initialResizeRawBounds;
+  Offset? _initialResizeCenter;
   Map<int, DrawingStroke> _initialResizeStrokes = {};
   bool _isRotatingSelection = false;
   Offset? _rotationCenter;
   double? _initialRotationAngle;
+  double _selectionRotationAngle = 0.0;
+  double _baseSelectionRotationAngle = 0.0;
   int _currentRotationDegrees = 0;
   Rect? _rotationAnchorBounds;
   Map<int, DrawingStroke> _initialRotationStrokes = {};
@@ -79,8 +82,41 @@ class PlannerController extends ChangeNotifier {
       _isDraggingSelection || _activeResizeHandle != null || _isRotatingSelection;
   SelectionHandle? get activeResizeHandle => _activeResizeHandle;
   bool get isRotatingSelection => _isRotatingSelection;
+  double get selectionRotationAngle => _selectionRotationAngle;
   int get currentRotationDegrees => _currentRotationDegrees;
   Rect? get rotationAnchorBounds => _rotationAnchorBounds;
+
+  Offset _rotatePointAround(Offset pt, Offset center, double angleRadians) {
+    if (angleRadians == 0.0) return pt;
+    final cosA = math.cos(angleRadians);
+    final sinA = math.sin(angleRadians);
+    final dx = pt.dx - center.dx;
+    final dy = pt.dy - center.dy;
+    return Offset(
+      center.dx + dx * cosA - dy * sinA,
+      center.dy + dx * sinA + dy * cosA,
+    );
+  }
+
+  void _syncSelectionRotationFromStrokes() {
+    if (_selectedStrokeIndices.isEmpty) {
+      _selectionRotationAngle = 0.0;
+      return;
+    }
+    double? commonRotation;
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length) {
+        final r = _strokes[idx].rotation;
+        if (commonRotation == null) {
+          commonRotation = r;
+        } else if ((commonRotation - r).abs() > 0.001) {
+          commonRotation = 0.0;
+          break;
+        }
+      }
+    }
+    _selectionRotationAngle = commonRotation ?? 0.0;
+  }
 
   Rect? _computeRawSelectionBounds() {
     if (_selectedStrokeIndices.isEmpty) return null;
@@ -90,19 +126,44 @@ class PlannerController extends ChangeNotifier {
     double maxY = double.negativeInfinity;
     bool found = false;
 
+    final cosNeg = math.cos(-_selectionRotationAngle);
+    final sinNeg = math.sin(-_selectionRotationAngle);
+
     for (final index in _selectedStrokeIndices) {
       if (index >= 0 && index < _strokes.length) {
         for (final pt in _strokes[index].points) {
           found = true;
-          if (pt.dx < minX) minX = pt.dx;
-          if (pt.dy < minY) minY = pt.dy;
-          if (pt.dx > maxX) maxX = pt.dx;
-          if (pt.dy > maxY) maxY = pt.dy;
+          final lx = _selectionRotationAngle == 0.0
+              ? pt.dx
+              : pt.dx * cosNeg - pt.dy * sinNeg;
+          final ly = _selectionRotationAngle == 0.0
+              ? pt.dy
+              : pt.dx * sinNeg + pt.dy * cosNeg;
+          if (lx < minX) minX = lx;
+          if (ly < minY) minY = ly;
+          if (lx > maxX) maxX = lx;
+          if (ly > maxY) maxY = ly;
         }
       }
     }
     if (!found) return null;
-    return Rect.fromLTRB(minX, minY, maxX, maxY);
+
+    if (_selectionRotationAngle == 0.0) {
+      return Rect.fromLTRB(minX, minY, maxX, maxY);
+    }
+
+    final localCenter = Offset((minX + maxX) / 2.0, (minY + maxY) / 2.0);
+    final cosPos = math.cos(_selectionRotationAngle);
+    final sinPos = math.sin(_selectionRotationAngle);
+    final worldCenter = Offset(
+      localCenter.dx * cosPos - localCenter.dy * sinPos,
+      localCenter.dx * sinPos + localCenter.dy * cosPos,
+    );
+    return Rect.fromCenter(
+      center: worldCenter,
+      width: maxX - minX,
+      height: maxY - minY,
+    );
   }
 
   Rect? get selectionBounds {
@@ -342,17 +403,39 @@ class PlannerController extends ChangeNotifier {
     if (_selectedTool == DrawingTool.lasso) {
       final bounds = selectionBounds;
       if (bounds != null) {
+        final localPoint = _rotatePointAround(
+          point,
+          bounds.center,
+          -_selectionRotationAngle,
+        );
+
         // 1. First check if user grabbed one of the 8 resize handles (corners or edges)
-        final handle = _findResizeHandleAtPoint(point, bounds);
+        final handle = _findResizeHandleAtPoint(localPoint, bounds);
         if (handle != null) {
           _undoStack.add(List.from(_strokes));
           _redoStack.clear();
           _activeResizeHandle = handle;
-          _resizeStartPoint = point;
-          _initialResizeRawBounds = _computeRawSelectionBounds();
+          final raw = _computeRawSelectionBounds()!;
+          _initialResizeRawBounds = raw;
+          _initialResizeCenter = raw.center;
+          _resizeStartPoint = _rotatePointAround(
+            point,
+            _initialResizeCenter!,
+            -_selectionRotationAngle,
+          );
           _initialResizeStrokes = {
             for (final idx in _selectedStrokeIndices)
-              if (idx >= 0 && idx < _strokes.length) idx: _strokes[idx],
+              if (idx >= 0 && idx < _strokes.length)
+                idx: _strokes[idx].copyWith(
+                  points: _strokes[idx]
+                      .points
+                      .map((p) => _rotatePointAround(
+                            p,
+                            _initialResizeCenter!,
+                            -_selectionRotationAngle,
+                          ))
+                      .toList(),
+                ),
           };
           _isDraggingSelection = false;
           _lastLassoDragPoint = null;
@@ -361,7 +444,7 @@ class PlannerController extends ChangeNotifier {
         }
 
         // 2. Otherwise check if user touched inside the selection box to move/translate
-        if (bounds.inflate(10.0).contains(point)) {
+        if (bounds.inflate(10.0).contains(localPoint)) {
           _undoStack.add(List.from(_strokes));
           _redoStack.clear();
           _isDraggingSelection = true;
@@ -380,6 +463,7 @@ class PlannerController extends ChangeNotifier {
         _selectedStrokeIndices
           ..clear()
           ..add(hitIndex);
+        _syncSelectionRotationFromStrokes();
         _isDraggingSelection = true;
         _lastLassoDragPoint = point;
         _activeResizeHandle = null;
@@ -390,6 +474,7 @@ class PlannerController extends ChangeNotifier {
 
       // 4. Otherwise, start drawing a freeform lasso loop in empty space
       _selectedStrokeIndices.clear();
+      _selectionRotationAngle = 0.0;
       _isDraggingSelection = false;
       _activeResizeHandle = null;
       _lastLassoDragPoint = null;
@@ -569,7 +654,13 @@ class PlannerController extends ChangeNotifier {
   void _applyResizeToSelection(Offset currentPoint) {
     final handle = _activeResizeHandle!;
     final initRect = _initialResizeRawBounds!;
-    final delta = currentPoint - _resizeStartPoint!;
+    final pivot = _initialResizeCenter ?? initRect.center;
+    final localCurrentPoint = _rotatePointAround(
+      currentPoint,
+      pivot,
+      -_selectionRotationAngle,
+    );
+    final delta = localCurrentPoint - _resizeStartPoint!;
 
     double newLeft = initRect.left;
     double newTop = initRect.top;
@@ -653,7 +744,12 @@ class PlannerController extends ChangeNotifier {
           final mappedY = initH > 0.001
               ? newTop + ((pt.dy - initRect.top) / initH) * newH
               : newTop + (pt.dy - initRect.top);
-          return Offset(mappedX, mappedY);
+          final localScaled = Offset(mappedX, mappedY);
+          return _rotatePointAround(
+            localScaled,
+            pivot,
+            _selectionRotationAngle,
+          );
         }).toList();
 
         _strokes[idx] = origStroke.copyWith(points: scaledPoints);
@@ -770,11 +866,13 @@ class PlannerController extends ChangeNotifier {
         _selectedStrokeIndices.add(i);
       }
     }
+    _syncSelectionRotationFromStrokes();
   }
 
   void clearLassoSelection() {
     if (_selectedStrokeIndices.isNotEmpty || _lassoPoints.isNotEmpty) {
       _selectedStrokeIndices.clear();
+      _selectionRotationAngle = 0.0;
       _lassoPoints = [];
       _isDraggingSelection = false;
       notifyListeners();
@@ -792,6 +890,7 @@ class PlannerController extends ChangeNotifier {
       }
     }
     _selectedStrokeIndices.clear();
+    _selectionRotationAngle = 0.0;
     _saveCurrentStrokes();
     notifyListeners();
   }
@@ -827,11 +926,13 @@ class PlannerController extends ChangeNotifier {
 
     _rotationCenter = rawBounds.center;
     _rotationAnchorBounds = rawBounds.inflate(10.0);
+    _baseSelectionRotationAngle = _selectionRotationAngle;
     _initialRotationAngle = math.atan2(
       startCanvasPoint.dy - _rotationCenter!.dy,
       startCanvasPoint.dx - _rotationCenter!.dx,
     );
-    _currentRotationDegrees = 0;
+    _currentRotationDegrees =
+        ((_selectionRotationAngle * 180.0 / math.pi).round()) % 360;
     _isRotatingSelection = true;
 
     // Expand 2-point shapes into explicit polygon vertices so they can rotate freely in 2D
@@ -861,7 +962,9 @@ class PlannerController extends ChangeNotifier {
       currentCanvasPoint.dx - center.dx,
     );
     final deltaAngle = currentAngle - _initialRotationAngle!;
-    _currentRotationDegrees = ((deltaAngle * 180.0 / math.pi).round()) % 360;
+    _selectionRotationAngle = _baseSelectionRotationAngle + deltaAngle;
+    _currentRotationDegrees =
+        ((_selectionRotationAngle * 180.0 / math.pi).round()) % 360;
 
     final cosA = math.cos(deltaAngle);
     final sinA = math.sin(deltaAngle);
@@ -878,7 +981,10 @@ class PlannerController extends ChangeNotifier {
             center.dy + dx * sinA + dy * cosA,
           );
         }).toList();
-        _strokes[idx] = origStroke.copyWith(points: rotatedPoints);
+        _strokes[idx] = origStroke.copyWith(
+          points: rotatedPoints,
+          rotation: origStroke.rotation + deltaAngle,
+        );
       }
     }
     notifyListeners();

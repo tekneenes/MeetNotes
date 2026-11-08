@@ -7,6 +7,7 @@ class DrawingCanvasPainter extends CustomPainter {
   final DrawingStroke? activeStroke;
   final List<Offset> lassoPoints;
   final Rect? selectionBounds;
+  final double selectionRotationAngle;
   final Set<int> selectedStrokeIndices;
   final SelectionHandle? activeResizeHandle;
   final double scale;
@@ -17,6 +18,7 @@ class DrawingCanvasPainter extends CustomPainter {
     this.activeStroke,
     this.lassoPoints = const [],
     this.selectionBounds,
+    this.selectionRotationAngle = 0.0,
     this.selectedStrokeIndices = const {},
     this.activeResizeHandle,
     this.scale = 1.0,
@@ -276,6 +278,14 @@ class DrawingCanvasPainter extends CustomPainter {
   }
 
   void _drawSelectionBox(Canvas canvas, Rect bounds) {
+    canvas.save();
+    if (selectionRotationAngle != 0.0) {
+      final pivot = bounds.center;
+      canvas.translate(pivot.dx, pivot.dy);
+      canvas.rotate(selectionRotationAngle);
+      canvas.translate(-pivot.dx, -pivot.dy);
+    }
+
     final fillPaint = Paint()
       ..color = const Color(0xFF007AFF).withValues(alpha: 0.04)
       ..style = PaintingStyle.fill;
@@ -292,6 +302,13 @@ class DrawingCanvasPainter extends CustomPainter {
     final rectPath = Path()
       ..addRRect(RRect.fromRectAndRadius(bounds, Radius.circular(6.0 / scale)));
     _drawDashedPath(canvas, rectPath, borderPaint, 6.0 / scale, 4.0 / scale);
+
+    // Connector stem line from bottomCenter to the Canva rotation handle
+    canvas.drawLine(
+      bounds.bottomCenter,
+      Offset(bounds.bottomCenter.dx, bounds.bottomCenter.dy + 14.0 / scale),
+      borderPaint,
+    );
 
     // Draw 8 resize/drag handles (corners + midpoints)
     final handleEntries = <MapEntry<SelectionHandle, Offset>>[
@@ -325,6 +342,8 @@ class DrawingCanvasPainter extends CustomPainter {
       canvas.drawCircle(entry.value, r, isActive ? activeHandleFill : handleFill);
       canvas.drawCircle(entry.value, r, handleStroke);
     }
+
+    canvas.restore();
   }
 
   void _drawDashedPath(

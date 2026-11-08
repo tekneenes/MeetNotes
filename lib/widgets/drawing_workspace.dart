@@ -244,6 +244,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                       activeStroke: controller.activeStroke,
                       lassoPoints: controller.lassoPoints,
                       selectionBounds: controller.selectionBounds,
+                      selectionRotationAngle: controller.selectionRotationAngle,
                       selectedStrokeIndices: controller.selectedStrokeIndices,
                       activeResizeHandle: controller.activeResizeHandle,
                       scale: _scale,
@@ -356,17 +357,49 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     );
   }
 
+  Offset _globalToCanvas(Offset globalPosition) {
+    final box = context.findRenderObject() as RenderBox?;
+    final viewportPt = box != null ? box.globalToLocal(globalPosition) : globalPosition;
+    return _toCanvas(viewportPt);
+  }
+
+  Offset _rotateCanvasPoint(Offset pt, Offset center, double angle) {
+    if (angle == 0.0) return pt;
+    final cosA = math.cos(angle);
+    final sinA = math.sin(angle);
+    final dx = pt.dx - center.dx;
+    final dy = pt.dy - center.dy;
+    return Offset(
+      center.dx + dx * cosA - dy * sinA,
+      center.dy + dx * sinA + dy * cosA,
+    );
+  }
+
   Widget _buildSelectionActionPill(Rect canvasBounds, Size viewportSize) {
-    final topCenterViewport = canvasBounds.topCenter * _scale + _panOffset;
-    final bottomCenterViewport = canvasBounds.bottomCenter * _scale + _panOffset;
+    final rot = widget.controller.selectionRotationAngle;
+    final corners = [
+      _rotateCanvasPoint(canvasBounds.topLeft, canvasBounds.center, rot),
+      _rotateCanvasPoint(canvasBounds.topRight, canvasBounds.center, rot),
+      _rotateCanvasPoint(canvasBounds.bottomLeft, canvasBounds.center, rot),
+      _rotateCanvasPoint(canvasBounds.bottomRight, canvasBounds.center, rot),
+    ];
+    double minY = corners.first.dy;
+    double maxY = corners.first.dy;
+    for (final c in corners) {
+      if (c.dy < minY) minY = c.dy;
+      if (c.dy > maxY) maxY = c.dy;
+    }
+
+    final topCenterViewport = Offset(canvasBounds.center.dx, minY) * _scale + _panOffset;
+    final bottomCenterViewport = Offset(canvasBounds.center.dx, maxY) * _scale + _panOffset;
 
     const pillWidth = 236.0;
     const pillHeight = 36.0;
 
     final left = (topCenterViewport.dx - pillWidth / 2)
         .clamp(8.0, (viewportSize.width - pillWidth - 8.0).clamp(8.0, viewportSize.width));
-    final top = (topCenterViewport.dy - pillHeight - 12.0 >= 8.0)
-        ? topCenterViewport.dy - pillHeight - 12.0
+    final top = (topCenterViewport.dy - pillHeight - 14.0 >= 8.0)
+        ? topCenterViewport.dy - pillHeight - 14.0
         : (bottomCenterViewport.dy + 54.0)
             .clamp(8.0, (viewportSize.height - pillHeight - 8.0).clamp(8.0, viewportSize.height));
 
@@ -497,15 +530,26 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
 
   Widget _buildCanvaRotationHandle(Rect anchorCanvasBounds, Size viewportSize) {
     final controller = widget.controller;
-    final bottomCenterViewport = anchorCanvasBounds.bottomCenter * _scale + _panOffset;
     final isRotating = controller.isRotatingSelection;
 
     const handleSize = 34.0;
-    const stemHeight = 12.0;
+    const stemHeight = 14.0;
 
-    final left = (bottomCenterViewport.dx - handleSize / 2)
+    // Position handle center in canvas space relative to the rotated bottomCenter of the selection box
+    final localHandleCanvasCenter = Offset(
+      anchorCanvasBounds.bottomCenter.dx,
+      anchorCanvasBounds.bottomCenter.dy + (stemHeight + handleSize / 2) / _scale,
+    );
+    final rotatedHandleCanvasCenter = _rotateCanvasPoint(
+      localHandleCanvasCenter,
+      anchorCanvasBounds.center,
+      controller.selectionRotationAngle,
+    );
+    final handleViewportCenter = rotatedHandleCanvasCenter * _scale + _panOffset;
+
+    final left = (handleViewportCenter.dx - handleSize / 2)
         .clamp(8.0, (viewportSize.width - handleSize - 8.0).clamp(8.0, viewportSize.width));
-    final top = (bottomCenterViewport.dy + stemHeight)
+    final top = (handleViewportCenter.dy - handleSize / 2)
         .clamp(8.0, (viewportSize.height - handleSize - 8.0).clamp(8.0, viewportSize.height));
 
     return Positioned(
@@ -514,12 +558,10 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onPanStart: (details) {
-          final viewportPt = Offset(left, top) + details.localPosition;
-          controller.startRotation(_toCanvas(viewportPt));
+          controller.startRotation(_globalToCanvas(details.globalPosition));
         },
         onPanUpdate: (details) {
-          final viewportPt = Offset(left, top) + details.localPosition;
-          controller.updateRotation(_toCanvas(viewportPt));
+          controller.updateRotation(_globalToCanvas(details.globalPosition));
         },
         onPanEnd: (_) => controller.endRotation(),
         onPanCancel: controller.endRotation,

@@ -112,12 +112,14 @@ class DrawingStroke {
   final Color color;
   final double strokeWidth;
   final DrawingTool tool;
+  final double rotation;
 
   const DrawingStroke({
     required this.points,
     required this.color,
     required this.strokeWidth,
     required this.tool,
+    this.rotation = 0.0,
   });
 
   DrawingStroke copyWith({
@@ -125,12 +127,14 @@ class DrawingStroke {
     Color? color,
     double? strokeWidth,
     DrawingTool? tool,
+    double? rotation,
   }) {
     return DrawingStroke(
       points: points ?? this.points,
       color: color ?? this.color,
       strokeWidth: strokeWidth ?? this.strokeWidth,
       tool: tool ?? this.tool,
+      rotation: rotation ?? this.rotation,
     );
   }
 
@@ -140,6 +144,7 @@ class DrawingStroke {
       'color': color.toARGB32(),
       'strokeWidth': strokeWidth,
       'tool': tool.name,
+      'rotation': rotation,
     };
   }
 
@@ -161,6 +166,7 @@ class DrawingStroke {
         (e) => e.name == map['tool'],
         orElse: () => DrawingTool.pen,
       ),
+      rotation: (map['rotation'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

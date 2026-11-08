@@ -848,6 +848,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
 
   Widget _buildCornerRadiusAdjustmentBar(CanvasTextItem item) {
     return Container(
+      width: 295,
       height: 40,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
@@ -880,17 +881,15 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           ),
           const SizedBox(width: 6),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+            width: 42,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
             decoration: BoxDecoration(
               color: const Color(0xFF38BDF8).withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(5),
             ),
             child: Text(
-              item.borderRadius == 0
-                  ? '0 (Köşeli)'
-                  : item.borderRadius >= 30
-                      ? '${item.borderRadius.round()} (Kapsül)'
-                      : '${item.borderRadius.round()} px',
+              '${item.borderRadius.round()} px',
               style: const TextStyle(
                 fontSize: 9.5,
                 fontWeight: FontWeight.w700,
@@ -898,9 +897,8 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
               ),
             ),
           ),
-          const SizedBox(width: 6),
-          SizedBox(
-            width: 120,
+          const SizedBox(width: 4),
+          Expanded(
             child: SliderTheme(
               data: SliderThemeData(
                 trackHeight: 3.0,
@@ -924,88 +922,20 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
               ),
             ),
           ),
-          const SizedBox(width: 4),
-          _buildRadiusPresetBtn(
-            label: '0',
-            tooltip: 'Tam Köşeli (0px)',
-            isActive: item.borderRadius == 0,
-            onTap: () {
-              widget.controller.updateCanvasTextStyle(
-                item.id,
-                (cur) => cur.copyWith(borderRadius: 0.0),
-              );
-            },
-          ),
-          const SizedBox(width: 3),
-          _buildRadiusPresetBtn(
-            label: '8',
-            tooltip: 'Hafif Yuvarlak (8px)',
-            isActive: (item.borderRadius - 8.0).abs() < 1.0,
-            onTap: () {
-              widget.controller.updateCanvasTextStyle(
-                item.id,
-                (cur) => cur.copyWith(borderRadius: 8.0),
-              );
-            },
-          ),
-          const SizedBox(width: 3),
-          _buildRadiusPresetBtn(
-            label: '●',
-            tooltip: 'Yarım Daire / Kapsül (35px)',
-            isActive: item.borderRadius >= 30,
-            onTap: () {
-              widget.controller.updateCanvasTextStyle(
-                item.id,
-                (cur) => cur.copyWith(borderRadius: 35.0),
-              );
-            },
-          ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 2),
           InkWell(
             borderRadius: BorderRadius.circular(10),
             onTap: () => setState(() => _showCornerRadiusSlider = false),
             child: const Padding(
-              padding: EdgeInsets.all(3),
+              padding: EdgeInsets.all(4),
               child: Icon(
                 Icons.close_rounded,
-                size: 13,
+                size: 14,
                 color: Colors.white60,
               ),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildRadiusPresetBtn({
-    required String label,
-    required String tooltip,
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(6),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
-          decoration: BoxDecoration(
-            color: isActive
-                ? const Color(0xFF38BDF8)
-                : Colors.white.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 9.5,
-              fontWeight: FontWeight.w700,
-              color: isActive ? const Color(0xFF0F172A) : Colors.white,
-            ),
-          ),
-        ),
       ),
     );
   }

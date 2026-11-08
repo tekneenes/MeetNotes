@@ -107,12 +107,19 @@ enum SelectionHandle {
   centerLeft,
 }
 
+enum QuickAccessSubPage {
+  main,
+  layers,
+  groups,
+}
+
 class DrawingStroke {
   final List<Offset> points;
   final Color color;
   final double strokeWidth;
   final DrawingTool tool;
   final double rotation;
+  final String? groupId;
 
   const DrawingStroke({
     required this.points,
@@ -120,6 +127,7 @@ class DrawingStroke {
     required this.strokeWidth,
     required this.tool,
     this.rotation = 0.0,
+    this.groupId,
   });
 
   DrawingStroke copyWith({
@@ -128,6 +136,8 @@ class DrawingStroke {
     double? strokeWidth,
     DrawingTool? tool,
     double? rotation,
+    String? groupId,
+    bool clearGroupId = false,
   }) {
     return DrawingStroke(
       points: points ?? this.points,
@@ -135,6 +145,7 @@ class DrawingStroke {
       strokeWidth: strokeWidth ?? this.strokeWidth,
       tool: tool ?? this.tool,
       rotation: rotation ?? this.rotation,
+      groupId: clearGroupId ? null : (groupId ?? this.groupId),
     );
   }
 
@@ -145,6 +156,7 @@ class DrawingStroke {
       'strokeWidth': strokeWidth,
       'tool': tool.name,
       'rotation': rotation,
+      if (groupId != null) 'groupId': groupId,
     };
   }
 
@@ -167,6 +179,7 @@ class DrawingStroke {
         orElse: () => DrawingTool.pen,
       ),
       rotation: (map['rotation'] as num?)?.toDouble() ?? 0.0,
+      groupId: map['groupId'] as String?,
     );
   }
 }

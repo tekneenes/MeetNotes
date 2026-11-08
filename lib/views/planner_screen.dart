@@ -438,6 +438,8 @@ class _PlannerScreenState extends State<PlannerScreen>
     final selectedSet = activeController.selectedStrokeIndices;
     final onlySelected = activeController.showOnlySelectedLayers;
     final isLayersPage = activeController.isQuickAccessLayersPage;
+    final isGroupsPage = activeController.isQuickAccessGroupsPage;
+    final allGroups = activeController.allStrokeGroups;
 
     // Build layer entries from TOPMOST (highest index) to BOTTOMMOST (lowest index)
     final layerIndices = <int>[];
@@ -467,12 +469,12 @@ class _PlannerScreenState extends State<PlannerScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Drawer Header (Dynamic for Main Page vs Katmanlar Page)
+          // Drawer Header (Dynamic for Main Page vs Katmanlar vs Gruplar Page)
           Padding(
             padding: const EdgeInsets.fromLTRB(10, 10, 8, 8),
             child: Row(
               children: [
-                if (isLayersPage) ...[
+                if (isLayersPage || isGroupsPage) ...[
                   IconButton(
                     tooltip: 'Hızlı Erişime Dön',
                     icon: const Icon(
@@ -496,7 +498,11 @@ class _PlannerScreenState extends State<PlannerScreen>
                 ],
                 Expanded(
                   child: Text(
-                    isLayersPage ? 'Katmanlar' : 'Hızlı Erişim',
+                    isLayersPage
+                        ? 'Katmanlar'
+                        : isGroupsPage
+                            ? 'Gruplar'
+                            : 'Hızlı Erişim',
                     style: const TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w700,
@@ -505,7 +511,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                     ),
                   ),
                 ),
-                if (isLayersPage && selectedSet.isNotEmpty)
+                if ((isLayersPage || isGroupsPage) && selectedSet.isNotEmpty)
                   Container(
                     margin: const EdgeInsets.only(right: 4),
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
@@ -534,10 +540,13 @@ class _PlannerScreenState extends State<PlannerScreen>
           ),
           const Divider(height: 1),
 
-          // Sayfa 1: Hızlı Erişim Ana Sayfası (Hızlı İşlemler + Katmanlara Geçiş)
+          // Sayfa 1: Hızlı Erişim Ana Sayfası (Hızlı İşlemler + Katmanlar + Gruplar)
           // Sayfa 2: Katmanlar Sayfası
+          // Sayfa 3: Gruplar Sayfası
           Expanded(
-            child: isLayersPage
+            child: isGroupsPage
+                ? _buildGroupsSubPage(context, activeController, allGroups)
+                : isLayersPage
                 ? ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                     children: [
@@ -942,7 +951,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                 : ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                     children: [
-                      // 0. Katmanlar Sayfasına Geçiş Kartı
+                      // 0a. Katmanlar Sayfasına Geçiş Kartı
                       _buildQuickItem(
                         icon: Icons.layers_rounded,
                         color: const Color(0xFF007AFF),
@@ -952,6 +961,22 @@ class _PlannerScreenState extends State<PlannerScreen>
                             : '${allStrokes.length} çizim katmanı • Sıralamayı düzenle',
                         onTap: () {
                           activeController.openQuickAccessLayersPage(
+                            onlySelected: false,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 8),
+
+                      // 0b. Gruplar Sayfasına Geçiş Kartı
+                      _buildQuickItem(
+                        icon: Icons.workspaces_rounded,
+                        color: const Color(0xFF4F46E5),
+                        title: 'Gruplar',
+                        subtitle: allGroups.isNotEmpty
+                            ? '${allGroups.length} aktif grup • Grupları ve öğeleri yönet'
+                            : 'Çizimleri grupla veya grupları yönet',
+                        onTap: () {
+                          activeController.openQuickAccessGroupsPage(
                             onlySelected: false,
                           );
                         },
@@ -1013,6 +1038,456 @@ class _PlannerScreenState extends State<PlannerScreen>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildGroupsSubPage(
+    BuildContext context,
+    PlannerController activeController,
+    Map<String, List<int>> allGroups,
+  ) {
+    final allStrokes = activeController.strokes;
+    final selectedSet = activeController.selectedStrokeIndices;
+    final selectedGroupIds = activeController.selectedGroupIds;
+    final onlySelectedGroups = activeController.showOnlySelectedGroups;
+
+    final groupEntries = allGroups.entries.where((entry) {
+      if (!onlySelectedGroups) return true;
+      return selectedGroupIds.contains(entry.key);
+    }).toList();
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      children: [
+        // Filter Toggle: Tüm Gruplar vs Seçili Grup
+        Container(
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE2E8F0).withValues(alpha: 0.7),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => activeController.setShowOnlySelectedGroups(false),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: BoxDecoration(
+                      color: !onlySelectedGroups ? Colors.white : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: !onlySelectedGroups
+                          ? [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                blurRadius: 4,
+                                offset: const Offset(0, 1),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Tüm Gruplar (${allGroups.length})',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight:
+                            !onlySelectedGroups ? FontWeight.w700 : FontWeight.w600,
+                        color: !onlySelectedGroups
+                            ? const Color(0xFF0F172A)
+                            : const Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: selectedGroupIds.isNotEmpty
+                      ? () => activeController.setShowOnlySelectedGroups(true)
+                      : null,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: BoxDecoration(
+                      color: onlySelectedGroups ? Colors.white : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: onlySelectedGroups
+                          ? [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                blurRadius: 4,
+                                offset: const Offset(0, 1),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Seçili Grup (${selectedGroupIds.length})',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight:
+                            onlySelectedGroups ? FontWeight.w700 : FontWeight.w600,
+                        color: selectedGroupIds.isEmpty
+                            ? Colors.grey.shade400
+                            : onlySelectedGroups
+                                ? const Color(0xFF4F46E5)
+                                : const Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        // Quick "Group Current Selection" CTA if 2+ items are selected & groupable
+        if (activeController.canGroupSelection) ...[
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: activeController.groupSelectedStrokes,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEEF2FF),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: const Color(0xFF4F46E5).withValues(alpha: 0.35),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.link_rounded,
+                    size: 18,
+                    color: Color(0xFF4F46E5),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Seçili ${selectedSet.length} Öğeyi Grupla',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF4F46E5),
+                      ),
+                    ),
+                  ),
+                  const Icon(
+                    Icons.add_circle_outline_rounded,
+                    size: 16,
+                    color: Color(0xFF4F46E5),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+
+        if (groupEntries.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.workspaces_outline,
+                  size: 26,
+                  color: Colors.grey.shade400,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  onlySelectedGroups
+                      ? 'Seçili bir grup yok.'
+                      : 'Henüz oluşturulmuş bir grup yok.\nTuvalde birden fazla çizimi seçip "Grupla" tuşuna basabilirsiniz.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: Colors.grey.shade500,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              onlySelectedGroups
+                  ? 'Seçili gruptaki öğeler aşağıda listelenmiştir. Grubu çözebilir veya tekil öğeleri yönetebilirsiniz:'
+                  : 'Gruba dokunarak tuvalde seçebilir, içindeki öğeleri görebilir veya grubu çözebilirsiniz:',
+              style: TextStyle(
+                fontSize: 10.5,
+                color: Colors.grey.shade600,
+                height: 1.3,
+              ),
+            ),
+          ),
+          ...List.generate(groupEntries.length, (gIdx) {
+            final groupId = groupEntries[gIdx].key;
+            final memberIndices = groupEntries[gIdx].value; // Topmost to bottommost
+            final isGroupSelected = selectedGroupIds.contains(groupId);
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isGroupSelected
+                      ? const Color(0xFFF5F3FF)
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isGroupSelected
+                        ? const Color(0xFF4F46E5).withValues(alpha: 0.45)
+                        : Colors.black.withValues(alpha: 0.08),
+                    width: isGroupSelected ? 1.4 : 1.0,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Group Header Bar
+                    InkWell(
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(11),
+                      ),
+                      onTap: () => activeController.selectGroup(groupId),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF4F46E5).withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.workspaces_rounded,
+                                size: 15,
+                                color: Color(0xFF4F46E5),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Grup #${gIdx + 1}',
+                                        style: const TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF1E293B),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 1.5,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFE0E7FF),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          '${memberIndices.length} öğe',
+                                          style: const TextStyle(
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF4338CA),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    isGroupSelected
+                                        ? 'Tuvalde seçili'
+                                        : 'Seçmek için dokunun',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: isGroupSelected
+                                          ? const Color(0xFF4F46E5)
+                                          : Colors.grey.shade500,
+                                      fontWeight: isGroupSelected
+                                          ? FontWeight.w600
+                                          : FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Tooltip(
+                              message: 'Grubu Çöz',
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(8),
+                                onTap: () => activeController.ungroupByGroupId(groupId),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF3C7),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.link_off_rounded,
+                                        size: 13,
+                                        color: Color(0xFFB45309),
+                                      ),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Çöz',
+                                        style: TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFFB45309),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const Divider(height: 1),
+
+                    // Group Members List (Gruptaki Öğeler)
+                    Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Column(
+                        children: List.generate(memberIndices.length, (mPos) {
+                          final strokeIdx = memberIndices[mPos];
+                          final stroke = allStrokes[strokeIdx];
+                          final isTopMember = mPos == 0;
+                          final isBottomMember = mPos == memberIndices.length - 1;
+
+                          return Padding(
+                            padding: EdgeInsets.only(
+                              bottom: isBottomMember ? 0 : 5,
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Colors.black.withValues(alpha: 0.06),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 28,
+                                    height: 28,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF8FAFC),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: Colors.black.withValues(alpha: 0.08),
+                                      ),
+                                    ),
+                                    child: CustomPaint(
+                                      painter: _StrokeLayerMiniPreviewPainter(
+                                        stroke: stroke,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Container(
+                                              width: 7,
+                                              height: 7,
+                                              decoration: BoxDecoration(
+                                                color: stroke.color,
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 5),
+                                            Expanded(
+                                              child: Text(
+                                                stroke.tool.label,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 11.5,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: Color(0xFF1E293B),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          '${isTopMember ? "Grupta Üstte" : isBottomMember ? "Grupta Altta" : "Grupta Ortada"} • Katman #${strokeIdx + 1}',
+                                          style: TextStyle(
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.grey.shade500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Tooltip(
+                                    message: 'Gruptan Çıkar',
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(6),
+                                      onTap: () => activeController
+                                          .removeStrokeFromGroup(strokeIdx),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(4),
+                                        child: Icon(
+                                          Icons.remove_circle_outline_rounded,
+                                          size: 15,
+                                          color: Colors.grey.shade500,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      ],
     );
   }
 

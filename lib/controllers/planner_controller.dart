@@ -42,10 +42,11 @@ class PlannerController extends ChangeNotifier {
   Rect? _rotationAnchorBounds;
   Map<int, DrawingStroke> _initialRotationStrokes = {};
 
-  // Hızlı Erişim & Katman Sıralaması (Z-Order Layering) State
+  // Hızlı Erişim, Katman Sıralaması & Gruplama State
   bool _isQuickAccessOpen = false;
-  bool _isQuickAccessLayersPage = false;
+  QuickAccessSubPage _quickAccessSubPage = QuickAccessSubPage.main;
   bool _showOnlySelectedLayers = false;
+  bool _showOnlySelectedGroups = false;
 
   final Map<String, String> _dayNotes = {};
   final Map<String, List<DrawingStroke>> _dayPreviewStrokes = {};
@@ -91,46 +92,110 @@ class PlannerController extends ChangeNotifier {
   int get currentRotationDegrees => _currentRotationDegrees;
   Rect? get rotationAnchorBounds => _rotationAnchorBounds;
   bool get isQuickAccessOpen => _isQuickAccessOpen;
-  bool get isQuickAccessLayersPage => _isQuickAccessLayersPage;
+  QuickAccessSubPage get quickAccessSubPage => _quickAccessSubPage;
+  bool get isQuickAccessLayersPage => _quickAccessSubPage == QuickAccessSubPage.layers;
+  bool get isQuickAccessGroupsPage => _quickAccessSubPage == QuickAccessSubPage.groups;
   bool get showOnlySelectedLayers =>
       _showOnlySelectedLayers && _selectedStrokeIndices.isNotEmpty;
+  bool get showOnlySelectedGroups =>
+      _showOnlySelectedGroups && hasGroupedStrokeInSelection;
+
+  bool get hasGroupedStrokeInSelection {
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length && _strokes[idx].groupId != null) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool get canGroupSelection {
+    if (_selectedStrokeIndices.length < 2) return false;
+    String? commonGroup;
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length) {
+        final gid = _strokes[idx].groupId;
+        if (gid == null) return true; // En az bir grupsuz öğe var
+        if (commonGroup == null) {
+          commonGroup = gid;
+        } else if (commonGroup != gid) {
+          return true; // Farklı gruplardan öğeler seçili -> tek grupta birleştirilebilir
+        }
+      }
+    }
+    return false; // Hepsi zaten aynı grupta
+  }
+
+  Set<String> get selectedGroupIds {
+    final ids = <String>{};
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length) {
+        final gid = _strokes[idx].groupId;
+        if (gid != null) ids.add(gid);
+      }
+    }
+    return ids;
+  }
+
+  /// Returns all active groups on the current page: groupId -> stroke indices (ordered top-to-bottom).
+  Map<String, List<int>> get allStrokeGroups {
+    final map = <String, List<int>>{};
+    for (int i = _strokes.length - 1; i >= 0; i--) {
+      final gid = _strokes[i].groupId;
+      if (gid != null) {
+        map.putIfAbsent(gid, () => <int>[]).add(i);
+      }
+    }
+    map.removeWhere((_, indices) => indices.length < 2);
+    return map;
+  }
 
   void toggleQuickAccess() {
     _isQuickAccessOpen = !_isQuickAccessOpen;
     if (_isQuickAccessOpen) {
       // Normal açılışta Hızlı Erişim ana sayfasında (Hızlı İşlemler) başla
-      _isQuickAccessLayersPage = false;
+      _quickAccessSubPage = QuickAccessSubPage.main;
       if (_selectedStrokeIndices.isEmpty) {
         _showOnlySelectedLayers = false;
+        _showOnlySelectedGroups = false;
       }
     }
     notifyListeners();
   }
 
   void openQuickAccessMainPage() {
-    _isQuickAccessLayersPage = false;
+    _quickAccessSubPage = QuickAccessSubPage.main;
     notifyListeners();
   }
 
   void openQuickAccessLayersPage({bool onlySelected = false}) {
     _isQuickAccessOpen = true;
-    _isQuickAccessLayersPage = true;
+    _quickAccessSubPage = QuickAccessSubPage.layers;
     _showOnlySelectedLayers = onlySelected && _selectedStrokeIndices.isNotEmpty;
     notifyListeners();
   }
 
   void openQuickAccessForSelectedLayers() {
-    _isQuickAccessOpen = true;
-    _isQuickAccessLayersPage = true;
-    _showOnlySelectedLayers = _selectedStrokeIndices.isNotEmpty;
-    notifyListeners();
+    openQuickAccessLayersPage(onlySelected: true);
   }
 
   void openQuickAccessAllLayers() {
+    openQuickAccessLayersPage(onlySelected: false);
+  }
+
+  void openQuickAccessGroupsPage({bool onlySelected = false}) {
     _isQuickAccessOpen = true;
-    _isQuickAccessLayersPage = true;
-    _showOnlySelectedLayers = false;
+    _quickAccessSubPage = QuickAccessSubPage.groups;
+    _showOnlySelectedGroups = onlySelected && hasGroupedStrokeInSelection;
     notifyListeners();
+  }
+
+  void openQuickAccessForSelectedGroup() {
+    openQuickAccessGroupsPage(onlySelected: true);
+  }
+
+  void openQuickAccessAllGroups() {
+    openQuickAccessGroupsPage(onlySelected: false);
   }
 
   void closeQuickAccess() {
@@ -142,6 +207,11 @@ class PlannerController extends ChangeNotifier {
 
   void setShowOnlySelectedLayers(bool onlySelected) {
     _showOnlySelectedLayers = onlySelected;
+    notifyListeners();
+  }
+
+  void setShowOnlySelectedGroups(bool onlySelected) {
+    _showOnlySelectedGroups = onlySelected;
     notifyListeners();
   }
 
@@ -532,6 +602,7 @@ class PlannerController extends ChangeNotifier {
         _selectedStrokeIndices
           ..clear()
           ..add(hitIndex);
+        _expandSelectionWithGroups();
         _syncSelectionRotationFromStrokes();
         _isDraggingSelection = true;
         _lastLassoDragPoint = point;
@@ -954,7 +1025,43 @@ class PlannerController extends ChangeNotifier {
         _selectedStrokeIndices.add(i);
       }
     }
+    _expandSelectionWithGroups();
     _syncSelectionRotationFromStrokes();
+  }
+
+  void _expandSelectionWithGroups() {
+    if (_selectedStrokeIndices.isEmpty) return;
+    final groupIds = <String>{};
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length) {
+        final gid = _strokes[idx].groupId;
+        if (gid != null) {
+          groupIds.add(gid);
+        }
+      }
+    }
+    if (groupIds.isEmpty) return;
+    for (int i = 0; i < _strokes.length; i++) {
+      final gid = _strokes[i].groupId;
+      if (gid != null && groupIds.contains(gid)) {
+        _selectedStrokeIndices.add(i);
+      }
+    }
+  }
+
+  void _cleanupSingletonGroups() {
+    final counts = <String, int>{};
+    for (final s in _strokes) {
+      if (s.groupId != null) {
+        counts[s.groupId!] = (counts[s.groupId!] ?? 0) + 1;
+      }
+    }
+    for (int i = 0; i < _strokes.length; i++) {
+      final gid = _strokes[i].groupId;
+      if (gid != null && (counts[gid] ?? 0) < 2) {
+        _strokes[i] = _strokes[i].copyWith(clearGroupId: true);
+      }
+    }
   }
 
   void clearLassoSelection() {
@@ -979,6 +1086,7 @@ class PlannerController extends ChangeNotifier {
     }
     _selectedStrokeIndices.clear();
     _selectionRotationAngle = 0.0;
+    _cleanupSingletonGroups();
     _saveCurrentStrokes();
     notifyListeners();
   }
@@ -989,11 +1097,25 @@ class PlannerController extends ChangeNotifier {
     _redoStack.clear();
     final newIndices = <int>{};
     final sorted = _selectedStrokeIndices.toList()..sort();
+    final groupMap = <String, String>{};
+    final nowMicros = DateTime.now().microsecondsSinceEpoch;
     for (final idx in sorted) {
       if (idx >= 0 && idx < _strokes.length) {
         final original = _strokes[idx];
         final shiftedPoints = original.points.map((p) => p + const Offset(24, 24)).toList();
-        _strokes.add(original.copyWith(points: shiftedPoints));
+        String? duplicatedGroupId;
+        if (original.groupId != null) {
+          duplicatedGroupId = groupMap.putIfAbsent(
+            original.groupId!,
+            () => 'grp_${nowMicros}_${groupMap.length}',
+          );
+        }
+        _strokes.add(
+          original.copyWith(
+            points: shiftedPoints,
+            groupId: duplicatedGroupId,
+          ),
+        );
         newIndices.add(_strokes.length - 1);
       }
     }
@@ -1001,6 +1123,78 @@ class PlannerController extends ChangeNotifier {
       ..clear()
       ..addAll(newIndices);
     _saveCurrentStrokes();
+    notifyListeners();
+  }
+
+  // --- Canva-Style Gruplama (Group / Ungroup Management) ---
+
+  void groupSelectedStrokes() {
+    if (_selectedStrokeIndices.length < 2) return;
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    final newGroupId = 'grp_${DateTime.now().microsecondsSinceEpoch}';
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length) {
+        _strokes[idx] = _strokes[idx].copyWith(groupId: newGroupId);
+      }
+    }
+    _cleanupSingletonGroups();
+    _saveCurrentStrokes();
+    notifyListeners();
+  }
+
+  void ungroupSelectedStrokes() {
+    if (!hasGroupedStrokeInSelection) return;
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    final targetGroups = selectedGroupIds;
+    for (int i = 0; i < _strokes.length; i++) {
+      final gid = _strokes[i].groupId;
+      if (gid != null && targetGroups.contains(gid)) {
+        _strokes[i] = _strokes[i].copyWith(clearGroupId: true);
+      }
+    }
+    _saveCurrentStrokes();
+    notifyListeners();
+  }
+
+  void ungroupByGroupId(String groupId) {
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    for (int i = 0; i < _strokes.length; i++) {
+      if (_strokes[i].groupId == groupId) {
+        _strokes[i] = _strokes[i].copyWith(clearGroupId: true);
+      }
+    }
+    _saveCurrentStrokes();
+    notifyListeners();
+  }
+
+  void removeStrokeFromGroup(int strokeIndex) {
+    if (strokeIndex < 0 || strokeIndex >= _strokes.length) return;
+    if (_strokes[strokeIndex].groupId == null) return;
+
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    _strokes[strokeIndex] = _strokes[strokeIndex].copyWith(clearGroupId: true);
+    _cleanupSingletonGroups();
+    _saveCurrentStrokes();
+    notifyListeners();
+  }
+
+  void selectGroup(String groupId) {
+    _selectedTool = DrawingTool.lasso;
+    _selectedStrokeIndices.clear();
+    for (int i = 0; i < _strokes.length; i++) {
+      if (_strokes[i].groupId == groupId) {
+        _selectedStrokeIndices.add(i);
+      }
+    }
+    _syncSelectionRotationFromStrokes();
     notifyListeners();
   }
 

@@ -399,7 +399,9 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     );
     final handleViewport = rotatedHandleCanvas * _scale + _panOffset;
 
-    const pillWidth = 268.0;
+    final showGroupBtn =
+        controller.canGroupSelection || controller.hasGroupedStrokeInSelection;
+    final pillWidth = showGroupBtn ? 344.0 : 268.0;
     const pillHeight = 36.0;
     const handleClearanceRadius = 26.0;
 
@@ -508,6 +510,71 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                   ),
                 ),
               ),
+              if (controller.canGroupSelection) ...[
+                Container(
+                  width: 1,
+                  height: 16,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  color: Colors.white.withValues(alpha: 0.2),
+                ),
+                Tooltip(
+                  message: 'Seçili Öğeleri Grupla',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: widget.controller.groupSelectedStrokes,
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.link_rounded, size: 16, color: Color(0xFF38BDF8)),
+                          SizedBox(width: 4),
+                          Text(
+                            'Grupla',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF38BDF8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ] else if (controller.hasGroupedStrokeInSelection) ...[
+                Container(
+                  width: 1,
+                  height: 16,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  color: Colors.white.withValues(alpha: 0.2),
+                ),
+                Tooltip(
+                  message: 'Grubu Çöz',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: widget.controller.ungroupSelectedStrokes,
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.link_off_rounded, size: 16, color: Color(0xFFFBBF24)),
+                          SizedBox(width: 4),
+                          Text(
+                            'Grubu Çöz',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFFFBBF24),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               Container(
                 width: 1,
                 height: 16,
@@ -546,13 +613,25 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 color: Colors.white.withValues(alpha: 0.2),
               ),
               PopupMenuButton<String>(
-                tooltip: 'Katman ve Sıralama Seçenekleri',
+                tooltip: 'Grup, Katman ve Sıralama Seçenekleri',
                 offset: const Offset(0, 38),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 elevation: 10,
                 padding: EdgeInsets.zero,
                 onSelected: (action) {
                   switch (action) {
+                    case 'group_selection':
+                      widget.controller.groupSelectedStrokes();
+                      break;
+                    case 'ungroup_selection':
+                      widget.controller.ungroupSelectedStrokes();
+                      break;
+                    case 'show_selected_group':
+                      widget.controller.openQuickAccessForSelectedGroup();
+                      break;
+                    case 'show_all_groups':
+                      widget.controller.openQuickAccessAllGroups();
+                      break;
                     case 'show_selected_layers':
                       widget.controller.openQuickAccessForSelectedLayers();
                       break;
@@ -574,6 +653,90 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                   }
                 },
                 itemBuilder: (ctx) => [
+                  if (controller.canGroupSelection)
+                    PopupMenuItem<String>(
+                      value: 'group_selection',
+                      height: 36,
+                      child: Row(
+                        children: [
+                          const Icon(Icons.link_rounded, size: 17, color: Color(0xFF0284C7)),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Seçili Öğeleri Grupla (${controller.selectedStrokeIndices.length})',
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF0284C7),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (controller.hasGroupedStrokeInSelection) ...[
+                    const PopupMenuItem<String>(
+                      value: 'ungroup_selection',
+                      height: 36,
+                      child: Row(
+                        children: [
+                          Icon(Icons.link_off_rounded, size: 17, color: Color(0xFFD97706)),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Grubu Çöz',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFFD97706),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem<String>(
+                      value: 'show_selected_group',
+                      height: 36,
+                      child: Row(
+                        children: [
+                          Icon(Icons.workspaces_rounded, size: 16, color: Color(0xFF4F46E5)),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Seçili Gruptaki Öğeleri Göster',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF4F46E5),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const PopupMenuItem<String>(
+                    value: 'show_all_groups',
+                    height: 36,
+                    child: Row(
+                      children: [
+                        Icon(Icons.workspaces_outline, size: 16, color: Color(0xFF1E293B)),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Tüm Grupları Göster',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF1E293B),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(height: 8),
                   PopupMenuItem<String>(
                     value: 'show_selected_layers',
                     height: 38,

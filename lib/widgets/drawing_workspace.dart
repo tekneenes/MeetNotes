@@ -1033,7 +1033,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       ),
       _buildPillDivider(),
 
-      // 8. Duplicate
+      // 8. Duplicate (Icon Only)
       Tooltip(
         message: 'Seçimi Çoğalt',
         child: InkWell(
@@ -1041,21 +1041,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           onTap: controller.duplicateSelectedStrokes,
           child: const Padding(
             padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.copy_rounded, size: 15, color: Colors.white),
-                SizedBox(width: 4),
-                Text(
-                  'Çoğalt',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
+            child: Icon(Icons.copy_rounded, size: 15, color: Colors.white),
           ),
         ),
       ),
@@ -1219,21 +1205,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           onTap: controller.duplicateSelectedStrokes,
           child: const Padding(
             padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.copy_rounded, size: 15, color: Colors.white),
-                SizedBox(width: 4),
-                Text(
-                  'Çoğalt',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
+            child: Icon(Icons.copy_rounded, size: 15, color: Colors.white),
           ),
         ),
       ),

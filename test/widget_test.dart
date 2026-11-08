@@ -118,7 +118,19 @@ void main() {
     expect(controller.strokes.first.points[0], const Offset(150, 130));
     expect(controller.strokes.first.points[1], const Offset(290, 250));
 
-    // 5. Test duplicate and delete selected strokes
+    // 5. Test 2D rotation (90 degrees) and horizontal/vertical flip
+    final center = controller.selectionBounds!.center;
+    controller.startRotation(Offset(center.dx, center.dy + 100));
+    expect(controller.isRotatingSelection, isTrue);
+    controller.updateRotation(Offset(center.dx - 100, center.dy));
+    controller.endRotation();
+    expect(controller.isRotatingSelection, isFalse);
+    expect(controller.strokes.first.points.length, 4); // Expanded rectangle polygon
+
+    controller.flipSelectionHorizontally();
+    controller.flipSelectionVertically();
+
+    // 6. Test duplicate and delete selected strokes
     controller.duplicateSelectedStrokes();
     expect(controller.strokes.length, 2);
 

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../controllers/planner_controller.dart';
@@ -255,11 +256,20 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
               // 1c. Canvas Text Items (Mapped cleanly from Canvas Space to Viewport Space)
               ...controller.canvasTexts.map((textItem) => _buildCanvasTextWidget(textItem)),
 
-              // 1d. Floating Lasso Selection Action Pill (Copy / Delete / Clear Selection)
+              // 1d. Floating Lasso Selection Action Pill (Copy / Flip / Delete / Clear Selection)
               if (controller.hasLassoSelection &&
                   !controller.isDraggingSelection &&
                   controller.selectionBounds != null)
                 _buildSelectionActionPill(controller.selectionBounds!, viewportSize),
+
+              // 1e. Canva-Style Circular 2D Rotation Handle (Bottom of Selection Box)
+              if (controller.hasLassoSelection &&
+                  controller.selectionBounds != null &&
+                  (!controller.isDraggingSelection || controller.isRotatingSelection))
+                _buildCanvaRotationHandle(
+                  controller.rotationAnchorBounds ?? controller.selectionBounds!,
+                  viewportSize,
+                ),
 
               // 2. Truly Floating & Draggable Apple Notes Toolbar
               Positioned(
@@ -350,14 +360,14 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     final topCenterViewport = canvasBounds.topCenter * _scale + _panOffset;
     final bottomCenterViewport = canvasBounds.bottomCenter * _scale + _panOffset;
 
-    const pillWidth = 176.0;
+    const pillWidth = 236.0;
     const pillHeight = 36.0;
 
     final left = (topCenterViewport.dx - pillWidth / 2)
         .clamp(8.0, (viewportSize.width - pillWidth - 8.0).clamp(8.0, viewportSize.width));
     final top = (topCenterViewport.dy - pillHeight - 12.0 >= 8.0)
         ? topCenterViewport.dy - pillHeight - 12.0
-        : (bottomCenterViewport.dy + 12.0)
+        : (bottomCenterViewport.dy + 54.0)
             .clamp(8.0, (viewportSize.height - pillHeight - 8.0).clamp(8.0, viewportSize.height));
 
     return Positioned(
@@ -410,6 +420,37 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 color: Colors.white.withValues(alpha: 0.2),
               ),
               Tooltip(
+                message: 'Yatay Aynala (Sağa / Sola Çevir)',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: widget.controller.flipSelectionHorizontally,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Icon(Icons.flip_rounded, size: 16, color: Colors.white),
+                  ),
+                ),
+              ),
+              Tooltip(
+                message: 'Dikey Aynala (Yukarı / Aşağı Çevir)',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: widget.controller.flipSelectionVertically,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Transform.rotate(
+                      angle: math.pi / 2,
+                      child: const Icon(Icons.flip_rounded, size: 16, color: Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 16,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                color: Colors.white.withValues(alpha: 0.2),
+              ),
+              Tooltip(
                 message: 'Seçimi Sil',
                 child: InkWell(
                   borderRadius: BorderRadius.circular(12),
@@ -447,6 +488,90 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                   ),
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCanvaRotationHandle(Rect anchorCanvasBounds, Size viewportSize) {
+    final controller = widget.controller;
+    final bottomCenterViewport = anchorCanvasBounds.bottomCenter * _scale + _panOffset;
+    final isRotating = controller.isRotatingSelection;
+
+    const handleSize = 34.0;
+    const stemHeight = 12.0;
+
+    final left = (bottomCenterViewport.dx - handleSize / 2)
+        .clamp(8.0, (viewportSize.width - handleSize - 8.0).clamp(8.0, viewportSize.width));
+    final top = (bottomCenterViewport.dy + stemHeight)
+        .clamp(8.0, (viewportSize.height - handleSize - 8.0).clamp(8.0, viewportSize.height));
+
+    return Positioned(
+      left: left,
+      top: top,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onPanStart: (details) {
+          final viewportPt = Offset(left, top) + details.localPosition;
+          controller.startRotation(_toCanvas(viewportPt));
+        },
+        onPanUpdate: (details) {
+          final viewportPt = Offset(left, top) + details.localPosition;
+          controller.updateRotation(_toCanvas(viewportPt));
+        },
+        onPanEnd: (_) => controller.endRotation(),
+        onPanCancel: controller.endRotation,
+        child: Tooltip(
+          message: '2D Döndürmek İçin Basılı Tutup Çevirin',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: handleSize,
+                height: handleSize,
+                decoration: BoxDecoration(
+                  color: isRotating
+                      ? const Color(0xFF007AFF)
+                      : const Color(0xFF1E293B).withValues(alpha: 0.94),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.22),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.rotate_right_rounded,
+                  size: 19,
+                  color: Colors.white,
+                ),
+              ),
+              if (isRotating) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B).withValues(alpha: 0.94),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${controller.currentRotationDegrees}°',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

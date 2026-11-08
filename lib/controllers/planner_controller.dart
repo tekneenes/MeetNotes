@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models/planner_models.dart';
 import '../services/planner_storage_service.dart';
@@ -22,7 +23,7 @@ class PlannerController extends ChangeNotifier {
 
   DrawingStroke? _activeStroke;
 
-  // Lasso Selection & Resize State
+  // Lasso Selection, Resize & 2D Rotation State
   List<Offset> _lassoPoints = [];
   final Set<int> _selectedStrokeIndices = {};
   bool _isDraggingSelection = false;
@@ -31,6 +32,12 @@ class PlannerController extends ChangeNotifier {
   Offset? _resizeStartPoint;
   Rect? _initialResizeRawBounds;
   Map<int, DrawingStroke> _initialResizeStrokes = {};
+  bool _isRotatingSelection = false;
+  Offset? _rotationCenter;
+  double? _initialRotationAngle;
+  int _currentRotationDegrees = 0;
+  Rect? _rotationAnchorBounds;
+  Map<int, DrawingStroke> _initialRotationStrokes = {};
 
   final Map<String, String> _dayNotes = {};
   final Map<String, List<DrawingStroke>> _dayPreviewStrokes = {};
@@ -68,8 +75,12 @@ class PlannerController extends ChangeNotifier {
   List<Offset> get lassoPoints => List.unmodifiable(_lassoPoints);
   Set<int> get selectedStrokeIndices => Set.unmodifiable(_selectedStrokeIndices);
   bool get hasLassoSelection => _selectedStrokeIndices.isNotEmpty;
-  bool get isDraggingSelection => _isDraggingSelection || _activeResizeHandle != null;
+  bool get isDraggingSelection =>
+      _isDraggingSelection || _activeResizeHandle != null || _isRotatingSelection;
   SelectionHandle? get activeResizeHandle => _activeResizeHandle;
+  bool get isRotatingSelection => _isRotatingSelection;
+  int get currentRotationDegrees => _currentRotationDegrees;
+  Rect? get rotationAnchorBounds => _rotationAnchorBounds;
 
   Rect? _computeRawSelectionBounds() {
     if (_selectedStrokeIndices.isEmpty) return null;
@@ -804,6 +815,199 @@ class PlannerController extends ChangeNotifier {
       ..addAll(newIndices);
     _saveCurrentStrokes();
     notifyListeners();
+  }
+
+  // 2D Canva-Style Rotation & Horizontal/Vertical Flip (Aynalama)
+  void startRotation(Offset startCanvasPoint) {
+    final rawBounds = _computeRawSelectionBounds();
+    if (rawBounds == null || _selectedStrokeIndices.isEmpty) return;
+
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    _rotationCenter = rawBounds.center;
+    _rotationAnchorBounds = rawBounds.inflate(10.0);
+    _initialRotationAngle = math.atan2(
+      startCanvasPoint.dy - _rotationCenter!.dy,
+      startCanvasPoint.dx - _rotationCenter!.dx,
+    );
+    _currentRotationDegrees = 0;
+    _isRotatingSelection = true;
+
+    // Expand 2-point shapes into explicit polygon vertices so they can rotate freely in 2D
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length) {
+        _strokes[idx] = _expandShapeToPolygon(_strokes[idx]);
+      }
+    }
+
+    _initialRotationStrokes = {
+      for (final idx in _selectedStrokeIndices)
+        if (idx >= 0 && idx < _strokes.length) idx: _strokes[idx],
+    };
+    notifyListeners();
+  }
+
+  void updateRotation(Offset currentCanvasPoint) {
+    if (!_isRotatingSelection ||
+        _rotationCenter == null ||
+        _initialRotationAngle == null) {
+      return;
+    }
+
+    final center = _rotationCenter!;
+    final currentAngle = math.atan2(
+      currentCanvasPoint.dy - center.dy,
+      currentCanvasPoint.dx - center.dx,
+    );
+    final deltaAngle = currentAngle - _initialRotationAngle!;
+    _currentRotationDegrees = ((deltaAngle * 180.0 / math.pi).round()) % 360;
+
+    final cosA = math.cos(deltaAngle);
+    final sinA = math.sin(deltaAngle);
+
+    for (final entry in _initialRotationStrokes.entries) {
+      final idx = entry.key;
+      final origStroke = entry.value;
+      if (idx >= 0 && idx < _strokes.length) {
+        final rotatedPoints = origStroke.points.map((pt) {
+          final dx = pt.dx - center.dx;
+          final dy = pt.dy - center.dy;
+          return Offset(
+            center.dx + dx * cosA - dy * sinA,
+            center.dy + dx * sinA + dy * cosA,
+          );
+        }).toList();
+        _strokes[idx] = origStroke.copyWith(points: rotatedPoints);
+      }
+    }
+    notifyListeners();
+  }
+
+  void endRotation() {
+    if (!_isRotatingSelection) return;
+    _isRotatingSelection = false;
+    _rotationCenter = null;
+    _initialRotationAngle = null;
+    _rotationAnchorBounds = null;
+    _initialRotationStrokes.clear();
+    _saveCurrentStrokes();
+    notifyListeners();
+  }
+
+  void flipSelectionHorizontally() {
+    final rawBounds = _computeRawSelectionBounds();
+    if (rawBounds == null || _selectedStrokeIndices.isEmpty) return;
+
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    final cx = rawBounds.center.dx;
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length) {
+        final expanded = _expandShapeToPolygon(_strokes[idx]);
+        final flippedPoints =
+            expanded.points.map((pt) => Offset(2 * cx - pt.dx, pt.dy)).toList();
+        _strokes[idx] = expanded.copyWith(points: flippedPoints);
+      }
+    }
+    _saveCurrentStrokes();
+    notifyListeners();
+  }
+
+  void flipSelectionVertically() {
+    final rawBounds = _computeRawSelectionBounds();
+    if (rawBounds == null || _selectedStrokeIndices.isEmpty) return;
+
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    final cy = rawBounds.center.dy;
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length) {
+        final expanded = _expandShapeToPolygon(_strokes[idx]);
+        final flippedPoints =
+            expanded.points.map((pt) => Offset(pt.dx, 2 * cy - pt.dy)).toList();
+        _strokes[idx] = expanded.copyWith(points: flippedPoints);
+      }
+    }
+    _saveCurrentStrokes();
+    notifyListeners();
+  }
+
+  DrawingStroke _expandShapeToPolygon(DrawingStroke stroke) {
+    if (!stroke.tool.isShape || stroke.points.length != 2) return stroke;
+
+    final rect = Rect.fromPoints(stroke.points.first, stroke.points.last);
+    List<Offset> poly;
+
+    switch (stroke.tool) {
+      case DrawingTool.rectangle:
+      case DrawingTool.square:
+        poly = [
+          rect.topLeft,
+          rect.topRight,
+          rect.bottomRight,
+          rect.bottomLeft,
+        ];
+        break;
+      case DrawingTool.triangle:
+        poly = [
+          Offset(rect.center.dx, rect.top),
+          Offset(rect.right, rect.bottom),
+          Offset(rect.left, rect.bottom),
+        ];
+        break;
+      case DrawingTool.deltoid:
+        poly = [
+          Offset(rect.center.dx, rect.top),
+          Offset(rect.right, rect.center.dy),
+          Offset(rect.center.dx, rect.bottom),
+          Offset(rect.left, rect.center.dy),
+        ];
+        break;
+      case DrawingTool.pentagon:
+        final center = rect.center;
+        final rx = rect.width / 2;
+        final ry = rect.height / 2;
+        poly = List.generate(5, (i) {
+          final angle = -math.pi / 2 + i * (2 * math.pi / 5);
+          return Offset(
+            center.dx + rx * math.cos(angle),
+            center.dy + ry * math.sin(angle),
+          );
+        });
+        break;
+      case DrawingTool.hexagon:
+        final center = rect.center;
+        final rx = rect.width / 2;
+        final ry = rect.height / 2;
+        poly = List.generate(6, (i) {
+          final angle = -math.pi / 2 + i * (2 * math.pi / 6);
+          return Offset(
+            center.dx + rx * math.cos(angle),
+            center.dy + ry * math.sin(angle),
+          );
+        });
+        break;
+      case DrawingTool.circle:
+      case DrawingTool.ellipse:
+        final center = rect.center;
+        final rx = rect.width / 2;
+        final ry = rect.height / 2;
+        poly = List.generate(48, (i) {
+          final angle = i * (2 * math.pi / 48);
+          return Offset(
+            center.dx + rx * math.cos(angle),
+            center.dy + ry * math.sin(angle),
+          );
+        });
+        break;
+      default:
+        return stroke;
+    }
+
+    return stroke.copyWith(points: poly);
   }
 
   void _eraseNear(Offset point) {

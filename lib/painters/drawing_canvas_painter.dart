@@ -175,6 +175,12 @@ class DrawingCanvasPainter extends CustomPainter {
   }
 
   void _drawShapeWithPaint(Canvas canvas, DrawingStroke stroke, Paint paint) {
+    if (stroke.points.length > 2) {
+      final path = Path()..addPolygon(stroke.points, true);
+      canvas.drawPath(path, paint);
+      return;
+    }
+
     final p1 = stroke.points.first;
     final p2 = stroke.points.last;
     final rect = Rect.fromPoints(p1, p2);

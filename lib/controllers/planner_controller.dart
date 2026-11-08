@@ -409,7 +409,17 @@ class PlannerController extends ChangeNotifier {
           -_selectionRotationAngle,
         );
 
-        // 1. First check if user grabbed one of the 8 resize handles (corners or edges)
+        // 0. Check if user grabbed the Canva circular 2D rotation handle attached to the bottom stem
+        final rotHandleCenter = Offset(
+          bounds.bottomCenter.dx,
+          bounds.bottomCenter.dy + 34.0 / _zoomScale,
+        );
+        if ((localPoint - rotHandleCenter).distance <= 22.0 / _zoomScale) {
+          startRotation(point);
+          return;
+        }
+
+        // 1. Check if user grabbed one of the 8 resize handles (corners or edges)
         final handle = _findResizeHandleAtPoint(localPoint, bounds);
         if (handle != null) {
           _undoStack.add(List.from(_strokes));
@@ -511,7 +521,10 @@ class PlannerController extends ChangeNotifier {
     }
 
     if (_selectedTool == DrawingTool.lasso) {
-      if (_activeResizeHandle != null &&
+      if (_isRotatingSelection) {
+        updateRotation(point);
+        return;
+      } else if (_activeResizeHandle != null &&
           _resizeStartPoint != null &&
           _initialResizeRawBounds != null) {
         _applyResizeToSelection(point);
@@ -561,6 +574,10 @@ class PlannerController extends ChangeNotifier {
     }
 
     if (_selectedTool == DrawingTool.lasso) {
+      if (_isRotatingSelection) {
+        endRotation();
+        return;
+      }
       if (_activeResizeHandle != null) {
         _activeResizeHandle = null;
         _resizeStartPoint = null;
@@ -600,14 +617,23 @@ class PlannerController extends ChangeNotifier {
   }
 
   void cancelActiveStroke() {
-    if (_lassoPoints.isNotEmpty || _isDraggingSelection || _activeResizeHandle != null) {
+    if (_lassoPoints.isNotEmpty ||
+        _isDraggingSelection ||
+        _activeResizeHandle != null ||
+        _isRotatingSelection) {
       _lassoPoints = [];
-      if (_isDraggingSelection || _activeResizeHandle != null) {
+      if (_isDraggingSelection || _activeResizeHandle != null || _isRotatingSelection) {
         _isDraggingSelection = false;
         _activeResizeHandle = null;
         _resizeStartPoint = null;
         _initialResizeRawBounds = null;
         _initialResizeStrokes.clear();
+        _isRotatingSelection = false;
+        _rotationCenter = null;
+        _initialRotationAngle = null;
+        _rotationAnchorBounds = null;
+        _initialRotationStrokes.clear();
+        _selectionRotationAngle = _baseSelectionRotationAngle;
         _lastLassoDragPoint = null;
         if (_undoStack.isNotEmpty) {
           _strokes = _undoStack.removeLast();

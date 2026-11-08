@@ -247,6 +247,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                       selectionRotationAngle: controller.selectionRotationAngle,
                       selectedStrokeIndices: controller.selectedStrokeIndices,
                       activeResizeHandle: controller.activeResizeHandle,
+                      isRotatingSelection: controller.isRotatingSelection,
                       scale: _scale,
                       panOffset: _panOffset,
                     ),
@@ -263,14 +264,11 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                   controller.selectionBounds != null)
                 _buildSelectionActionPill(controller.selectionBounds!, viewportSize),
 
-              // 1e. Canva-Style Circular 2D Rotation Handle (Bottom of Selection Box)
+              // 1e. Live Rotation Degree Badge (Non-interactive overlay while rotating)
               if (controller.hasLassoSelection &&
-                  controller.selectionBounds != null &&
-                  (!controller.isDraggingSelection || controller.isRotatingSelection))
-                _buildCanvaRotationHandle(
-                  controller.rotationAnchorBounds ?? controller.selectionBounds!,
-                  viewportSize,
-                ),
+                  controller.isRotatingSelection &&
+                  controller.selectionBounds != null)
+                _buildRotationDegreeBadge(controller.selectionBounds!, viewportSize),
 
               // 2. Truly Floating & Draggable Apple Notes Toolbar
               Positioned(
@@ -355,12 +353,6 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         ),
       ),
     );
-  }
-
-  Offset _globalToCanvas(Offset globalPosition) {
-    final box = context.findRenderObject() as RenderBox?;
-    final viewportPt = box != null ? box.globalToLocal(globalPosition) : globalPosition;
-    return _toCanvas(viewportPt);
   }
 
   Offset _rotateCanvasPoint(Offset pt, Offset center, double angle) {
@@ -528,93 +520,48 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     );
   }
 
-  Widget _buildCanvaRotationHandle(Rect anchorCanvasBounds, Size viewportSize) {
+  Widget _buildRotationDegreeBadge(Rect canvasBounds, Size viewportSize) {
     final controller = widget.controller;
-    final isRotating = controller.isRotatingSelection;
-
-    const handleSize = 34.0;
-    const stemHeight = 14.0;
-
-    // Position handle center in canvas space relative to the rotated bottomCenter of the selection box
     final localHandleCanvasCenter = Offset(
-      anchorCanvasBounds.bottomCenter.dx,
-      anchorCanvasBounds.bottomCenter.dy + (stemHeight + handleSize / 2) / _scale,
+      canvasBounds.bottomCenter.dx,
+      canvasBounds.bottomCenter.dy + 34.0 / _scale,
     );
     final rotatedHandleCanvasCenter = _rotateCanvasPoint(
       localHandleCanvasCenter,
-      anchorCanvasBounds.center,
+      canvasBounds.center,
       controller.selectionRotationAngle,
     );
     final handleViewportCenter = rotatedHandleCanvasCenter * _scale + _panOffset;
 
-    final left = (handleViewportCenter.dx - handleSize / 2)
-        .clamp(8.0, (viewportSize.width - handleSize - 8.0).clamp(8.0, viewportSize.width));
-    final top = (handleViewportCenter.dy - handleSize / 2)
-        .clamp(8.0, (viewportSize.height - handleSize - 8.0).clamp(8.0, viewportSize.height));
+    final left = (handleViewportCenter.dx + 24.0)
+        .clamp(8.0, (viewportSize.width - 64.0).clamp(8.0, viewportSize.width));
+    final top = (handleViewportCenter.dy - 12.0)
+        .clamp(8.0, (viewportSize.height - 32.0).clamp(8.0, viewportSize.height));
 
     return Positioned(
       left: left,
       top: top,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onPanStart: (details) {
-          controller.startRotation(_globalToCanvas(details.globalPosition));
-        },
-        onPanUpdate: (details) {
-          controller.updateRotation(_globalToCanvas(details.globalPosition));
-        },
-        onPanEnd: (_) => controller.endRotation(),
-        onPanCancel: controller.endRotation,
-        child: Tooltip(
-          message: '2D Döndürmek İçin Basılı Tutup Çevirin',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: handleSize,
-                height: handleSize,
-                decoration: BoxDecoration(
-                  color: isRotating
-                      ? const Color(0xFF007AFF)
-                      : const Color(0xFF1E293B).withValues(alpha: 0.94),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.85),
-                    width: 1.5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.22),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.rotate_right_rounded,
-                  size: 19,
-                  color: Colors.white,
-                ),
+      child: IgnorePointer(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E293B).withValues(alpha: 0.94),
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.18),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
-              if (isRotating) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B).withValues(alpha: 0.94),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '${controller.currentRotationDegrees}°',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
             ],
+          ),
+          child: Text(
+            '${controller.currentRotationDegrees}°',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
           ),
         ),
       ),

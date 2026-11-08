@@ -10,6 +10,7 @@ class DrawingCanvasPainter extends CustomPainter {
   final double selectionRotationAngle;
   final Set<int> selectedStrokeIndices;
   final SelectionHandle? activeResizeHandle;
+  final bool isRotatingSelection;
   final double scale;
   final Offset panOffset;
 
@@ -21,6 +22,7 @@ class DrawingCanvasPainter extends CustomPainter {
     this.selectionRotationAngle = 0.0,
     this.selectedStrokeIndices = const {},
     this.activeResizeHandle,
+    this.isRotatingSelection = false,
     this.scale = 1.0,
     this.panOffset = Offset.zero,
   });
@@ -304,9 +306,10 @@ class DrawingCanvasPainter extends CustomPainter {
     _drawDashedPath(canvas, rectPath, borderPaint, 6.0 / scale, 4.0 / scale);
 
     // Connector stem line from bottomCenter to the Canva rotation handle
+    final stemEnd = Offset(bounds.bottomCenter.dx, bounds.bottomCenter.dy + 18.0 / scale);
     canvas.drawLine(
       bounds.bottomCenter,
-      Offset(bounds.bottomCenter.dx, bounds.bottomCenter.dy + 14.0 / scale),
+      stemEnd,
       borderPaint,
     );
 
@@ -342,6 +345,80 @@ class DrawingCanvasPainter extends CustomPainter {
       canvas.drawCircle(entry.value, r, isActive ? activeHandleFill : handleFill);
       canvas.drawCircle(entry.value, r, handleStroke);
     }
+
+    // Draw Canva-style circular 2D rotation button attached directly to the connector stem
+    final rotCenter = Offset(bounds.bottomCenter.dx, bounds.bottomCenter.dy + 34.0 / scale);
+    final rotRadius = 16.0 / scale;
+
+    // Button drop shadow
+    canvas.drawCircle(
+      rotCenter + Offset(0, 2.0 / scale),
+      rotRadius,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.20)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 3.5 / scale),
+    );
+
+    // Button circle fill (dark slate, or Apple Blue while actively rotating)
+    canvas.drawCircle(
+      rotCenter,
+      rotRadius,
+      Paint()
+        ..color = isRotatingSelection
+            ? const Color(0xFF007AFF)
+            : const Color(0xFF1E293B).withValues(alpha: 0.95)
+        ..style = PaintingStyle.fill,
+    );
+
+    // Button white border
+    canvas.drawCircle(
+      rotCenter,
+      rotRadius,
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.9)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5 / scale,
+    );
+
+    // Circular rotation arrow icon (↻) inside the button
+    final arcRadius = 6.2 / scale;
+    final iconPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0 / scale
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    const startAngle = -math.pi * 0.75;
+    const sweepAngle = math.pi * 1.42;
+    canvas.drawArc(
+      Rect.fromCircle(center: rotCenter, radius: arcRadius),
+      startAngle,
+      sweepAngle,
+      false,
+      iconPaint,
+    );
+
+    final endAngle = startAngle + sweepAngle;
+    final arrowTip = Offset(
+      rotCenter.dx + arcRadius * math.cos(endAngle),
+      rotCenter.dy + arcRadius * math.sin(endAngle),
+    );
+    final tangentAngle = endAngle + math.pi / 2;
+    final wingLen = 4.2 / scale;
+    final wing1 = Offset(
+      arrowTip.dx + wingLen * math.cos(tangentAngle + math.pi * 0.78),
+      arrowTip.dy + wingLen * math.sin(tangentAngle + math.pi * 0.78),
+    );
+    final wing2 = Offset(
+      arrowTip.dx + wingLen * math.cos(tangentAngle - math.pi * 0.75),
+      arrowTip.dy + wingLen * math.sin(tangentAngle - math.pi * 0.75),
+    );
+    final arrowPath = Path()
+      ..moveTo(wing1.dx, wing1.dy)
+      ..lineTo(arrowTip.dx, arrowTip.dy)
+      ..lineTo(wing2.dx, wing2.dy);
+    canvas.drawPath(arrowPath, iconPaint);
 
     canvas.restore();
   }

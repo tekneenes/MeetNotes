@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -3021,35 +3022,7 @@ class _StrokeLayerMiniPreviewPainter extends CustomPainter {
         .map((p) => Offset(p.dx * scale + offsetX, p.dy * scale + offsetY))
         .toList();
 
-    if (mapped.length == 1) {
-      canvas.drawCircle(
-        mapped.first,
-        2.5,
-        Paint()
-          ..color = stroke.color
-          ..style = PaintingStyle.fill,
-      );
-      return;
-    }
-
-    if (stroke.tool.isShape && mapped.length == 2) {
-      final rect = Rect.fromPoints(mapped.first, mapped.last);
-      if (stroke.tool == DrawingTool.circle || stroke.tool == DrawingTool.ellipse) {
-        canvas.drawOval(rect, paint);
-      } else {
-        canvas.drawRect(rect, paint);
-      }
-      return;
-    }
-
-    final path = Path()..moveTo(mapped.first.dx, mapped.first.dy);
-    for (int i = 1; i < mapped.length; i++) {
-      path.lineTo(mapped[i].dx, mapped[i].dy);
-    }
-    if (stroke.tool.isShape && mapped.length > 2) {
-      path.close();
-    }
-    canvas.drawPath(path, paint);
+    _renderStrokePreview(canvas, stroke, mapped, paint);
   }
 
   @override
@@ -3107,36 +3080,7 @@ class _GroupMiniPreviewPainter extends CustomPainter {
           .map((p) => Offset(p.dx * scale + offsetX, p.dy * scale + offsetY))
           .toList();
 
-      if (mapped.length == 1) {
-        canvas.drawCircle(
-          mapped.first,
-          2.2,
-          Paint()
-            ..color = stroke.color
-            ..style = PaintingStyle.fill,
-        );
-        continue;
-      }
-
-      if (stroke.tool.isShape && mapped.length == 2) {
-        final rect = Rect.fromPoints(mapped.first, mapped.last);
-        if (stroke.tool == DrawingTool.circle ||
-            stroke.tool == DrawingTool.ellipse) {
-          canvas.drawOval(rect, paint);
-        } else {
-          canvas.drawRect(rect, paint);
-        }
-        continue;
-      }
-
-      final path = Path()..moveTo(mapped.first.dx, mapped.first.dy);
-      for (int i = 1; i < mapped.length; i++) {
-        path.lineTo(mapped[i].dx, mapped[i].dy);
-      }
-      if (stroke.tool.isShape && mapped.length > 2) {
-        path.close();
-      }
-      canvas.drawPath(path, paint);
+      _renderStrokePreview(canvas, stroke, mapped, paint);
     }
   }
 
@@ -3144,5 +3088,144 @@ class _GroupMiniPreviewPainter extends CustomPainter {
   bool shouldRepaint(covariant _GroupMiniPreviewPainter oldDelegate) {
     return oldDelegate.strokes != strokes;
   }
+}
+
+void _renderStrokePreview(
+  Canvas canvas,
+  DrawingStroke stroke,
+  List<Offset> mapped,
+  Paint strokePaint,
+) {
+  if (mapped.isEmpty) return;
+
+  if (mapped.length == 1) {
+    canvas.drawCircle(
+      mapped.first,
+      strokePaint.strokeWidth,
+      Paint()
+        ..color = stroke.color
+        ..style = PaintingStyle.fill,
+    );
+    return;
+  }
+
+  // Handle smooth 3-point curved lines
+  if (stroke.tool == DrawingTool.curve) {
+    final pStart = mapped[0];
+    final pEnd = mapped.last;
+    final pMid = (pStart + pEnd) / 2.0;
+    final pApex = mapped.length >= 3 ? mapped[1] : pMid;
+    final pControl = pApex * 2.0 - pMid;
+    final curvePath = Path()
+      ..moveTo(pStart.dx, pStart.dy)
+      ..quadraticBezierTo(pControl.dx, pControl.dy, pEnd.dx, pEnd.dy);
+    canvas.drawPath(curvePath, strokePaint);
+    return;
+  }
+
+  // Handle geometric shapes with 2 bounding points
+  if (stroke.tool.isShape && mapped.length == 2) {
+    final rect = Rect.fromPoints(mapped.first, mapped.last);
+    final isFilled = stroke.tool.isFilled;
+    final paint = isFilled
+        ? (Paint()
+            ..color = stroke.color
+            ..style = PaintingStyle.fill)
+        : strokePaint;
+
+    switch (stroke.tool) {
+      case DrawingTool.line:
+      case DrawingTool.arrow:
+        canvas.drawLine(mapped.first, mapped.last, strokePaint);
+        break;
+
+      case DrawingTool.rectangle:
+      case DrawingTool.square:
+      case DrawingTool.rectangleFilled:
+      case DrawingTool.squareFilled:
+        canvas.drawRect(rect, paint);
+        break;
+
+      case DrawingTool.circle:
+      case DrawingTool.ellipse:
+      case DrawingTool.circleFilled:
+      case DrawingTool.ellipseFilled:
+        canvas.drawOval(rect, paint);
+        break;
+
+      case DrawingTool.triangle:
+      case DrawingTool.triangleFilled:
+        final path = Path()
+          ..moveTo(rect.center.dx, rect.top)
+          ..lineTo(rect.right, rect.bottom)
+          ..lineTo(rect.left, rect.bottom)
+          ..close();
+        canvas.drawPath(path, paint);
+        break;
+
+      case DrawingTool.pentagon:
+      case DrawingTool.pentagonFilled:
+        final center = rect.center;
+        final rx = rect.width / 2;
+        final ry = rect.height / 2;
+        final path = Path();
+        for (int i = 0; i < 5; i++) {
+          final angle = -math.pi / 2 + i * (2 * math.pi / 5);
+          final x = center.dx + rx * math.cos(angle);
+          final y = center.dy + ry * math.sin(angle);
+          if (i == 0) {
+            path.moveTo(x, y);
+          } else {
+            path.lineTo(x, y);
+          }
+        }
+        path.close();
+        canvas.drawPath(path, paint);
+        break;
+
+      case DrawingTool.hexagon:
+      case DrawingTool.hexagonFilled:
+        final center = rect.center;
+        final rx = rect.width / 2;
+        final ry = rect.height / 2;
+        final path = Path();
+        for (int i = 0; i < 6; i++) {
+          final angle = -math.pi / 2 + i * (2 * math.pi / 6);
+          final x = center.dx + rx * math.cos(angle);
+          final y = center.dy + ry * math.sin(angle);
+          if (i == 0) {
+            path.moveTo(x, y);
+          } else {
+            path.lineTo(x, y);
+          }
+        }
+        path.close();
+        canvas.drawPath(path, paint);
+        break;
+
+      case DrawingTool.deltoid:
+      case DrawingTool.deltoidFilled:
+        final path = Path()
+          ..moveTo(rect.center.dx, rect.top)
+          ..lineTo(rect.right, rect.center.dy)
+          ..lineTo(rect.center.dx, rect.bottom)
+          ..lineTo(rect.left, rect.center.dy)
+          ..close();
+        canvas.drawPath(path, paint);
+        break;
+
+      default:
+        canvas.drawRect(rect, paint);
+        break;
+    }
+    return;
+  }
+
+  // Freehand path or polyline
+  final path = Path()..moveTo(mapped.first.dx, mapped.first.dy);
+  for (int i = 1; i < mapped.length; i++) {
+    path.lineTo(mapped[i].dx, mapped[i].dy);
+  }
+  canvas.drawPath(path, strokePaint);
 }
 

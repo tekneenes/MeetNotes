@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models/planner_models.dart';
 import '../controllers/planner_controller.dart';
@@ -7,8 +8,9 @@ import 'apple_notes_toolbar.dart' show ToolbarDockEdge;
 /// matching Apple Notes / iOS design system.
 ///
 /// Features:
-/// - Edge-adaptive anchored positioning (bottom, top, left, right dock edges)
-/// - 4x2 grid of 8 geometric shapes with unclipped labels ('Dikdörtgen', etc.)
+/// - Edge-adaptive anchored positioning strictly separated from toolbar (no overlap)
+/// - Balanced 4x2 grid (4 columns, 2 rows) of 8 geometric shapes with unclipped labels
+/// - Zero unnecessary whitespace, compact and perfectly proportioned
 /// - Active tool highlight badge and border
 /// - Smooth ScaleTransition originating from the 3-dots button
 /// - 'Araç Çubuğunu Küçült' and 'Çizimleri Temizle' actions with soft styling
@@ -51,8 +53,8 @@ class CompactShapesPicker extends StatelessWidget {
     final screenSize = mediaQuery.size;
     final viewInsets = mediaQuery.viewInsets;
 
-    const popoverWidth = 286.0;
-    const popoverHeight = 246.0;
+    const popoverWidth = 276.0;
+    const popoverHeight = 206.0;
 
     double left;
     double top;
@@ -61,24 +63,28 @@ class CompactShapesPicker extends StatelessWidget {
       case ToolbarDockEdge.bottom:
         left = (anchorRect.center.dx - popoverWidth / 2.0)
             .clamp(12.0, screenSize.width - popoverWidth - 12.0);
+        final maxTop = anchorRect.top - popoverHeight - 8.0;
         top = (anchorRect.top - popoverHeight - 10.0)
-            .clamp(12.0, screenSize.height - viewInsets.bottom - popoverHeight - 12.0);
+            .clamp(12.0, math.max(12.0, maxTop));
         break;
       case ToolbarDockEdge.top:
         left = (anchorRect.center.dx - popoverWidth / 2.0)
             .clamp(12.0, screenSize.width - popoverWidth - 12.0);
+        final minTop = anchorRect.bottom + 8.0;
         top = (anchorRect.bottom + 10.0)
-            .clamp(12.0, screenSize.height - viewInsets.bottom - popoverHeight - 12.0);
+            .clamp(minTop, math.max(minTop, screenSize.height - viewInsets.bottom - popoverHeight - 12.0));
         break;
       case ToolbarDockEdge.left:
+        final minLeft = anchorRect.right + 8.0;
         left = (anchorRect.right + 10.0)
-            .clamp(12.0, screenSize.width - popoverWidth - 12.0);
+            .clamp(minLeft, math.max(minLeft, screenSize.width - popoverWidth - 12.0));
         top = (anchorRect.center.dy - popoverHeight / 2.0)
             .clamp(12.0, screenSize.height - viewInsets.bottom - popoverHeight - 12.0);
         break;
       case ToolbarDockEdge.right:
+        final maxLeft = anchorRect.left - popoverWidth - 8.0;
         left = (anchorRect.left - popoverWidth - 10.0)
-            .clamp(12.0, screenSize.width - popoverWidth - 12.0);
+            .clamp(12.0, math.max(12.0, maxLeft));
         top = (anchorRect.center.dy - popoverHeight / 2.0)
             .clamp(12.0, screenSize.height - viewInsets.bottom - popoverHeight - 12.0);
         break;
@@ -153,12 +159,12 @@ class CompactShapesPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const popoverWidth = 286.0;
+    const popoverWidth = 276.0;
     final isShapeActive = controller.selectedTool.isShape;
 
     return Container(
       width: popoverWidth,
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -187,24 +193,24 @@ class CompactShapesPicker extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 24,
-                height: 24,
+                width: 22,
+                height: 22,
                 decoration: BoxDecoration(
                   color: const Color(0xFF007AFF).withValues(alpha: 0.10),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.category_rounded,
-                  size: 14,
+                  size: 13,
                   color: Color(0xFF007AFF),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 7),
               const Expanded(
                 child: Text(
                   'Geometrik Şekiller',
                   style: TextStyle(
-                    fontSize: 12.5,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF1E293B),
                     letterSpacing: -0.2,
@@ -222,7 +228,7 @@ class CompactShapesPicker extends StatelessWidget {
                   child: Text(
                     controller.selectedTool.label,
                     style: const TextStyle(
-                      fontSize: 10,
+                      fontSize: 9.5,
                       fontWeight: FontWeight.w600,
                       color: Color(0xFF007AFF),
                     ),
@@ -230,82 +236,32 @@ class CompactShapesPicker extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
 
-          // 4x2 Shapes Grid
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: shapeTools.map((shapeTool) {
-              final isSelected = controller.selectedTool == shapeTool;
-              // 4 columns: (286 - 24 padding - 18 spacing) / 4 = 61.0px width
-              const cardWidth = 61.0;
-              return InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () {
-                  controller.setTool(shapeTool);
-                  Navigator.of(context).pop();
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 140),
-                  width: cardWidth,
-                  padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 2),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? const Color(0xFF007AFF).withValues(alpha: 0.12)
-                        : const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isSelected
-                          ? const Color(0xFF007AFF)
-                          : Colors.black.withValues(alpha: 0.05),
-                      width: isSelected ? 1.5 : 1.0,
-                    ),
-                    boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: const Color(0xFF007AFF).withValues(alpha: 0.20),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        shapeTool.icon,
-                        size: 21,
-                        color: isSelected
-                            ? const Color(0xFF007AFF)
-                            : const Color(0xFF334155),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        shapeTool.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight:
-                              isSelected ? FontWeight.w700 : FontWeight.w500,
-                          color: isSelected
-                              ? const Color(0xFF007AFF)
-                              : const Color(0xFF475569),
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
+          // 4x2 Shapes Grid - Row 1 (4 items)
+          Row(
+            children: [
+              for (int i = 0; i < 4; i++) ...[
+                if (i > 0) const SizedBox(width: 6),
+                Expanded(child: _buildShapeCard(context, shapeTools[i])),
+              ],
+            ],
+          ),
+          const SizedBox(height: 6),
+
+          // 4x2 Shapes Grid - Row 2 (4 items)
+          Row(
+            children: [
+              for (int i = 4; i < 8; i++) ...[
+                if (i > 4) const SizedBox(width: 6),
+                Expanded(child: _buildShapeCard(context, shapeTools[i])),
+              ],
+            ],
           ),
 
           // Subtle Divider
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: 5),
             child: Divider(
               height: 1,
               thickness: 1,
@@ -339,6 +295,71 @@ class CompactShapesPicker extends StatelessWidget {
     );
   }
 
+  Widget _buildShapeCard(BuildContext context, DrawingTool shapeTool) {
+    final isSelected = controller.selectedTool == shapeTool;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () {
+        controller.setTool(shapeTool);
+        Navigator.of(context).pop();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? const Color(0xFF007AFF).withValues(alpha: 0.12)
+              : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected
+                ? const Color(0xFF007AFF)
+                : Colors.black.withValues(alpha: 0.05),
+            width: isSelected ? 1.5 : 1.0,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF007AFF).withValues(alpha: 0.20),
+                    blurRadius: 5,
+                    offset: const Offset(0, 1.5),
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              shapeTool.icon,
+              size: 20,
+              color: isSelected
+                  ? const Color(0xFF007AFF)
+                  : const Color(0xFF334155),
+            ),
+            const SizedBox(height: 2),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                shapeTool.label,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 9.5,
+                  fontWeight:
+                      isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected
+                      ? const Color(0xFF007AFF)
+                      : const Color(0xFF475569),
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildActionButton({
     required IconData icon,
     required String label,
@@ -346,19 +367,19 @@ class CompactShapesPicker extends StatelessWidget {
     required VoidCallback onTap,
   }) {
     return InkWell(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(8),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4.5),
         child: Row(
           children: [
-            Icon(icon, size: 17, color: color),
-            const SizedBox(width: 9),
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
                 label,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 11.5,
                   fontWeight: FontWeight.w500,
                   color: color,
                 ),

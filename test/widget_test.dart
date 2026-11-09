@@ -1112,6 +1112,36 @@ void main() {
     expect(controller.canvasImages, isEmpty);
     expect(controller.canvasFiles, isEmpty);
 
+    // 3. Test PDF viewer subpage navigation and dragging/inserting a PDF page to canvas
+    const samplePdfFile = CanvasFileItem(
+      id: 'pdf_test_1',
+      position: Offset(100, 100),
+      name: 'Sample.pdf',
+      extension: 'pdf',
+      sizeBytes: 1024 * 50,
+    );
+
+    controller.openQuickAccessPdfViewer(samplePdfFile);
+    expect(controller.isQuickAccessPdfViewerPage, isTrue);
+    expect(controller.activePdfFile?.name, 'Sample.pdf');
+
+    // Simulate inserting/dragging a PDF page to canvas
+    const dragData = PdfPageDragData(
+      fileId: 'pdf_test_1',
+      fileName: 'Sample.pdf',
+      pageIndex: 0,
+      previewBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      aspectRatio: 0.707,
+    );
+
+    await controller.insertPdfPageToCanvas(dragData, targetCenter: const Offset(300, 300));
+    expect(controller.canvasImages.length, 1);
+    expect(controller.canvasImages.first.name, contains('Sayfa 1'));
+
+    controller.closeQuickAccessPdfViewer();
+    expect(controller.isQuickAccessPdfViewerPage, isFalse);
+    expect(controller.isQuickAccessFilesPage, isTrue);
+
     // Drain debounce save timer
     await tester.pump(const Duration(milliseconds: 1000));
   });

@@ -156,6 +156,23 @@ enum QuickAccessSubPage {
   assets,
   photos,
   files,
+  pdfViewer,
+}
+
+class PdfPageDragData {
+  final String fileId;
+  final String fileName;
+  final int pageIndex;
+  final String? previewBase64;
+  final double aspectRatio; // width / height
+
+  const PdfPageDragData({
+    required this.fileId,
+    required this.fileName,
+    required this.pageIndex,
+    this.previewBase64,
+    this.aspectRatio = 0.707,
+  });
 }
 
 class DrawingStroke {

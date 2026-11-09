@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/planner_models.dart';
+import '../services/pdf_service.dart';
 import '../services/planner_storage_service.dart';
 
 class PlannerController extends ChangeNotifier {
@@ -80,6 +81,7 @@ class PlannerController extends ChangeNotifier {
   String? _editingTextId;
   String? _selectedImageId;
   String? _selectedFileId;
+  CanvasFileItem? _activePdfFile;
   List<SavedCanvasAsset> _savedAssets = [];
   double _zoomScale = 1.0;
 
@@ -132,6 +134,8 @@ class PlannerController extends ChangeNotifier {
   bool get isQuickAccessAssetsPage => _quickAccessSubPage == QuickAccessSubPage.assets;
   bool get isQuickAccessPhotosPage => _quickAccessSubPage == QuickAccessSubPage.photos;
   bool get isQuickAccessFilesPage => _quickAccessSubPage == QuickAccessSubPage.files;
+  bool get isQuickAccessPdfViewerPage => _quickAccessSubPage == QuickAccessSubPage.pdfViewer;
+  CanvasFileItem? get activePdfFile => _activePdfFile;
   List<CanvasImageItem> get canvasImages => List.unmodifiable(_canvasImages);
   List<CanvasFileItem> get canvasFiles => List.unmodifiable(_canvasFiles);
   String? get selectedImageId => _selectedImageId;
@@ -309,7 +313,78 @@ class PlannerController extends ChangeNotifier {
   void openQuickAccessFilesPage() {
     _isQuickAccessOpen = true;
     _quickAccessSubPage = QuickAccessSubPage.files;
+    _activePdfFile = null;
     notifyListeners();
+  }
+
+  void openQuickAccessPdfViewer(CanvasFileItem file) {
+    _isQuickAccessOpen = true;
+    _activePdfFile = file;
+    _quickAccessSubPage = QuickAccessSubPage.pdfViewer;
+    notifyListeners();
+  }
+
+  void closeQuickAccessPdfViewer() {
+    _activePdfFile = null;
+    _quickAccessSubPage = QuickAccessSubPage.files;
+    notifyListeners();
+  }
+
+  Future<CanvasImageItem?> insertPdfPageToCanvas(
+    PdfPageDragData dragData, {
+    Offset? targetCenter,
+  }) async {
+    final idx = _canvasFiles.indexWhere((f) => f.id == dragData.fileId);
+    final file = idx != -1 ? _canvasFiles[idx] : null;
+
+    Uint8List? pngBytes;
+    if (dragData.previewBase64 != null) {
+      try {
+        pngBytes = base64Decode(dragData.previewBase64!);
+      } catch (_) {}
+    }
+
+    if (file != null) {
+      Uint8List? fileBytes;
+      if (file.base64Data != null) {
+        try {
+          fileBytes = base64Decode(file.base64Data!);
+        } catch (_) {}
+      }
+      final highResBytes = await PdfService.renderPage(
+        path: file.path,
+        data: fileBytes,
+        pageIndex: dragData.pageIndex,
+        width: 1000.0,
+      );
+      if (highResBytes != null) {
+        pngBytes = highResBytes;
+      }
+    }
+
+    if (pngBytes == null) return null;
+
+    final id = const Uuid().v4();
+    final double pageW = 420.0;
+    final double pageH = dragData.aspectRatio > 0 ? pageW / dragData.aspectRatio : 594.0;
+    final Offset pos = targetCenter != null
+        ? Offset(targetCenter.dx - pageW / 2, targetCenter.dy - pageH / 2)
+        : const Offset(120, 140);
+
+    final item = CanvasImageItem(
+      id: id,
+      position: pos,
+      width: pageW,
+      height: pageH,
+      name: '${dragData.fileName} • Sayfa ${dragData.pageIndex + 1}',
+      base64Data: base64Encode(pngBytes),
+    );
+
+    _canvasImages.add(item);
+    _selectedImageId = id;
+    await _saveCurrentCanvasImages();
+    notifyListeners();
+    return item;
   }
 
   Future<CanvasImageItem?> pickAndAddPhoto({Offset? targetPosition}) async {

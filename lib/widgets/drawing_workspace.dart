@@ -280,19 +280,25 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 currentPos: _toolbarPosition!,
               );
 
-        return DragTarget<SavedCanvasAsset>(
-          onWillAcceptWithDetails: (_) => true,
+        return DragTarget<Object>(
+          onWillAcceptWithDetails: (details) =>
+              details.data is SavedCanvasAsset || details.data is PdfPageDragData,
           onAcceptWithDetails: (details) {
+            final data = details.data;
             final box = context.findRenderObject() as RenderBox?;
-            if (box != null) {
-              final localViewportPos = box.globalToLocal(details.offset);
-              final canvasPos = (localViewportPos - _panOffset) / _scale;
+            final canvasPos = box != null
+                ? (box.globalToLocal(details.offset) - _panOffset) / _scale
+                : null;
+            if (data is SavedCanvasAsset) {
               controller.insertSavedAssetToCanvas(
-                details.data.id,
+                data.id,
                 targetCenter: canvasPos,
               );
-            } else {
-              controller.insertSavedAssetToCanvas(details.data.id);
+            } else if (data is PdfPageDragData) {
+              controller.insertPdfPageToCanvas(
+                data,
+                targetCenter: canvasPos,
+              );
             }
           },
           builder: (dropContext, candidateAssets, _) {

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../controllers/planner_controller.dart';
 import '../models/planner_models.dart';
+import '../services/pdf_service.dart';
 import '../widgets/days_sidebar.dart';
 import '../widgets/drawing_workspace.dart';
 import '../widgets/paper_settings_dialog.dart';
@@ -445,6 +446,7 @@ class _PlannerScreenState extends State<PlannerScreen>
     final isAssetsPage = activeController.isQuickAccessAssetsPage;
     final isPhotosPage = activeController.isQuickAccessPhotosPage;
     final isFilesPage = activeController.isQuickAccessFilesPage;
+    final isPdfViewerPage = activeController.isQuickAccessPdfViewerPage;
     final allGroups = activeController.allStrokeGroups;
     final savedAssets = activeController.savedAssets;
     final selectedSet = activeController.selectedStrokeIndices;
@@ -483,7 +485,20 @@ class _PlannerScreenState extends State<PlannerScreen>
             padding: const EdgeInsets.fromLTRB(10, 10, 8, 8),
             child: Row(
               children: [
-                if (isLayersPage || isGroupsPage || isAssetsPage || isPhotosPage || isFilesPage) ...[
+                if (isPdfViewerPage) ...[
+                  IconButton(
+                    tooltip: 'Dosyalara Dön',
+                    icon: const Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      size: 16,
+                      color: Color(0xFF007AFF),
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                    onPressed: activeController.closeQuickAccessPdfViewer,
+                  ),
+                  const SizedBox(width: 4),
+                ] else if (isLayersPage || isGroupsPage || isAssetsPage || isPhotosPage || isFilesPage) ...[
                   IconButton(
                     tooltip: 'Hızlı Erişime Dön',
                     icon: const Icon(
@@ -517,7 +532,11 @@ class _PlannerScreenState extends State<PlannerScreen>
                                     ? 'Fotoğraflar'
                                     : isFilesPage
                                         ? 'Dosyalar'
-                                        : 'Hızlı Erişim',
+                                        : isPdfViewerPage
+                                            ? (activeController.activePdfFile?.name ?? 'PDF Görüntüle')
+                                            : 'Hızlı Erişim',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w700,
@@ -562,6 +581,7 @@ class _PlannerScreenState extends State<PlannerScreen>
           // Sayfa 4: Varlıklar Sayfası
           // Sayfa 5: Fotoğraflar Sayfası
           // Sayfa 6: Dosyalar Sayfası
+          // Sayfa 7: PDF Görüntüleyici Sayfası
           Expanded(
             child: isAssetsPage
                 ? _buildAssetsSubPage(context, activeController)
@@ -571,6 +591,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                 ? _buildPhotosSubPage(context, activeController)
                 : isFilesPage
                 ? _buildFilesSubPage(context, activeController)
+                : isPdfViewerPage
+                ? _buildPdfViewerSubPage(context, activeController)
                 : isLayersPage
                 ? ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -2409,16 +2431,28 @@ class _PlannerScreenState extends State<PlannerScreen>
                     ),
                   ),
                   subtitle: Text(
-                    [
-                      if (ext.isNotEmpty) ext.toUpperCase(),
-                      if (sizeLabel.isNotEmpty) sizeLabel,
-                      f.isLocked ? 'Kilitli' : 'Açık',
-                    ].join(' • '),
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                    ext == 'pdf'
+                        ? 'PDF • $sizeLabel • Sayfaları gör ve sürükle'
+                        : [
+                            if (ext.isNotEmpty) ext.toUpperCase(),
+                            if (sizeLabel.isNotEmpty) sizeLabel,
+                            f.isLocked ? 'Kilitli' : 'Açık',
+                          ].join(' • '),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: ext == 'pdf' ? const Color(0xFFB91C1C) : Colors.grey.shade500,
+                      fontWeight: ext == 'pdf' ? FontWeight.w600 : FontWeight.normal,
+                    ),
                   ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (ext == 'pdf')
+                        IconButton(
+                          icon: const Icon(Icons.menu_book_rounded, size: 17, color: Color(0xFFEF4444)),
+                          onPressed: () => activeController.openQuickAccessPdfViewer(f),
+                          tooltip: 'Sayfaları Görüntüle ve Tuvale Ekle',
+                        ),
                       IconButton(
                         icon: Icon(
                           f.isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
@@ -2436,7 +2470,11 @@ class _PlannerScreenState extends State<PlannerScreen>
                     ],
                   ),
                   onTap: () {
-                    activeController.selectCanvasFile(f.id);
+                    if (ext == 'pdf') {
+                      activeController.openQuickAccessPdfViewer(f);
+                    } else {
+                      activeController.selectCanvasFile(f.id);
+                    }
                   },
                 ),
               ),
@@ -2444,6 +2482,33 @@ class _PlannerScreenState extends State<PlannerScreen>
           }),
         ],
       ],
+    );
+  }
+
+  Widget _buildPdfViewerSubPage(
+    BuildContext context,
+    PlannerController activeController,
+  ) {
+    final activeFile = activeController.activePdfFile;
+    if (activeFile == null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.picture_as_pdf_outlined, size: 36, color: Colors.grey.shade400),
+            const SizedBox(height: 8),
+            Text(
+              'PDF dosyası seçilmedi',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return _QuickAccessPdfPageBrowser(
+      file: activeFile,
+      activeController: activeController,
     );
   }
 
@@ -3647,5 +3712,379 @@ void _renderStrokePreview(
     path.lineTo(mapped[i].dx, mapped[i].dy);
   }
   canvas.drawPath(path, strokePaint);
+}
+
+class _QuickAccessPdfPageBrowser extends StatefulWidget {
+  final CanvasFileItem file;
+  final PlannerController activeController;
+
+  const _QuickAccessPdfPageBrowser({
+    required this.file,
+    required this.activeController,
+  });
+
+  @override
+  State<_QuickAccessPdfPageBrowser> createState() => _QuickAccessPdfPageBrowserState();
+}
+
+class _QuickAccessPdfPageBrowserState extends State<_QuickAccessPdfPageBrowser> {
+  late Future<PdfDocumentInfo?> _infoFuture;
+  final Map<int, Uint8List> _renderedThumbs = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPdfInfo();
+  }
+
+  @override
+  void didUpdateWidget(covariant _QuickAccessPdfPageBrowser oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.file.id != widget.file.id) {
+      _renderedThumbs.clear();
+      _loadPdfInfo();
+    }
+  }
+
+  void _loadPdfInfo() {
+    Uint8List? fileBytes;
+    if (widget.file.base64Data != null) {
+      try {
+        fileBytes = base64Decode(widget.file.base64Data!);
+      } catch (_) {}
+    }
+    _infoFuture = PdfService.getPdfInfo(
+      path: widget.file.path,
+      data: fileBytes,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<PdfDocumentInfo?>(
+      future: _infoFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+                SizedBox(height: 12),
+                Text(
+                  'PDF Sayfaları Yükleniyor...',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final docInfo = snapshot.data;
+        if (docInfo == null || docInfo.pages.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.error_outline_rounded, size: 36, color: Color(0xFFEF4444)),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'PDF Sayfaları Okunamadı',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Dosya bozuk olabilir veya geçerli bir PDF formatında olmayabilir.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        Uint8List? fileBytes;
+        if (widget.file.base64Data != null) {
+          try {
+            fileBytes = base64Decode(widget.file.base64Data!);
+          } catch (_) {}
+        }
+
+        return Column(
+          children: [
+            // Bilgi Bannerı (Varlıklar gibi sürükleme ve ekleme rehberi)
+            Container(
+              margin: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.touch_app_rounded, size: 16, color: Color(0xFFDC2626)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Sayfayı basılı tutup tuvale sürükleyin veya "+" tuşuyla hemen ekleyin.',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: Colors.red.shade900,
+                        fontWeight: FontWeight.w600,
+                        height: 1.25,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Sayfa Sayısı Başlığı
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              child: Row(
+                children: [
+                  Text(
+                    'Tüm Sayfalar (${docInfo.pageCount})',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Sayfalar Listesi
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 14),
+                itemCount: docInfo.pages.length,
+                itemBuilder: (context, idx) {
+                  final page = docInfo.pages[idx];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _buildPdfPageTile(page, fileBytes),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildPdfPageTile(PdfPageInfo page, Uint8List? fileBytes) {
+    final cached = _renderedThumbs[page.pageIndex];
+
+    if (cached != null) {
+      return _buildDraggablePageCard(page, cached);
+    }
+
+    return FutureBuilder<Uint8List?>(
+      future: PdfService.renderPage(
+        path: widget.file.path,
+        data: fileBytes,
+        pageIndex: page.pageIndex,
+        width: 300.0,
+      ),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return Container(
+            height: 160,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+            ),
+            alignment: Alignment.center,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Sayfa ${page.pageIndex + 1} işleniyor...',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final bytes = snap.data;
+        if (bytes == null) {
+          return Container(
+            height: 100,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              'Sayfa ${page.pageIndex + 1} yüklenemedi',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+            ),
+          );
+        }
+
+        _renderedThumbs[page.pageIndex] = bytes;
+        return _buildDraggablePageCard(page, bytes);
+      },
+    );
+  }
+
+  Widget _buildDraggablePageCard(PdfPageInfo page, Uint8List bytes) {
+    final dragData = PdfPageDragData(
+      fileId: widget.file.id,
+      fileName: widget.file.name,
+      pageIndex: page.pageIndex,
+      previewBase64: base64Encode(bytes),
+      aspectRatio: page.aspectRatio,
+    );
+
+    final cardContent = Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.09)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Sayfa Kartı Üst Barı
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 8, 6),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEE2E2),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'Sayfa ${page.pageIndex + 1}',
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFB91C1C),
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () {
+                    widget.activeController.insertPdfPageToCanvas(dragData);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Sayfa ${page.pageIndex + 1} tuvale eklendi.'),
+                        duration: const Duration(seconds: 1),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFF007AFF).withValues(alpha: 0.3)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add_rounded, size: 14, color: Color(0xFF007AFF)),
+                        SizedBox(width: 3),
+                        Text(
+                          'Ekle',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF007AFF),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Sayfa Önizleme Görseli
+          Container(
+            constraints: const BoxConstraints(maxHeight: 220),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              border: Border(
+                top: BorderSide(color: Colors.black.withValues(alpha: 0.05)),
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(10)),
+              child: Image.memory(
+                bytes,
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return LongPressDraggable<PdfPageDragData>(
+      data: dragData,
+      delay: const Duration(milliseconds: 140),
+      dragAnchorStrategy: pointerDragAnchorStrategy,
+      feedback: Transform.translate(
+        offset: const Offset(-50, -70),
+        child: Material(
+          elevation: 14,
+          borderRadius: BorderRadius.circular(10),
+          shadowColor: Colors.black45,
+          child: Container(
+            width: 100,
+            height: 140,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFEF4444), width: 2),
+              color: Colors.white,
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Image.memory(bytes, fit: BoxFit.contain),
+          ),
+        ),
+      ),
+      childWhenDragging: Opacity(
+        opacity: 0.35,
+        child: cardContent,
+      ),
+      child: cardContent,
+    );
+  }
 }
 

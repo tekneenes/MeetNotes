@@ -733,7 +733,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Tap Text tool 'T'
-    final textToolBtn = find.byTooltip('Tek Tıkla Metin Ekle (Şablonlar İçin Basılı Tutun)');
+    final textToolBtn = find.byTooltip('Metin Aracı');
     expect(textToolBtn, findsOneWidget);
     await tester.tap(textToolBtn);
     await tester.pumpAndSettle();

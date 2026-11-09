@@ -354,6 +354,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
         color: const Color(0xFF007AFF),
         isVertical: isVertical,
         onTap: () {
+          setState(() => _showTextPresetPopover = false);
           controller.setTool(DrawingTool.text);
           controller.addPresetCanvasText(CanvaTextPreset.heading);
         },
@@ -365,6 +366,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
         color: const Color(0xFF8B5CF6),
         isVertical: isVertical,
         onTap: () {
+          setState(() => _showTextPresetPopover = false);
           controller.setTool(DrawingTool.text);
           controller.addPresetCanvasText(CanvaTextPreset.subheading);
         },
@@ -376,6 +378,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
         color: const Color(0xFF475569),
         isVertical: isVertical,
         onTap: () {
+          setState(() => _showTextPresetPopover = false);
           controller.setTool(DrawingTool.text);
           controller.addPresetCanvasText(CanvaTextPreset.body);
         },
@@ -387,6 +390,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
         color: const Color(0xFFF59E0B),
         isVertical: isVertical,
         onTap: () {
+          setState(() => _showTextPresetPopover = false);
           controller.setTool(DrawingTool.text);
           controller.addPresetCanvasText(CanvaTextPreset.stickyNote);
         },
@@ -398,6 +402,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
         color: const Color(0xFF10B981),
         isVertical: isVertical,
         onTap: () {
+          setState(() => _showTextPresetPopover = false);
           controller.setTool(DrawingTool.text);
           controller.addPresetCanvasText(CanvaTextPreset.bulletList);
         },
@@ -518,7 +523,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
           : const EdgeInsets.symmetric(horizontal: 2.0, vertical: 2.0),
       child: Tooltip(
         message: tool == DrawingTool.text
-            ? 'Tek Tıkla Metin Ekle (Şablonlar İçin Basılı Tutun)'
+            ? 'Metin Aracı'
             : tool.label,
         child: InkResponse(
           customBorder: const CircleBorder(),
@@ -530,7 +535,6 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
               } else {
                 setState(() => _showTextPresetPopover = true);
                 controller.setTool(DrawingTool.text);
-                controller.addPresetCanvasText(CanvaTextPreset.body);
               }
             } else {
               setState(() => _showTextPresetPopover = false);

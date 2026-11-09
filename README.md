@@ -1,5 +1,9 @@
 # 📝 MeetNotes
 
+[![License: Atıf Zorunlu | Ticari Yasak](https://img.shields.io/badge/Lisans-Atıf%20Zorunlu%20%7C%20Ticari%20Yasak-red.svg)](LICENSE)
+[![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?logo=flutter)](https://flutter.dev)
+[![Platform: macOS](https://img.shields.io/badge/Platform-macOS%20%7C%20Cross--Platform-black?logo=apple)](https://flutter.dev)
+
 > **MeetNotes**, modern, akıcı ve güçlü bir dijital not alma, çizim ve haftalık/günlük ajanda uygulamasıdır. Apple Notes sadeliğini profesyonel vektörel çizim araçları, birleşik katmanlama sistemi, PDF sayfa aktarımı ve akıllı sayfa düzenleriyle bir araya getirir.
 
 ---
@@ -139,6 +143,12 @@ lib/
 
 ---
 
-## 📄 Lisans
+## 📄 Lisans ve Kullanım Koşulları
 
-Bu proje kişisel ve açık kaynaklı kullanım için lisanslanmıştır. Detaylar için depo içeriğini inceleyebilirsiniz.
+Bu projenin tüm hakları **Muhammed Enes Tekne**'ye aittir. Proje, aşağıdaki özel lisans ve kullanım koşullarına tabidir:
+
+- 📌 **Atıf Zorunludur (Attribution Required):** Bu projenin kaynak kodları, mimarisi, görsel tasarımı veya türevleri herhangi bir yerde kullanıldığında, orijinal geliştiriciye (**Muhammed Enes Tekne**) ve bu [GitHub Deposuna](https://github.com/tekneenes/MeetNotes) açık, görünür ve tıklanabilir bir şekilde atıf yapılması zorunludur.
+- 🚫 **Ticari Kullanım Kesinlikle Yasaktır (Proje Sahibi Hariç):** Proje sahibi (**Muhammed Enes Tekne**) **hariç** hiçbir gerçek veya tüzel kişi, şirket veya organizasyon; bu yazılımı, kaynak kodlarını, bileşenlerini veya türevlerini doğrudan ya da dolaylı olarak **ticari amaçla kullanamaz, satamaz, kiralayamaz, ücretli/abonelikli servislere dahil edemez ve gelir elde etmek amacıyla dağıtamaz**.
+- ✅ **Kişisel ve Eğitsel Kullanım:** Proje kaynak kodları yalnızca ticari olmayan kişisel inceleme, eğitim, araştırma ve açık kaynak gelişimine katkı sağlamak amacıyla serbestçe incelenebilir ve kullanılabilir.
+
+Detaylı yasal şartlar ve maddeler için lütfen [LICENSE](LICENSE) dosyasını inceleyiniz.

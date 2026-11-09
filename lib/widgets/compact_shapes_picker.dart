@@ -8,9 +8,9 @@ import 'apple_notes_toolbar.dart' show ToolbarDockEdge;
 /// matching Apple Notes / iOS design system.
 ///
 /// Features:
-/// - Edge-adaptive anchored positioning strictly separated from toolbar (no overlap)
-/// - Balanced 4x2 grid (4 columns, 2 rows) of 8 geometric shapes with unclipped labels
-/// - Zero unnecessary whitespace, compact and perfectly proportioned
+/// - Edge-adaptive anchored positioning with guaranteed clearance from toolbar (never overlaps)
+/// - Balanced, compact 4x2 grid of 8 geometric shapes with unclipped labels
+/// - Tight, clean vertical padding with zero unnecessary whitespace
 /// - Active tool highlight badge and border
 /// - Smooth ScaleTransition originating from the 3-dots button
 /// - 'Araç Çubuğunu Küçült' and 'Çizimleri Temizle' actions with soft styling
@@ -54,7 +54,8 @@ class CompactShapesPicker extends StatelessWidget {
     final viewInsets = mediaQuery.viewInsets;
 
     const popoverWidth = 276.0;
-    const popoverHeight = 206.0;
+    const popoverHeight = 188.0;
+    const clearance = 22.0;
 
     double left;
     double top;
@@ -63,27 +64,27 @@ class CompactShapesPicker extends StatelessWidget {
       case ToolbarDockEdge.bottom:
         left = (anchorRect.center.dx - popoverWidth / 2.0)
             .clamp(12.0, screenSize.width - popoverWidth - 12.0);
-        final maxTop = anchorRect.top - popoverHeight - 8.0;
-        top = (anchorRect.top - popoverHeight - 10.0)
+        final maxTop = anchorRect.top - popoverHeight - 16.0;
+        top = (anchorRect.top - popoverHeight - clearance)
             .clamp(12.0, math.max(12.0, maxTop));
         break;
       case ToolbarDockEdge.top:
         left = (anchorRect.center.dx - popoverWidth / 2.0)
             .clamp(12.0, screenSize.width - popoverWidth - 12.0);
-        final minTop = anchorRect.bottom + 8.0;
-        top = (anchorRect.bottom + 10.0)
+        final minTop = anchorRect.bottom + 16.0;
+        top = (anchorRect.bottom + clearance)
             .clamp(minTop, math.max(minTop, screenSize.height - viewInsets.bottom - popoverHeight - 12.0));
         break;
       case ToolbarDockEdge.left:
-        final minLeft = anchorRect.right + 8.0;
-        left = (anchorRect.right + 10.0)
+        final minLeft = anchorRect.right + 16.0;
+        left = (anchorRect.right + clearance)
             .clamp(minLeft, math.max(minLeft, screenSize.width - popoverWidth - 12.0));
         top = (anchorRect.center.dy - popoverHeight / 2.0)
             .clamp(12.0, screenSize.height - viewInsets.bottom - popoverHeight - 12.0);
         break;
       case ToolbarDockEdge.right:
-        final maxLeft = anchorRect.left - popoverWidth - 8.0;
-        left = (anchorRect.left - popoverWidth - 10.0)
+        final maxLeft = anchorRect.left - popoverWidth - 16.0;
+        left = (anchorRect.left - popoverWidth - clearance)
             .clamp(12.0, math.max(12.0, maxLeft));
         top = (anchorRect.center.dy - popoverHeight / 2.0)
             .clamp(12.0, screenSize.height - viewInsets.bottom - popoverHeight - 12.0);
@@ -164,10 +165,10 @@ class CompactShapesPicker extends StatelessWidget {
 
     return Container(
       width: popoverWidth,
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+      padding: const EdgeInsets.fromLTRB(9, 8, 9, 6),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: Colors.black.withValues(alpha: 0.08),
           width: 1.0,
@@ -175,12 +176,12 @@ class CompactShapesPicker extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
           ),
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 6,
+            blurRadius: 4,
             offset: const Offset(0, 2),
           ),
         ],
@@ -193,24 +194,24 @@ class CompactShapesPicker extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 22,
-                height: 22,
+                width: 20,
+                height: 20,
                 decoration: BoxDecoration(
                   color: const Color(0xFF007AFF).withValues(alpha: 0.10),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.category_rounded,
-                  size: 13,
+                  size: 12,
                   color: Color(0xFF007AFF),
                 ),
               ),
-              const SizedBox(width: 7),
+              const SizedBox(width: 6),
               const Expanded(
                 child: Text(
                   'Geometrik Şekiller',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF1E293B),
                     letterSpacing: -0.2,
@@ -220,15 +221,15 @@ class CompactShapesPicker extends StatelessWidget {
               ),
               if (isShapeActive)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                   decoration: BoxDecoration(
                     color: const Color(0xFF007AFF).withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(5),
                   ),
                   child: Text(
                     controller.selectedTool.label,
                     style: const TextStyle(
-                      fontSize: 9.5,
+                      fontSize: 9,
                       fontWeight: FontWeight.w600,
                       color: Color(0xFF007AFF),
                     ),
@@ -236,24 +237,24 @@ class CompactShapesPicker extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
 
           // 4x2 Shapes Grid - Row 1 (4 items)
           Row(
             children: [
               for (int i = 0; i < 4; i++) ...[
-                if (i > 0) const SizedBox(width: 6),
+                if (i > 0) const SizedBox(width: 5),
                 Expanded(child: _buildShapeCard(context, shapeTools[i])),
               ],
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
 
           // 4x2 Shapes Grid - Row 2 (4 items)
           Row(
             children: [
               for (int i = 4; i < 8; i++) ...[
-                if (i > 4) const SizedBox(width: 6),
+                if (i > 4) const SizedBox(width: 5),
                 Expanded(child: _buildShapeCard(context, shapeTools[i])),
               ],
             ],
@@ -261,7 +262,7 @@ class CompactShapesPicker extends StatelessWidget {
 
           // Subtle Divider
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5),
+            padding: const EdgeInsets.symmetric(vertical: 4),
             child: Divider(
               height: 1,
               thickness: 1,
@@ -305,7 +306,7 @@ class CompactShapesPicker extends StatelessWidget {
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+        padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 2),
         decoration: BoxDecoration(
           color: isSelected
               ? const Color(0xFF007AFF).withValues(alpha: 0.12)
@@ -321,7 +322,7 @@ class CompactShapesPicker extends StatelessWidget {
               ? [
                   BoxShadow(
                     color: const Color(0xFF007AFF).withValues(alpha: 0.20),
-                    blurRadius: 5,
+                    blurRadius: 4,
                     offset: const Offset(0, 1.5),
                   ),
                 ]
@@ -332,7 +333,7 @@ class CompactShapesPicker extends StatelessWidget {
           children: [
             Icon(
               shapeTool.icon,
-              size: 20,
+              size: 19,
               color: isSelected
                   ? const Color(0xFF007AFF)
                   : const Color(0xFF334155),
@@ -370,16 +371,16 @@ class CompactShapesPicker extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4.5),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3.5),
         child: Row(
           children: [
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 8),
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 7),
             Expanded(
               child: Text(
                 label,
                 style: TextStyle(
-                  fontSize: 11.5,
+                  fontSize: 11,
                   fontWeight: FontWeight.w500,
                   color: color,
                 ),

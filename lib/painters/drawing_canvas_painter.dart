@@ -258,9 +258,10 @@ class DrawingCanvasPainter extends CustomPainter {
   }
 
   void _drawShape(Canvas canvas, DrawingStroke stroke) {
+    final isFilled = stroke.tool.isFilled;
     final paint = Paint()
       ..color = stroke.color
-      ..style = PaintingStyle.stroke
+      ..style = isFilled ? PaintingStyle.fill : PaintingStyle.stroke
       ..strokeWidth = stroke.strokeWidth
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
@@ -269,7 +270,7 @@ class DrawingCanvasPainter extends CustomPainter {
   }
 
   void _drawShapeWithPaint(Canvas canvas, DrawingStroke stroke, Paint paint) {
-    if (stroke.points.length > 2) {
+    if (stroke.points.length > 2 && stroke.tool != DrawingTool.angle) {
       final path = Path()..addPolygon(stroke.points, true);
       canvas.drawPath(path, paint);
       return;
@@ -280,17 +281,79 @@ class DrawingCanvasPainter extends CustomPainter {
     final rect = Rect.fromPoints(p1, p2);
 
     switch (stroke.tool) {
+      case DrawingTool.line:
+        canvas.drawLine(p1, p2, paint);
+        break;
+
+      case DrawingTool.arrow:
+        canvas.drawLine(p1, p2, paint);
+        if ((p2 - p1).distance > 4.0) {
+          final angle = math.atan2(p2.dy - p1.dy, p2.dx - p1.dx);
+          final arrowSize = math.max(stroke.strokeWidth * 3.5, 12.0);
+          const arrowAngle = math.pi / 6;
+          final pLeft = p2 -
+              Offset(arrowSize * math.cos(angle - arrowAngle),
+                  arrowSize * math.sin(angle - arrowAngle));
+          final pRight = p2 -
+              Offset(arrowSize * math.cos(angle + arrowAngle),
+                  arrowSize * math.sin(angle + arrowAngle));
+
+          final arrowPath = Path()
+            ..moveTo(p2.dx, p2.dy)
+            ..lineTo(pLeft.dx, pLeft.dy)
+            ..moveTo(p2.dx, p2.dy)
+            ..lineTo(pRight.dx, pRight.dy);
+          canvas.drawPath(arrowPath, paint);
+        }
+        break;
+
+      case DrawingTool.angle:
+        // 3-point AutoCAD style angle line: Start (p1), Vertex (pMid), End (p2)
+        Offset pVertex;
+        if (stroke.points.length >= 3) {
+          pVertex = stroke.points[1];
+        } else {
+          pVertex = Offset(p1.dx, p2.dy);
+        }
+        canvas.drawLine(p1, pVertex, paint);
+        canvas.drawLine(pVertex, p2, paint);
+
+        if ((p1 - pVertex).distance > 12.0 && (p2 - pVertex).distance > 12.0) {
+          final a1 = math.atan2(p1.dy - pVertex.dy, p1.dx - pVertex.dx);
+          final a2 = math.atan2(p2.dy - pVertex.dy, p2.dx - pVertex.dx);
+          var sweep = a2 - a1;
+          while (sweep < -math.pi) {
+            sweep += 2 * math.pi;
+          }
+          while (sweep > math.pi) {
+            sweep -= 2 * math.pi;
+          }
+
+          final arcRect = Rect.fromCircle(center: pVertex, radius: 14.0);
+          final arcPaint = Paint()
+            ..color = stroke.color.withValues(alpha: 0.8)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.min(stroke.strokeWidth, 1.8);
+          canvas.drawArc(arcRect, a1, sweep, false, arcPaint);
+        }
+        break;
+
       case DrawingTool.rectangle:
       case DrawingTool.square:
+      case DrawingTool.rectangleFilled:
+      case DrawingTool.squareFilled:
         canvas.drawRect(rect, paint);
         break;
 
       case DrawingTool.circle:
       case DrawingTool.ellipse:
+      case DrawingTool.circleFilled:
+      case DrawingTool.ellipseFilled:
         canvas.drawOval(rect, paint);
         break;
 
       case DrawingTool.triangle:
+      case DrawingTool.triangleFilled:
         final path = Path()
           ..moveTo(rect.center.dx, rect.top)
           ..lineTo(rect.right, rect.bottom)
@@ -300,6 +363,7 @@ class DrawingCanvasPainter extends CustomPainter {
         break;
 
       case DrawingTool.pentagon:
+      case DrawingTool.pentagonFilled:
         final center = rect.center;
         final rx = rect.width / 2;
         final ry = rect.height / 2;
@@ -319,6 +383,7 @@ class DrawingCanvasPainter extends CustomPainter {
         break;
 
       case DrawingTool.hexagon:
+      case DrawingTool.hexagonFilled:
         final center = rect.center;
         final rx = rect.width / 2;
         final ry = rect.height / 2;
@@ -338,6 +403,7 @@ class DrawingCanvasPainter extends CustomPainter {
         break;
 
       case DrawingTool.deltoid:
+      case DrawingTool.deltoidFilled:
         final path = Path()
           ..moveTo(rect.center.dx, rect.top)
           ..lineTo(rect.right, rect.center.dy)

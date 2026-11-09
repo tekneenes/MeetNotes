@@ -1089,7 +1089,10 @@ class PlannerController extends ChangeNotifier {
       if (_selectedTool.isShape) {
         final startPoint = _activeStroke!.points.first;
         Offset targetPoint = point;
-        if (_selectedTool == DrawingTool.square || _selectedTool == DrawingTool.circle) {
+        if (_selectedTool == DrawingTool.square ||
+            _selectedTool == DrawingTool.circle ||
+            _selectedTool == DrawingTool.squareFilled ||
+            _selectedTool == DrawingTool.circleFilled) {
           final dx = point.dx - startPoint.dx;
           final dy = point.dy - startPoint.dy;
           final side = dx.abs() < dy.abs() ? dx.abs() : dy.abs();
@@ -1098,7 +1101,16 @@ class PlannerController extends ChangeNotifier {
             startPoint.dy + (dy >= 0 ? side : -side),
           );
         }
-        _activeStroke = _activeStroke!.copyWith(points: [startPoint, targetPoint]);
+        if (_selectedTool == DrawingTool.angle) {
+          final pVertex = Offset(startPoint.dx, targetPoint.dy);
+          _activeStroke = _activeStroke!.copyWith(
+            points: [startPoint, pVertex, targetPoint],
+          );
+        } else {
+          _activeStroke = _activeStroke!.copyWith(
+            points: [startPoint, targetPoint],
+          );
+        }
       } else {
         if (_activeStroke!.points.isEmpty ||
             (point - _activeStroke!.points.last).distance >= 0.5) {
@@ -2470,7 +2482,14 @@ class PlannerController extends ChangeNotifier {
   }
 
   DrawingStroke _expandShapeToPolygon(DrawingStroke stroke) {
-    if (!stroke.tool.isShape || stroke.points.length != 2) return stroke;
+    if (!stroke.tool.isShape) return stroke;
+    if (stroke.tool == DrawingTool.line || stroke.tool == DrawingTool.arrow) {
+      return stroke;
+    }
+    if (stroke.tool == DrawingTool.angle) {
+      return stroke;
+    }
+    if (stroke.points.length != 2) return stroke;
 
     final rect = Rect.fromPoints(stroke.points.first, stroke.points.last);
     List<Offset> poly;
@@ -2478,6 +2497,8 @@ class PlannerController extends ChangeNotifier {
     switch (stroke.tool) {
       case DrawingTool.rectangle:
       case DrawingTool.square:
+      case DrawingTool.rectangleFilled:
+      case DrawingTool.squareFilled:
         poly = [
           rect.topLeft,
           rect.topRight,
@@ -2486,6 +2507,7 @@ class PlannerController extends ChangeNotifier {
         ];
         break;
       case DrawingTool.triangle:
+      case DrawingTool.triangleFilled:
         poly = [
           Offset(rect.center.dx, rect.top),
           Offset(rect.right, rect.bottom),
@@ -2493,6 +2515,7 @@ class PlannerController extends ChangeNotifier {
         ];
         break;
       case DrawingTool.deltoid:
+      case DrawingTool.deltoidFilled:
         poly = [
           Offset(rect.center.dx, rect.top),
           Offset(rect.right, rect.center.dy),
@@ -2501,6 +2524,7 @@ class PlannerController extends ChangeNotifier {
         ];
         break;
       case DrawingTool.pentagon:
+      case DrawingTool.pentagonFilled:
         final center = rect.center;
         final rx = rect.width / 2;
         final ry = rect.height / 2;
@@ -2513,6 +2537,7 @@ class PlannerController extends ChangeNotifier {
         });
         break;
       case DrawingTool.hexagon:
+      case DrawingTool.hexagonFilled:
         final center = rect.center;
         final rx = rect.width / 2;
         final ry = rect.height / 2;
@@ -2526,6 +2551,8 @@ class PlannerController extends ChangeNotifier {
         break;
       case DrawingTool.circle:
       case DrawingTool.ellipse:
+      case DrawingTool.circleFilled:
+      case DrawingTool.ellipseFilled:
         final center = rect.center;
         final rx = rect.width / 2;
         final ry = rect.height / 2;

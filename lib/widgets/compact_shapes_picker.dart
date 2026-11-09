@@ -4,13 +4,15 @@ import '../models/planner_models.dart';
 import '../controllers/planner_controller.dart';
 import 'apple_notes_toolbar.dart' show ToolbarDockEdge;
 
-/// Modern, edge-adaptive Geometric Shapes & Extra Options popover
+/// Modern, edge-adaptive Geometric Shapes, Lines & Filled Shapes popover
 /// matching Apple Notes / iOS design system.
 ///
 /// Features:
-/// - Edge-adaptive anchored positioning with guaranteed clearance from toolbar (never overlaps)
-/// - Balanced, compact 4x2 grid of 8 geometric shapes with unclipped labels
-/// - Tight, clean vertical padding with zero unnecessary whitespace
+/// - Fixed, compact popover size (~196px height) with smooth internal scrolling
+/// - Guaranteed clearance from toolbar (never overlaps on any dock edge)
+/// - Lines & Angles: Düz Çizgi, Ok Çizgisi, 3 Noktalı Açı
+/// - Outlined Shapes (İçi Boş): 8 geometric shapes
+/// - Filled Shapes (İçi Dolu): 8 geometric filled shapes
 /// - Active tool highlight badge and border
 /// - Smooth ScaleTransition originating from the 3-dots button
 /// - 'Araç Çubuğunu Küçült' and 'Çizimleri Temizle' actions with soft styling
@@ -20,7 +22,13 @@ class CompactShapesPicker extends StatelessWidget {
   final VoidCallback? onMinimize;
   final VoidCallback? onClearCanvas;
 
-  static const List<DrawingTool> shapeTools = [
+  static const List<DrawingTool> lineTools = [
+    DrawingTool.line,
+    DrawingTool.arrow,
+    DrawingTool.angle,
+  ];
+
+  static const List<DrawingTool> outlinedShapeTools = [
     DrawingTool.square,
     DrawingTool.rectangle,
     DrawingTool.circle,
@@ -29,6 +37,17 @@ class CompactShapesPicker extends StatelessWidget {
     DrawingTool.pentagon,
     DrawingTool.hexagon,
     DrawingTool.deltoid,
+  ];
+
+  static const List<DrawingTool> filledShapeTools = [
+    DrawingTool.squareFilled,
+    DrawingTool.rectangleFilled,
+    DrawingTool.circleFilled,
+    DrawingTool.ellipseFilled,
+    DrawingTool.triangleFilled,
+    DrawingTool.pentagonFilled,
+    DrawingTool.hexagonFilled,
+    DrawingTool.deltoidFilled,
   ];
 
   const CompactShapesPicker({
@@ -53,8 +72,8 @@ class CompactShapesPicker extends StatelessWidget {
     final screenSize = mediaQuery.size;
     final viewInsets = mediaQuery.viewInsets;
 
-    const popoverWidth = 276.0;
-    const popoverHeight = 188.0;
+    const popoverWidth = 280.0;
+    const popoverHeight = 196.0;
     const clearance = 22.0;
 
     double left;
@@ -160,7 +179,7 @@ class CompactShapesPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const popoverWidth = 276.0;
+    const popoverWidth = 280.0;
     final isShapeActive = controller.selectedTool.isShape;
 
     return Container(
@@ -239,25 +258,43 @@ class CompactShapesPicker extends StatelessWidget {
           ),
           const SizedBox(height: 6),
 
-          // 4x2 Shapes Grid - Row 1 (4 items)
-          Row(
-            children: [
-              for (int i = 0; i < 4; i++) ...[
-                if (i > 0) const SizedBox(width: 5),
-                Expanded(child: _buildShapeCard(context, shapeTools[i])),
-              ],
-            ],
-          ),
-          const SizedBox(height: 5),
+          // Scrollable Shapes Section (Fixed height viewport of 105px with smooth scrolling)
+          SizedBox(
+            height: 105,
+            child: RawScrollbar(
+              thumbVisibility: true,
+              thickness: 3,
+              radius: const Radius.circular(2),
+              thumbColor: Colors.black.withValues(alpha: 0.20),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(right: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Section 1: Çizgiler & Açı
+                    _buildSectionHeader('Çizgiler & Açı'),
+                    Row(
+                      children: [
+                        for (int i = 0; i < lineTools.length; i++) ...[
+                          if (i > 0) const SizedBox(width: 5),
+                          Expanded(child: _buildShapeCard(context, lineTools[i])),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 7),
 
-          // 4x2 Shapes Grid - Row 2 (4 items)
-          Row(
-            children: [
-              for (int i = 4; i < 8; i++) ...[
-                if (i > 4) const SizedBox(width: 5),
-                Expanded(child: _buildShapeCard(context, shapeTools[i])),
-              ],
-            ],
+                    // Section 2: İçi Boş Şekiller
+                    _buildSectionHeader('İçi Boş Şekiller'),
+                    _buildGrid4x2(context, outlinedShapeTools),
+                    const SizedBox(height: 7),
+
+                    // Section 3: İçi Dolu Şekiller
+                    _buildSectionHeader('İçi Dolu Şekiller'),
+                    _buildGrid4x2(context, filledShapeTools),
+                  ],
+                ),
+              ),
+            ),
           ),
 
           // Subtle Divider
@@ -296,22 +333,61 @@ class CompactShapesPicker extends StatelessWidget {
     );
   }
 
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, bottom: 3),
+      child: Text(
+        title.toUpperCase(),
+        style: const TextStyle(
+          fontSize: 8.5,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF64748B),
+          letterSpacing: 0.4,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGrid4x2(BuildContext context, List<DrawingTool> tools) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            for (int i = 0; i < 4; i++) ...[
+              if (i > 0) const SizedBox(width: 5),
+              Expanded(child: _buildShapeCard(context, tools[i])),
+            ],
+          ],
+        ),
+        const SizedBox(height: 5),
+        Row(
+          children: [
+            for (int i = 4; i < 8; i++) ...[
+              if (i > 4) const SizedBox(width: 5),
+              Expanded(child: _buildShapeCard(context, tools[i])),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildShapeCard(BuildContext context, DrawingTool shapeTool) {
     final isSelected = controller.selectedTool == shapeTool;
     return InkWell(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(9),
       onTap: () {
         controller.setTool(shapeTool);
         Navigator.of(context).pop();
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
-        padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 2),
+        padding: const EdgeInsets.symmetric(vertical: 4.5, horizontal: 2),
         decoration: BoxDecoration(
           color: isSelected
               ? const Color(0xFF007AFF).withValues(alpha: 0.12)
               : const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(9),
           border: Border.all(
             color: isSelected
                 ? const Color(0xFF007AFF)
@@ -333,19 +409,19 @@ class CompactShapesPicker extends StatelessWidget {
           children: [
             Icon(
               shapeTool.icon,
-              size: 19,
+              size: 18,
               color: isSelected
                   ? const Color(0xFF007AFF)
                   : const Color(0xFF334155),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 1.5),
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
                 shapeTool.label,
                 maxLines: 1,
                 style: TextStyle(
-                  fontSize: 9.5,
+                  fontSize: 9.0,
                   fontWeight:
                       isSelected ? FontWeight.w700 : FontWeight.w500,
                   color: isSelected

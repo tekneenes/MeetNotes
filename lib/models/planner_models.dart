@@ -70,6 +70,9 @@ enum DrawingTool {
   crayon('Pastel Boya', Icons.grain_rounded, 14.0),
   eraser('Silgi', Icons.auto_fix_normal_rounded, 22.0),
   lasso('Kement Seçim', Icons.gesture_rounded, 1.0),
+  line('Düz Çizgi', Icons.horizontal_rule_rounded, 2.5),
+  arrow('Ok Çizgisi', Icons.arrow_right_alt_rounded, 2.5),
+  angle('3 Noktalı Açı', Icons.polyline_rounded, 2.5),
   rectangle('Dikdörtgen', Icons.crop_square_rounded, 2.5),
   square('Kare', Icons.square_outlined, 2.5),
   circle('Daire', Icons.circle_outlined, 2.5),
@@ -78,6 +81,14 @@ enum DrawingTool {
   pentagon('Beşgen', Icons.pentagon_outlined, 2.5),
   hexagon('Altıgen', Icons.hexagon_outlined, 2.5),
   deltoid('Deltoid', Icons.diamond_outlined, 2.5),
+  rectangleFilled('Dolu Dikdörtgen', Icons.rectangle_rounded, 2.5),
+  squareFilled('Dolu Kare', Icons.square_rounded, 2.5),
+  circleFilled('Dolu Daire', Icons.circle, 2.5),
+  ellipseFilled('Dolu Elips', Icons.egg_rounded, 2.5),
+  triangleFilled('Dolu Üçgen', Icons.change_history, 2.5),
+  pentagonFilled('Dolu Beşgen', Icons.pentagon_rounded, 2.5),
+  hexagonFilled('Dolu Altıgen', Icons.hexagon_rounded, 2.5),
+  deltoidFilled('Dolu Deltoid', Icons.diamond_rounded, 2.5),
   text('Metin', Icons.title_rounded, 1.0);
 
   final String label;
@@ -86,6 +97,9 @@ enum DrawingTool {
   const DrawingTool(this.label, this.icon, this.defaultWidth);
 
   bool get isShape =>
+      this == DrawingTool.line ||
+      this == DrawingTool.arrow ||
+      this == DrawingTool.angle ||
       this == DrawingTool.rectangle ||
       this == DrawingTool.square ||
       this == DrawingTool.circle ||
@@ -93,7 +107,30 @@ enum DrawingTool {
       this == DrawingTool.triangle ||
       this == DrawingTool.pentagon ||
       this == DrawingTool.hexagon ||
-      this == DrawingTool.deltoid;
+      this == DrawingTool.deltoid ||
+      this == DrawingTool.rectangleFilled ||
+      this == DrawingTool.squareFilled ||
+      this == DrawingTool.circleFilled ||
+      this == DrawingTool.ellipseFilled ||
+      this == DrawingTool.triangleFilled ||
+      this == DrawingTool.pentagonFilled ||
+      this == DrawingTool.hexagonFilled ||
+      this == DrawingTool.deltoidFilled;
+
+  bool get isFilled =>
+      this == DrawingTool.rectangleFilled ||
+      this == DrawingTool.squareFilled ||
+      this == DrawingTool.circleFilled ||
+      this == DrawingTool.ellipseFilled ||
+      this == DrawingTool.triangleFilled ||
+      this == DrawingTool.pentagonFilled ||
+      this == DrawingTool.hexagonFilled ||
+      this == DrawingTool.deltoidFilled;
+
+  bool get isLineOrArrow =>
+      this == DrawingTool.line ||
+      this == DrawingTool.arrow ||
+      this == DrawingTool.angle;
 }
 
 enum SelectionHandle {

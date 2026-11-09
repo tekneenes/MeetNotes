@@ -90,7 +90,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: _animation,
+      animation: Listenable.merge([_animation, widget.controller]),
       builder: (context, _) {
         final t = _animation.value;
         final isVertical = widget.dockEdge.isVertical;

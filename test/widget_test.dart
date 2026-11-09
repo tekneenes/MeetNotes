@@ -51,7 +51,25 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
 
-    await tester.pumpWidget(const MeetNotesApp());
+    final controller = PlannerController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                bottom: 24,
+                left: 100,
+                child: AppleNotesFloatingToolbar(
+                  controller: controller,
+                  onDragDelta: (_) {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
 
     // Find the 3-dots button (Icons.more_horiz_rounded)
@@ -73,7 +91,12 @@ void main() {
     expect(find.text('Deltoid'), findsOneWidget);
     expect(find.text('Elips'), findsOneWidget);
 
-    // Tap Üçgen shape
+    // Scroll to Üçgen if needed and tap it
+    await tester.scrollUntilVisible(
+      find.text('Üçgen'),
+      40.0,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('Üçgen'));
     await tester.pumpAndSettle();
 
@@ -81,12 +104,95 @@ void main() {
     expect(find.byIcon(Icons.change_history_rounded), findsWidgets);
   });
 
-  test('Lasso tool selects and moves strokes and shapes', () async {
+  testWidgets('CompactShapesPicker line and filled shapes selection test',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
     final controller = PlannerController();
-    while (controller.isLoading) {
-      await Future.delayed(const Duration(milliseconds: 20));
-    }
-    await Future.delayed(const Duration(milliseconds: 50));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                bottom: 24,
+                left: 100,
+                child: AppleNotesFloatingToolbar(
+                  controller: controller,
+                  onDragDelta: (_) {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Open shapes popover
+    final moreButton = find.byIcon(Icons.more_horiz_rounded);
+    await tester.tap(moreButton);
+    await tester.pumpAndSettle();
+
+    // Verify sections and items
+    expect(find.text('Düz Çizgi'), findsOneWidget);
+    expect(find.text('Ok Çizgisi'), findsOneWidget);
+    expect(find.text('3 Noktalı Açı'), findsOneWidget);
+
+    // Tap Düz Çizgi
+    await tester.tap(find.text('Düz Çizgi'));
+    await tester.pumpAndSettle();
+
+    // Toolbar icon transforms into line icon
+    expect(find.byIcon(Icons.horizontal_rule_rounded), findsWidgets);
+  });
+
+  testWidgets('Lines, arrows, angle, and filled shapes drawing test',
+      (WidgetTester tester) async {
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // 1. Draw a straight line
+    controller.setTool(DrawingTool.line);
+    controller.startStroke(const Offset(50, 50));
+    controller.updateStroke(const Offset(150, 50));
+    controller.endStroke();
+    expect(controller.strokes.last.tool, DrawingTool.line);
+    expect(controller.strokes.last.points.length, 2);
+
+    // 2. Draw an arrow
+    controller.setTool(DrawingTool.arrow);
+    controller.startStroke(const Offset(60, 60));
+    controller.updateStroke(const Offset(160, 60));
+    controller.endStroke();
+    expect(controller.strokes.last.tool, DrawingTool.arrow);
+
+    // 3. Draw a 3-point angle
+    controller.setTool(DrawingTool.angle);
+    controller.startStroke(const Offset(50, 50));
+    controller.updateStroke(const Offset(120, 120));
+    controller.endStroke();
+    expect(controller.strokes.last.tool, DrawingTool.angle);
+    expect(controller.strokes.last.points.length, 3);
+
+    // 4. Draw a filled circle
+    controller.setTool(DrawingTool.circleFilled);
+    controller.startStroke(const Offset(200, 200));
+    controller.updateStroke(const Offset(280, 280));
+    controller.endStroke();
+    expect(controller.strokes.last.tool, DrawingTool.circleFilled);
+    expect(controller.strokes.last.tool.isFilled, isTrue);
+
+    // Drain debounce save timer
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
+
+  testWidgets('Lasso tool selects and moves strokes and shapes',
+      (WidgetTester tester) async {
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
 
     // 1. Draw a rectangle shape from (100, 100) to (200, 200)
     controller.setTool(DrawingTool.rectangle);
@@ -144,14 +250,16 @@ void main() {
 
     controller.deleteSelectedStrokes();
     expect(controller.strokes.length, 1);
+
+    // Drain debounce save timer
+    await tester.pump(const Duration(milliseconds: 1000));
   });
 
-  test('Lasso tool selects, moves, resizes, and duplicates text items and sticky notes', () async {
+  testWidgets(
+      'Lasso tool selects, moves, resizes, and duplicates text items and sticky notes',
+      (WidgetTester tester) async {
     final controller = PlannerController();
-    while (controller.isLoading) {
-      await Future.delayed(const Duration(milliseconds: 20));
-    }
-    await Future.delayed(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 100));
 
     // 1. Add a sticky note and a text item
     controller.addPresetCanvasText(
@@ -224,6 +332,9 @@ void main() {
     // Test updating canvas text color
     controller.updateCanvasTextStyle(stickyId, (cur) => cur.copyWith(color: const Color(0xFFDC2626)));
     expect(controller.selectedTextItem!.color, const Color(0xFFDC2626));
+
+    // Drain debounce save timer
+    await tester.pump(const Duration(milliseconds: 1000));
   });
 
   testWidgets('CompactColorPickerDialog displays wheel, opacity, and presets',
@@ -433,9 +544,7 @@ void main() {
       'AppleNotesFloatingToolbar opens CompactStrokeWidthPicker on width tap and sets controller.strokeWidth',
       (WidgetTester tester) async {
     final controller = PlannerController();
-    while (controller.isLoading) {
-      await tester.pump(const Duration(milliseconds: 20));
-    }
+    await tester.pump(const Duration(milliseconds: 100));
 
     controller.setStrokeWidth(2.5);
 
@@ -540,9 +649,7 @@ void main() {
       'Text tool preset popover does not push toolbar down and stays inward on right dock',
       (WidgetTester tester) async {
     final controller = PlannerController();
-    while (controller.isLoading) {
-      await tester.pump(const Duration(milliseconds: 20));
-    }
+    await tester.pump(const Duration(milliseconds: 100));
 
     // 1. Bottom Dock Test: Verify popover sits above and toolbar stays at bottom
     await tester.pumpWidget(
@@ -619,9 +726,7 @@ void main() {
       'AppleNotesFloatingToolbar tapping color circle opens CompactColorPickerDialog and changes drawing color',
       (WidgetTester tester) async {
     final controller = PlannerController();
-    while (controller.isLoading) {
-      await tester.pump(const Duration(milliseconds: 20));
-    }
+    await tester.pump(const Duration(milliseconds: 100));
 
     await tester.pumpWidget(
       MaterialApp(
@@ -708,9 +813,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
 
     final controller = PlannerController();
-    while (controller.isLoading) {
-      await tester.pump(const Duration(milliseconds: 20));
-    }
+    await tester.pump(const Duration(milliseconds: 100));
 
     // 1. Bottom Dock Test
     await tester.pumpWidget(
@@ -753,7 +856,12 @@ void main() {
     expect(find.text('Araç Çubuğunu Küçült'), findsOneWidget);
     expect(find.text('Çizimleri Temizle'), findsOneWidget);
 
-    // Tap Daire
+    // Scroll to Daire and tap it
+    await tester.scrollUntilVisible(
+      find.text('Daire'),
+      40.0,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('Daire'));
     await tester.pumpAndSettle();
 
@@ -789,7 +897,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Geometrik Şekiller'), findsOneWidget);
-    // Tap Kare to switch shape
+    // Scroll to Kare to switch shape
+    await tester.scrollUntilVisible(
+      find.text('Kare'),
+      40.0,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('Kare'));
     await tester.pumpAndSettle();
 

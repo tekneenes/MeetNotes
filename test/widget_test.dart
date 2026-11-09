@@ -6,6 +6,8 @@ import 'package:meet_notes/main.dart';
 import 'package:meet_notes/models/planner_models.dart';
 import 'package:meet_notes/widgets/compact_color_picker_dialog.dart';
 import 'package:meet_notes/widgets/compact_font_picker_dialog.dart';
+import 'package:meet_notes/widgets/compact_stroke_width_picker.dart';
+import 'package:meet_notes/widgets/apple_notes_toolbar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -37,6 +39,7 @@ void main() {
     // Tap shrink button to return card back to sidebar
     await tester.tap(find.text('Küçült / Haftaya Dön'));
     await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 700));
 
     expect(find.text('Küçült / Haftaya Dön'), findsNothing);
     expect(find.text('Pazartesi'), findsOneWidget);
@@ -362,5 +365,154 @@ void main() {
 
     expect(chosenFont, 'Caveat');
     expect(find.textContaining('Yazı Tipleri'), findsNothing);
+  });
+
+  testWidgets(
+      'CompactStrokeWidthPicker displays slider, steppers, presets, and updates width',
+      (WidgetTester tester) async {
+    double currentWidth = 2.5;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: StatefulBuilder(
+              builder: (ctx, setState) {
+                return CompactStrokeWidthPicker(
+                  initialWidth: currentWidth,
+                  strokeColor: const Color(0xFF007AFF),
+                  onWidthChanged: (val) {
+                    setState(() => currentWidth = val);
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Çizgi Kalınlığı'), findsOneWidget);
+    expect(find.text('2.5 pt'), findsOneWidget);
+    expect(find.byType(Slider), findsOneWidget);
+
+    // Tap the plus stepper (+) button to increase by 0.5
+    final plusBtn = find.byIcon(Icons.add_rounded);
+    expect(plusBtn, findsOneWidget);
+    await tester.tap(plusBtn);
+    await tester.pumpAndSettle();
+
+    expect(currentWidth, 3.0);
+    expect(find.text('3.0 pt'), findsOneWidget);
+
+    // Tap the preset pill '10'
+    await tester.tap(find.text('10'));
+    await tester.pumpAndSettle();
+
+    expect(currentWidth, 10.0);
+    expect(find.text('10.0 pt'), findsOneWidget);
+
+    // Tap the minus stepper (-) button to decrease by 0.5
+    final minusBtn = find.byIcon(Icons.remove_rounded);
+    await tester.tap(minusBtn);
+    await tester.pumpAndSettle();
+
+    expect(currentWidth, 9.5);
+    expect(find.text('9.5 pt'), findsOneWidget);
+  });
+
+  testWidgets(
+      'AppleNotesFloatingToolbar opens CompactStrokeWidthPicker on width tap and sets controller.strokeWidth',
+      (WidgetTester tester) async {
+    final controller = PlannerController();
+    while (controller.isLoading) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+
+    controller.setStrokeWidth(2.5);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                bottom: 20,
+                left: 100,
+                child: AppleNotesFloatingToolbar(
+                  controller: controller,
+                  dockEdge: ToolbarDockEdge.bottom,
+                  onDragDelta: (_) {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Find the width button tooltip or text
+    final widthBtn = find.text('2.5');
+    expect(widthBtn, findsOneWidget);
+
+    // Tap to open CompactStrokeWidthPicker popover
+    await tester.tap(widthBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Çizgi Kalınlığı'), findsOneWidget);
+    expect(find.text('2.5 pt'), findsOneWidget);
+
+    // Tap preset '5'
+    await tester.tap(find.text('5'));
+    await tester.pumpAndSettle();
+
+    expect(controller.strokeWidth, 5.0);
+  });
+
+  testWidgets(
+      'CompactStrokeWidthPicker.showAnchored opens properly for vertical and top dock edges',
+      (WidgetTester tester) async {
+    double selectedWidth = 4.0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Builder(
+              builder: (ctx) => ElevatedButton(
+                onPressed: () {
+                  final box = ctx.findRenderObject() as RenderBox;
+                  final rect = box.localToGlobal(Offset.zero) & box.size;
+                  CompactStrokeWidthPicker.showAnchored(
+                    context: ctx,
+                    anchorRect: rect,
+                    dockEdge: ToolbarDockEdge.left,
+                    initialWidth: selectedWidth,
+                    strokeColor: Colors.black,
+                    onWidthChanged: (val) => selectedWidth = val,
+                  );
+                },
+                child: const Text('Open Left Dock Width'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Open Left Dock Width'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Çizgi Kalınlığı'), findsOneWidget);
+    expect(find.text('4.0 pt'), findsOneWidget);
+
+    // Tap preset '18'
+    await tester.tap(find.text('18'));
+    await tester.pumpAndSettle();
+
+    expect(selectedWidth, 18.0);
   });
 }

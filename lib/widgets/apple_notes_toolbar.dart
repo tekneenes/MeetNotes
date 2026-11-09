@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../models/planner_models.dart';
 import '../controllers/planner_controller.dart';
+import 'compact_stroke_width_picker.dart';
 
 enum ToolbarDockEdge {
   bottom,
@@ -81,8 +82,6 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
     Color(0xFFFFCC00), // Highlighter Yellow
     Color(0xFF8E8E93), // Apple Gray
   ];
-
-  static const List<double> _presetWidths = [1.5, 2.5, 5.0, 10.0, 18.0, 26.0];
 
   static const List<DrawingTool> _penTools = [
     DrawingTool.pen,
@@ -556,127 +555,99 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
 
   Widget _buildWidthPicker(BuildContext context) {
     final controller = widget.controller;
-
     final isVertical = widget.dockEdge.isVertical;
-    Offset popupOffset;
-    switch (widget.dockEdge) {
-      case ToolbarDockEdge.bottom:
-        popupOffset = const Offset(0, -200);
-        break;
-      case ToolbarDockEdge.top:
-        popupOffset = const Offset(0, 48);
-        break;
-      case ToolbarDockEdge.left:
-        popupOffset = const Offset(52, 0);
-        break;
-      case ToolbarDockEdge.right:
-        popupOffset = const Offset(-180, 0);
-        break;
-    }
 
-    return PopupMenuButton<double>(
-      tooltip: 'Çizgi Kalınlığı',
-      offset: popupOffset,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      elevation: 8,
-      child: isVertical
-          ? Container(
-              width: 34,
-              height: 28,
-              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: (controller.strokeWidth / 2.2).clamp(3.0, 10.0),
-                    height: (controller.strokeWidth / 2.2).clamp(3.0, 10.0),
+    return Builder(
+      builder: (btnContext) {
+        return Tooltip(
+          message: 'Çizgi Kalınlığını Ayarla',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(isVertical ? 14 : 15),
+            onTap: () {
+              final box = btnContext.findRenderObject() as RenderBox?;
+              if (box == null) return;
+              final anchorRect = box.localToGlobal(Offset.zero) & box.size;
+              CompactStrokeWidthPicker.showAnchored(
+                context: context,
+                anchorRect: anchorRect,
+                dockEdge: widget.dockEdge,
+                initialWidth: controller.strokeWidth,
+                strokeColor: controller.selectedTool == DrawingTool.eraser
+                    ? Colors.grey.shade700
+                    : controller.selectedColor,
+                onWidthChanged: (newWidth) {
+                  controller.setStrokeWidth(newWidth);
+                },
+              );
+            },
+            child: isVertical
+                ? Container(
+                    width: 34,
+                    height: 28,
+                    padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
                     decoration: BoxDecoration(
-                      color: controller.selectedTool == DrawingTool.eraser
-                          ? Colors.grey.shade700
-                          : controller.selectedColor,
-                      shape: BoxShape.circle,
+                      color: Colors.black.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                  ),
-                  const SizedBox(height: 1.5),
-                  Text(
-                    controller.strokeWidth.toStringAsFixed(0),
-                    style: const TextStyle(
-                      fontSize: 8.5,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1C1C1E),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: (controller.strokeWidth / 2.2).clamp(3.0, 10.0),
+                          height: (controller.strokeWidth / 2.2).clamp(3.0, 10.0),
+                          decoration: BoxDecoration(
+                            color: controller.selectedTool == DrawingTool.eraser
+                                ? Colors.grey.shade700
+                                : controller.selectedColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(height: 1.5),
+                        Text(
+                          controller.strokeWidth.toStringAsFixed(0),
+                          style: const TextStyle(
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1C1C1E),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-            )
-          : Container(
-              height: 30,
-              padding: const EdgeInsets.symmetric(horizontal: 7),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: (controller.strokeWidth / 2.2).clamp(3.0, 13.0),
-                    height: (controller.strokeWidth / 2.2).clamp(3.0, 13.0),
+                  )
+                : Container(
+                    height: 30,
+                    padding: const EdgeInsets.symmetric(horizontal: 7),
                     decoration: BoxDecoration(
-                      color: controller.selectedTool == DrawingTool.eraser
-                          ? Colors.grey.shade700
-                          : controller.selectedColor,
-                      shape: BoxShape.circle,
+                      color: Colors.black.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: (controller.strokeWidth / 2.2).clamp(3.0, 13.0),
+                          height: (controller.strokeWidth / 2.2).clamp(3.0, 13.0),
+                          decoration: BoxDecoration(
+                            color: controller.selectedTool == DrawingTool.eraser
+                                ? Colors.grey.shade700
+                                : controller.selectedColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          controller.strokeWidth.toStringAsFixed(1),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1C1C1E),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 5),
-                  Text(
-                    controller.strokeWidth.toStringAsFixed(1),
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1C1C1E),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-      itemBuilder: (ctx) {
-        return _presetWidths.map((width) {
-          final isCurr = (controller.strokeWidth - width).abs() < 0.1;
-          return PopupMenuItem<double>(
-            value: width,
-            height: 36,
-            child: Row(
-              children: [
-                Container(
-                  width: (width / 1.6).clamp(3.5, 15.0),
-                  height: (width / 1.6).clamp(3.5, 15.0),
-                  decoration: BoxDecoration(
-                    color: isCurr ? const Color(0xFF007AFF) : Colors.black87,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  '${width.toStringAsFixed(1)} pt',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: isCurr ? FontWeight.bold : FontWeight.w500,
-                    color: isCurr ? const Color(0xFF007AFF) : Colors.black87,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList();
-      },
-      onSelected: (width) {
-        controller.setStrokeWidth(width);
+          ),
+        );
       },
     );
   }

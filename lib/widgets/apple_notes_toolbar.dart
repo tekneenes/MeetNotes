@@ -60,7 +60,45 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar> {
 
   @override
   Widget build(BuildContext context) {
-    return _isMinimized ? _buildMinimizedBubble() : _buildExpandedDock(context);
+    // Animated open/close: the dock and the minimized bubble cross-fade while
+    // scaling from the left (handle side), so the dock visibly "folds into"
+    // the bubble and unfolds back. Both children share the same 52px height and
+    // top-left anchor, so the toolbar position never jumps.
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 240),
+      reverseDuration: const Duration(milliseconds: 200),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      layoutBuilder: (currentChild, previousChildren) {
+        return Stack(
+          alignment: Alignment.topLeft,
+          clipBehavior: Clip.none,
+          children: [
+            ...previousChildren,
+            if (currentChild != null) currentChild,
+          ],
+        );
+      },
+      transitionBuilder: (child, animation) {
+        return FadeTransition(
+          opacity: animation,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.82, end: 1.0).animate(animation),
+            alignment: Alignment.centerLeft,
+            child: child,
+          ),
+        );
+      },
+      child: _isMinimized
+          ? KeyedSubtree(
+              key: const ValueKey('toolbar_minimized'),
+              child: _buildMinimizedBubble(),
+            )
+          : KeyedSubtree(
+              key: const ValueKey('toolbar_expanded'),
+              child: _buildExpandedDock(context),
+            ),
+    );
   }
 
   Widget _buildMinimizedBubble() {

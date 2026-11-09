@@ -294,7 +294,6 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 strokes: controller.strokes,
                 strokeIndicesToRender: batchCopy,
                 renderOverlay: renderOverlay,
-                activeStroke: controller.activeStroke,
                 lassoPoints: controller.lassoPoints,
                 selectionBounds: controller.selectionBounds,
                 selectionBorderRadius: controller.selectedTextItem != null &&
@@ -324,7 +323,30 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       }
     }
 
-    // Flush remaining topmost strokes and always render active stroke / selection overlay on top
+    // Flush remaining topmost strokes first
+    flushStrokeBatch(renderOverlay: false);
+
+    // Live stroke layer: isolated in its own RepaintBoundary and driven by the
+    // controller's activeStrokeTick, so drawing never repaints/rebuilds the
+    // static strokes, text boxes or the rest of the screen.
+    widgets.add(
+      Positioned.fill(
+        child: IgnorePointer(
+          child: RepaintBoundary(
+            child: CustomPaint(
+              painter: ActiveStrokePainter(
+                activeStrokeGetter: () => controller.activeStroke,
+                repaint: controller.activeStrokeTick,
+                scale: _scale,
+                panOffset: _panOffset,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Lasso / selection overlay always on top
     flushStrokeBatch(renderOverlay: true);
     return widgets;
   }

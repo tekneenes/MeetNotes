@@ -23,6 +23,11 @@ class PlannerController extends ChangeNotifier {
 
   DrawingStroke? _activeStroke;
 
+  /// Lightweight tick bumped while the live (active) stroke grows. Only the
+  /// active-stroke canvas layer listens to it (via CustomPainter.repaint), so
+  /// pen movement no longer rebuilds the whole planner screen on every point.
+  final ValueNotifier<int> activeStrokeTick = ValueNotifier<int>(0);
+
   // Lasso Selection, Resize & 2D Rotation State
   List<Offset> _lassoPoints = [];
   final Set<int> _selectedStrokeIndices = {};
@@ -1094,7 +1099,7 @@ class PlannerController extends ChangeNotifier {
           _activeStroke = _activeStroke!.copyWith(points: updatedPoints);
         }
       }
-      notifyListeners();
+      activeStrokeTick.value++;
     }
   }
 

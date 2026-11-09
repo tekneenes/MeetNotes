@@ -2,6 +2,42 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models/planner_models.dart';
 
+/// Paints only the live stroke the user is currently drawing. It listens to
+/// [repaint] (the controller's active-stroke tick) so it can repaint on every
+/// new point without any widget rebuild, and reads the stroke lazily at paint
+/// time via [activeStrokeGetter]. Rendering is delegated to
+/// [DrawingCanvasPainter] so the look is identical to before.
+class ActiveStrokePainter extends CustomPainter {
+  final DrawingStroke? Function() activeStrokeGetter;
+  final double scale;
+  final Offset panOffset;
+
+  ActiveStrokePainter({
+    required this.activeStrokeGetter,
+    required Listenable repaint,
+    required this.scale,
+    required this.panOffset,
+  }) : super(repaint: repaint);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = activeStrokeGetter();
+    if (stroke == null) return;
+    DrawingCanvasPainter(
+      strokes: const [],
+      strokeIndicesToRender: const [],
+      activeStroke: stroke,
+      scale: scale,
+      panOffset: panOffset,
+    ).paint(canvas, size);
+  }
+
+  // Cheap (only the live stroke is drawn) and must clear itself when the
+  // stroke ends, so always repaint when the widget is rebuilt.
+  @override
+  bool shouldRepaint(covariant ActiveStrokePainter oldDelegate) => true;
+}
+
 class DrawingCanvasPainter extends CustomPainter {
   final List<DrawingStroke> strokes;
   final List<int>? strokeIndicesToRender;

@@ -10,12 +10,14 @@ import '../models/planner_models.dart';
 class ActiveStrokePainter extends CustomPainter {
   final DrawingStroke? Function() activeStrokeGetter;
   final Offset? Function()? activeSnapPointGetter;
+  final List<Offset> Function()? nearbySnapAnchorsGetter;
   final double scale;
   final Offset panOffset;
 
   ActiveStrokePainter({
     required this.activeStrokeGetter,
     this.activeSnapPointGetter,
+    this.nearbySnapAnchorsGetter,
     required Listenable repaint,
     required this.scale,
     required this.panOffset,
@@ -25,12 +27,14 @@ class ActiveStrokePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final stroke = activeStrokeGetter();
     final snapPoint = activeSnapPointGetter?.call();
-    if (stroke == null && snapPoint == null) return;
+    final nearbyAnchors = nearbySnapAnchorsGetter?.call() ?? const [];
+    if (stroke == null && snapPoint == null && nearbyAnchors.isEmpty) return;
     DrawingCanvasPainter(
       strokes: const [],
       strokeIndicesToRender: const [],
       activeStroke: stroke,
       activeSnapPoint: snapPoint,
+      nearbySnapAnchors: nearbyAnchors,
       scale: scale,
       panOffset: panOffset,
     ).paint(canvas, size);
@@ -54,6 +58,7 @@ class DrawingCanvasPainter extends CustomPainter {
   final SelectionHandle? activeResizeHandle;
   final DrawingStroke? selectedLineStroke;
   final Offset? activeSnapPoint;
+  final List<Offset> nearbySnapAnchors;
   final bool isRotatingSelection;
   final bool isSelectionLocked;
   final double? selectionBorderRadius;
@@ -72,6 +77,7 @@ class DrawingCanvasPainter extends CustomPainter {
     this.activeResizeHandle,
     this.selectedLineStroke,
     this.activeSnapPoint,
+    this.nearbySnapAnchors = const [],
     this.isRotatingSelection = false,
     this.isSelectionLocked = false,
     this.selectionBorderRadius,
@@ -115,6 +121,9 @@ class DrawingCanvasPainter extends CustomPainter {
         _drawLineSelectionOverlay(canvas, selectedLineStroke!);
       } else if (selectionBounds != null) {
         _drawSelectionBox(canvas, selectionBounds!);
+      }
+      if (nearbySnapAnchors.isNotEmpty) {
+        _drawNearbySnapAnchors(canvas, nearbySnapAnchors);
       }
       if (activeSnapPoint != null) {
         _drawSnapIndicator(canvas, activeSnapPoint!);
@@ -703,6 +712,28 @@ class DrawingCanvasPainter extends CustomPainter {
         stroke.points[1],
         activeResizeHandle == SelectionHandle.lineControl,
       );
+    }
+  }
+
+  void _drawNearbySnapAnchors(Canvas canvas, List<Offset> anchors) {
+    final dotRadius = 3.8 / scale;
+    final fillPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    final borderPaint = Paint()
+      ..color = const Color(0xFF0284C7).withValues(alpha: 0.85) // Sky-blue connection dot
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3 / scale;
+    final shadowPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.22);
+
+    for (final pt in anchors) {
+      if (activeSnapPoint != null && (pt - activeSnapPoint!).distance < 1.0 / scale) {
+        continue;
+      }
+      canvas.drawCircle(pt + Offset(0, 0.8 / scale), dotRadius, shadowPaint);
+      canvas.drawCircle(pt, dotRadius, fillPaint);
+      canvas.drawCircle(pt, dotRadius, borderPaint);
     }
   }
 

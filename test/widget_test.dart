@@ -1023,4 +1023,52 @@ void main() {
     // Drain debounce save timer
     await tester.pump(const Duration(milliseconds: 1000));
   });
+
+  testWidgets(
+      'Preset shapes corner and edge midpoint magnetic snapping test',
+      (WidgetTester tester) async {
+    final controller = PlannerController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DrawingWorkspace(controller: controller),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 1. Draw a preset rectangle from (100, 100) to (300, 200)
+    controller.setTool(DrawingTool.rectangle);
+    controller.startStroke(const Offset(100, 100));
+    controller.updateStroke(const Offset(300, 200));
+    controller.endStroke();
+    await tester.pumpAndSettle();
+
+    expect(controller.strokes.length, 1);
+
+    // 2. Snap to edge midpoint (top edge midpoint is at (200, 100))
+    controller.setTool(DrawingTool.line);
+    controller.startStroke(const Offset(50, 50));
+    controller.updateStroke(const Offset(204, 96)); // Close to (200, 100)
+    expect(controller.nearbySnapAnchors, isNotEmpty);
+    expect(controller.activeSnapPoint, const Offset(200, 100));
+    controller.endStroke();
+    await tester.pumpAndSettle();
+
+    expect(controller.strokes.length, 2);
+    expect(controller.strokes.last.points.last, const Offset(200, 100)); // Snapped to edge midpoint
+
+    // 3. Snap to corner (top-right corner is at (300, 100))
+    controller.startStroke(const Offset(450, 50));
+    controller.updateStroke(const Offset(304, 103)); // Close to (300, 100)
+    expect(controller.activeSnapPoint, const Offset(300, 100));
+    controller.endStroke();
+    await tester.pumpAndSettle();
+
+    expect(controller.strokes.length, 3);
+    expect(controller.strokes.last.points.last, const Offset(300, 100)); // Snapped to corner vertex
+
+    // Drain debounce save timer
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
 }

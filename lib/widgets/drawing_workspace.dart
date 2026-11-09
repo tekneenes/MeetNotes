@@ -436,6 +436,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 selectedLineStroke: controller.selectedLineStroke,
                 activeResizeHandle: controller.activeResizeHandle,
                 activeSnapPoint: controller.activeSnapPoint,
+                nearbySnapAnchors: controller.nearbySnapAnchors,
                 isRotatingSelection: controller.isRotatingSelection,
                 isSelectionLocked: controller.isSelectionLocked,
                 scale: _scale,
@@ -470,6 +471,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
               painter: ActiveStrokePainter(
                 activeStrokeGetter: () => controller.activeStroke,
                 activeSnapPointGetter: () => controller.activeSnapPoint,
+                nearbySnapAnchorsGetter: () => controller.nearbySnapAnchors,
                 repaint: controller.activeStrokeTick,
                 scale: _scale,
                 panOffset: _panOffset,

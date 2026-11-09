@@ -43,6 +43,7 @@ class PlannerController extends ChangeNotifier {
   Offset? _lastLassoDragPoint;
   SelectionHandle? _activeResizeHandle;
   Offset? _activeSnapPoint;
+  List<Offset> _nearbySnapAnchors = [];
   Offset? _resizeStartPoint;
   Rect? _initialResizeRawBounds;
   Offset? _initialResizeCenter;
@@ -110,6 +111,7 @@ class PlannerController extends ChangeNotifier {
       _isDraggingSelection || _activeResizeHandle != null || _isRotatingSelection;
   SelectionHandle? get activeResizeHandle => _activeResizeHandle;
   Offset? get activeSnapPoint => _activeSnapPoint;
+  List<Offset> get nearbySnapAnchors => List.unmodifiable(_nearbySnapAnchors);
   bool get isRotatingSelection => _isRotatingSelection;
   double get selectionRotationAngle => _selectionRotationAngle;
   int get currentRotationDegrees => _currentRotationDegrees;
@@ -873,24 +875,167 @@ class PlannerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Endpoint-to-endpoint magnetic snapping (AutoCAD OSNAP style)
-  Offset _applyEndpointSnapping(Offset point, {int? excludeStrokeIndex}) {
-    // Gentle snap threshold: Allows precise micro-adjustments and placing lines close together
-    final snapThreshold = 8.0 / _zoomScale;
-    Offset? closestSnap;
-    double closestDistance = double.infinity;
+  // Collects all snap candidate points from lines and geometric shapes:
+  // - Line endpoints & curve apex
+  // - Shape corners (vertices) - başlangıç ve bitiş kısımları
+  // - Shape edge midpoints - kenar çizgileri arasında bir nokta
+  // - Shape center
+  List<Offset> _getStrokeSnapCandidates(DrawingStroke s) {
+    if (s.points.isEmpty) return const [];
 
-    for (int i = 0; i < _strokes.length; i++) {
-      if (excludeStrokeIndex != null && i == excludeStrokeIndex) continue;
-      final s = _strokes[i];
-      if (!s.tool.isLineOrArrow || s.points.isEmpty) continue;
-
-      final candidates = <Offset>[
+    if (s.tool.isLineOrArrow) {
+      return [
         s.points.first,
         s.points.last,
         if (s.tool == DrawingTool.curve && s.points.length >= 3)
           s.points[1],
       ];
+    }
+
+    if (s.tool.isShape && s.points.length >= 2) {
+      final p1 = s.points.first;
+      final p2 = s.points.last;
+      final rect = Rect.fromPoints(p1, p2);
+      final list = <Offset>[];
+
+      switch (s.tool) {
+        case DrawingTool.rectangle:
+        case DrawingTool.square:
+        case DrawingTool.rectangleFilled:
+        case DrawingTool.squareFilled:
+          // Kenarların başlangıç ve bitiş noktaları (Köşeler / Vertices)
+          list.addAll([
+            rect.topLeft,
+            rect.topRight,
+            rect.bottomRight,
+            rect.bottomLeft,
+          ]);
+          // Kenar çizgileri arasında bir nokta (Kenar orta noktaları / Midpoints)
+          list.addAll([
+            rect.topCenter,
+            rect.centerRight,
+            rect.bottomCenter,
+            rect.centerLeft,
+          ]);
+          // Şekil merkezi
+          list.add(rect.center);
+          break;
+
+        case DrawingTool.triangle:
+        case DrawingTool.triangleFilled:
+          final v0 = Offset(rect.center.dx, rect.top);
+          final v1 = Offset(rect.right, rect.bottom);
+          final v2 = Offset(rect.left, rect.bottom);
+          list.addAll([v0, v1, v2]);
+          list.addAll([
+            (v0 + v1) / 2.0,
+            (v1 + v2) / 2.0,
+            (v2 + v0) / 2.0,
+          ]);
+          list.add(rect.center);
+          break;
+
+        case DrawingTool.circle:
+        case DrawingTool.ellipse:
+        case DrawingTool.circleFilled:
+        case DrawingTool.ellipseFilled:
+          list.addAll([
+            rect.topCenter,
+            rect.centerRight,
+            rect.bottomCenter,
+            rect.centerLeft,
+          ]);
+          list.add(rect.center);
+          break;
+
+        case DrawingTool.pentagon:
+        case DrawingTool.pentagonFilled:
+          final center = rect.center;
+          final rx = rect.width / 2;
+          final ry = rect.height / 2;
+          final vertices = <Offset>[];
+          for (int i = 0; i < 5; i++) {
+            final angle = -math.pi / 2 + i * (2 * math.pi / 5);
+            vertices.add(Offset(
+              center.dx + rx * math.cos(angle),
+              center.dy + ry * math.sin(angle),
+            ));
+          }
+          list.addAll(vertices);
+          for (int i = 0; i < 5; i++) {
+            list.add((vertices[i] + vertices[(i + 1) % 5]) / 2.0);
+          }
+          list.add(center);
+          break;
+
+        case DrawingTool.hexagon:
+        case DrawingTool.hexagonFilled:
+          final center = rect.center;
+          final rx = rect.width / 2;
+          final ry = rect.height / 2;
+          final vertices = <Offset>[];
+          for (int i = 0; i < 6; i++) {
+            final angle = -math.pi / 2 + i * (2 * math.pi / 6);
+            vertices.add(Offset(
+              center.dx + rx * math.cos(angle),
+              center.dy + ry * math.sin(angle),
+            ));
+          }
+          list.addAll(vertices);
+          for (int i = 0; i < 6; i++) {
+            list.add((vertices[i] + vertices[(i + 1) % 6]) / 2.0);
+          }
+          list.add(center);
+          break;
+
+        case DrawingTool.deltoid:
+        case DrawingTool.deltoidFilled:
+          final v0 = Offset(rect.center.dx, rect.top);
+          final v1 = Offset(rect.right, rect.center.dy);
+          final v2 = Offset(rect.center.dx, rect.bottom);
+          final v3 = Offset(rect.left, rect.center.dy);
+          list.addAll([v0, v1, v2, v3]);
+          list.addAll([
+            (v0 + v1) / 2.0,
+            (v1 + v2) / 2.0,
+            (v2 + v3) / 2.0,
+            (v3 + v0) / 2.0,
+          ]);
+          list.add(rect.center);
+          break;
+
+        default:
+          break;
+      }
+      return list;
+    }
+
+    return const [];
+  }
+
+  // Endpoint-to-endpoint & Shape magnetic snapping (AutoCAD OSNAP style)
+  Offset _applyEndpointSnapping(Offset point, {int? excludeStrokeIndex}) {
+    // Gentle snap threshold: Allows precise micro-adjustments and placing lines close together
+    final snapThreshold = 10.0 / _zoomScale;
+    Offset? closestSnap;
+    double closestDistance = double.infinity;
+    final nearbyAnchors = <Offset>[];
+
+    for (int i = 0; i < _strokes.length; i++) {
+      if (excludeStrokeIndex != null && i == excludeStrokeIndex) continue;
+      final s = _strokes[i];
+      if (s.points.isEmpty) continue;
+
+      final candidates = _getStrokeSnapCandidates(s);
+      if (candidates.isEmpty) continue;
+
+      // Show shape anchor dots when cursor is within reasonable proximity (~55pt)
+      if (s.points.length >= 2) {
+        final strokeRect = Rect.fromPoints(s.points.first, s.points.last);
+        if (strokeRect.inflate(55.0 / _zoomScale).contains(point)) {
+          nearbyAnchors.addAll(candidates);
+        }
+      }
 
       for (final candidate in candidates) {
         final dist = (point - candidate).distance;
@@ -902,6 +1047,7 @@ class PlannerController extends ChangeNotifier {
     }
 
     _activeSnapPoint = closestSnap;
+    _nearbySnapAnchors = nearbyAnchors;
     return closestSnap ?? point;
   }
 
@@ -1259,6 +1405,7 @@ class PlannerController extends ChangeNotifier {
         (_activeResizeHandle != null || _isDraggingSelection)) {
       _activeResizeHandle = null;
       _activeSnapPoint = null;
+      _nearbySnapAnchors = [];
       _isDraggingSelection = false;
       _lastLassoDragPoint = null;
       _saveCurrentStrokes();
@@ -1316,6 +1463,7 @@ class PlannerController extends ChangeNotifier {
       }
       _activeStroke = null;
       _activeSnapPoint = null;
+      _nearbySnapAnchors = [];
       _normalizeUnifiedLayerOrders();
       _saveCurrentStrokes();
       _saveCurrentCanvasTexts();
@@ -1330,6 +1478,7 @@ class PlannerController extends ChangeNotifier {
         _isRotatingSelection) {
       _lassoPoints = [];
       _activeSnapPoint = null;
+      _nearbySnapAnchors = [];
       if (_isDraggingSelection || _activeResizeHandle != null || _isRotatingSelection) {
         _isDraggingSelection = false;
         _activeResizeHandle = null;
@@ -1353,6 +1502,7 @@ class PlannerController extends ChangeNotifier {
     if (_activeStroke != null) {
       _activeStroke = null;
       _activeSnapPoint = null;
+      _nearbySnapAnchors = [];
       if (_undoStack.isNotEmpty) {
         _undoStack.removeLast();
       }

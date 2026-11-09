@@ -16,7 +16,7 @@ import 'apple_notes_toolbar.dart' show ToolbarDockEdge;
 /// - Active tool highlight badge and border
 /// - Smooth ScaleTransition originating from the 3-dots button
 /// - 'Araç Çubuğunu Küçült' and 'Çizimleri Temizle' actions with soft styling
-class CompactShapesPicker extends StatelessWidget {
+class CompactShapesPicker extends StatefulWidget {
   final PlannerController controller;
   final ToolbarDockEdge dockEdge;
   final VoidCallback? onMinimize;
@@ -178,9 +178,28 @@ class CompactShapesPicker extends StatelessWidget {
   }
 
   @override
+  State<CompactShapesPicker> createState() => _CompactShapesPickerState();
+}
+
+class _CompactShapesPickerState extends State<CompactShapesPicker> {
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     const popoverWidth = 280.0;
-    final isShapeActive = controller.selectedTool.isShape;
+    final isShapeActive = widget.controller.selectedTool.isShape;
 
     return Container(
       width: popoverWidth,
@@ -246,9 +265,9 @@ class CompactShapesPicker extends StatelessWidget {
                     borderRadius: BorderRadius.circular(5),
                   ),
                   child: Text(
-                    controller.selectedTool.label,
+                    widget.controller.selectedTool.label,
                     style: const TextStyle(
-                      fontSize: 9,
+                      fontSize: 10,
                       fontWeight: FontWeight.w600,
                       color: Color(0xFF007AFF),
                     ),
@@ -262,11 +281,13 @@ class CompactShapesPicker extends StatelessWidget {
           SizedBox(
             height: 105,
             child: RawScrollbar(
+              controller: _scrollController,
               thumbVisibility: true,
               thickness: 3,
               radius: const Radius.circular(2),
               thumbColor: Colors.black.withValues(alpha: 0.20),
               child: SingleChildScrollView(
+                controller: _scrollController,
                 padding: const EdgeInsets.only(right: 6),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -275,9 +296,14 @@ class CompactShapesPicker extends StatelessWidget {
                     _buildSectionHeader('Çizgiler & Açı'),
                     Row(
                       children: [
-                        for (int i = 0; i < lineTools.length; i++) ...[
+                        for (int i = 0; i < CompactShapesPicker.lineTools.length; i++) ...[
                           if (i > 0) const SizedBox(width: 5),
-                          Expanded(child: _buildShapeCard(context, lineTools[i])),
+                          Expanded(
+                            child: _buildShapeCard(
+                              context,
+                              CompactShapesPicker.lineTools[i],
+                            ),
+                          ),
                         ],
                       ],
                     ),
@@ -285,12 +311,12 @@ class CompactShapesPicker extends StatelessWidget {
 
                     // Section 2: İçi Boş Şekiller
                     _buildSectionHeader('İçi Boş Şekiller'),
-                    _buildGrid4x2(context, outlinedShapeTools),
+                    _buildGrid4x2(context, CompactShapesPicker.outlinedShapeTools),
                     const SizedBox(height: 7),
 
                     // Section 3: İçi Dolu Şekiller
                     _buildSectionHeader('İçi Dolu Şekiller'),
-                    _buildGrid4x2(context, filledShapeTools),
+                    _buildGrid4x2(context, CompactShapesPicker.filledShapeTools),
                   ],
                 ),
               ),
@@ -314,7 +340,7 @@ class CompactShapesPicker extends StatelessWidget {
             color: const Color(0xFF475569),
             onTap: () {
               Navigator.of(context).pop();
-              onMinimize?.call();
+              widget.onMinimize?.call();
             },
           ),
 
@@ -325,7 +351,7 @@ class CompactShapesPicker extends StatelessWidget {
             color: const Color(0xFFFF3B30),
             onTap: () {
               Navigator.of(context).pop();
-              onClearCanvas?.call();
+              widget.onClearCanvas?.call();
             },
           ),
         ],
@@ -373,11 +399,11 @@ class CompactShapesPicker extends StatelessWidget {
   }
 
   Widget _buildShapeCard(BuildContext context, DrawingTool shapeTool) {
-    final isSelected = controller.selectedTool == shapeTool;
+    final isSelected = widget.controller.selectedTool == shapeTool;
     return InkWell(
       borderRadius: BorderRadius.circular(9),
       onTap: () {
-        controller.setTool(shapeTool);
+        widget.controller.setTool(shapeTool);
         Navigator.of(context).pop();
       },
       child: AnimatedContainer(

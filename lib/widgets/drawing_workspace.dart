@@ -20,7 +20,9 @@ class DrawingWorkspace extends StatefulWidget {
 }
 
 class _DrawingWorkspaceState extends State<DrawingWorkspace> {
+  ToolbarDockEdge _dockEdge = ToolbarDockEdge.bottom;
   Offset? _toolbarPosition;
+  bool _isDraggingToolbar = false;
   bool _showCornerRadiusSlider = false;
 
   // Viewport Zoom & Pan state (Canvas -> Viewport: p_viewport = p_canvas * _scale + _panOffset)
@@ -52,10 +54,94 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       _showCornerRadiusSlider = false;
     }
     if ((widget.controller.zoomScale - _scale).abs() > 0.001) {
-      setState(() {
-        _scale = widget.controller.zoomScale;
-      });
+      _scale = widget.controller.zoomScale;
     }
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Offset _computeDockedPosition({
+    required ToolbarDockEdge edge,
+    required double availableWidth,
+    required double availableHeight,
+    required Offset currentPos,
+  }) {
+    const margin = 12.0;
+    final isVertical = edge.isVertical;
+    final tbWidth = isVertical ? 52.0 : 580.0;
+    final tbHeight = isVertical ? 540.0 : 52.0;
+
+    switch (edge) {
+      case ToolbarDockEdge.bottom:
+        final maxX = math.max(margin, availableWidth - tbWidth - margin).toDouble();
+        final x = currentPos.dx.clamp(margin, maxX).toDouble();
+        final y = math.max(margin, availableHeight - tbHeight - margin).toDouble();
+        return Offset(x, y);
+
+      case ToolbarDockEdge.top:
+        final maxX = math.max(margin, availableWidth - tbWidth - margin).toDouble();
+        final x = currentPos.dx.clamp(margin, maxX).toDouble();
+        final y = margin;
+        return Offset(x, y);
+
+      case ToolbarDockEdge.left:
+        final x = margin;
+        final maxY = math.max(margin, availableHeight - tbHeight - margin).toDouble();
+        final y = currentPos.dy.clamp(margin, maxY).toDouble();
+        return Offset(x, y);
+
+      case ToolbarDockEdge.right:
+        final x = math.max(margin, availableWidth - tbWidth - margin).toDouble();
+        final maxY = math.max(margin, availableHeight - tbHeight - margin).toDouble();
+        final y = currentPos.dy.clamp(margin, maxY).toDouble();
+        return Offset(x, y);
+    }
+  }
+
+  void _handleToolbarDragEnd(BoxConstraints constraints, double effectiveRightInset) {
+    if (_toolbarPosition == null) return;
+    final availableWidth = constraints.maxWidth - effectiveRightInset;
+    final availableHeight = constraints.maxHeight;
+
+    final isVertical = _dockEdge.isVertical;
+    final tbWidth = isVertical ? 52.0 : 580.0;
+    final tbHeight = isVertical ? 540.0 : 52.0;
+
+    final centerX = _toolbarPosition!.dx + tbWidth / 2.0;
+    final centerY = _toolbarPosition!.dy + tbHeight / 2.0;
+
+    final distLeft = centerX;
+    final distRight = availableWidth - centerX;
+    final distTop = centerY;
+    final distBottom = availableHeight - centerY;
+
+    ToolbarDockEdge bestEdge;
+    final minDist = math.min(
+      math.min(distLeft, distRight),
+      math.min(distTop, distBottom),
+    );
+
+    if (minDist == distBottom) {
+      bestEdge = ToolbarDockEdge.bottom;
+    } else if (minDist == distTop) {
+      bestEdge = ToolbarDockEdge.top;
+    } else if (minDist == distLeft) {
+      bestEdge = ToolbarDockEdge.left;
+    } else {
+      bestEdge = ToolbarDockEdge.right;
+    }
+
+    setState(() {
+      _isDraggingToolbar = false;
+      _dockEdge = bestEdge;
+      _toolbarPosition = _computeDockedPosition(
+        edge: bestEdge,
+        availableWidth: availableWidth,
+        availableHeight: availableHeight,
+        currentPos: _toolbarPosition!,
+      );
+    });
   }
   Offset _toCanvas(Offset viewportPoint) {
     return (viewportPoint - _panOffset) / _scale;
@@ -173,16 +259,24 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       builder: (context, constraints) {
         final viewportSize = Size(constraints.maxWidth, constraints.maxHeight);
 
-        // Initialize position to bottom-center of the canvas
+        final effectiveRightInset = controller.isQuickAccessOpen ? 300.0 : 0.0;
+        final availableWidth = constraints.maxWidth - effectiveRightInset;
+        final availableHeight = constraints.maxHeight;
+
+        // Initialize position to bottom-center of the canvas if null
         _toolbarPosition ??= Offset(
-          ((constraints.maxWidth - 580) / 2).clamp(10.0, constraints.maxWidth),
-          (constraints.maxHeight - 74).clamp(10.0, constraints.maxHeight),
+          ((availableWidth - 580.0) / 2.0).clamp(12.0, math.max(12.0, availableWidth - 580.0 - 12.0)),
+          (availableHeight - 52.0 - 12.0).clamp(12.0, math.max(12.0, availableHeight - 52.0 - 12.0)),
         );
 
-        final activeToolbarPos = Offset(
-          _toolbarPosition!.dx.clamp(10.0, (constraints.maxWidth - 60).clamp(10.0, constraints.maxWidth)),
-          _toolbarPosition!.dy.clamp(10.0, (constraints.maxHeight - 60).clamp(10.0, constraints.maxHeight)),
-        );
+        final activeToolbarPos = _isDraggingToolbar
+            ? _toolbarPosition!
+            : _computeDockedPosition(
+                edge: _dockEdge,
+                availableWidth: availableWidth,
+                availableHeight: availableHeight,
+                currentPos: _toolbarPosition!,
+              );
 
         return DragTarget<SavedCanvasAsset>(
           onWillAcceptWithDetails: (_) => true,
@@ -257,24 +351,37 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                       controller.selectionBounds != null)
                     _buildRotationDegreeBadge(controller.selectionBounds!, viewportSize),
 
-                  // 2. Truly Floating & Draggable Apple Notes Toolbar
-                  Positioned(
+                  // 2. Truly Floating, Snapping & Docking Apple Notes Toolbar
+                  AnimatedPositioned(
+                    duration: _isDraggingToolbar
+                        ? Duration.zero
+                        : const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
                     left: activeToolbarPos.dx,
                     top: activeToolbarPos.dy,
                     child: AppleNotesFloatingToolbar(
                       controller: controller,
+                      dockEdge: _dockEdge,
+                      onDragStart: () {
+                        setState(() {
+                          _isDraggingToolbar = true;
+                        });
+                      },
                       onDragDelta: (delta) {
                         setState(() {
                           final newX = (_toolbarPosition!.dx + delta.dx).clamp(
-                            10.0,
-                            (constraints.maxWidth - 60).clamp(10.0, constraints.maxWidth),
+                            -100.0,
+                            constraints.maxWidth + 100.0,
                           );
                           final newY = (_toolbarPosition!.dy + delta.dy).clamp(
-                            10.0,
-                            (constraints.maxHeight - 60).clamp(10.0, constraints.maxHeight),
+                            -100.0,
+                            constraints.maxHeight + 100.0,
                           );
                           _toolbarPosition = Offset(newX, newY);
                         });
+                      },
+                      onDragEnd: () {
+                        _handleToolbarDragEnd(constraints, effectiveRightInset);
                       },
                     ),
                   ),

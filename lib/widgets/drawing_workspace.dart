@@ -584,15 +584,6 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     const handleClearanceRadius = 26.0;
 
     final maxAvailableWidth = (viewportSize.width - 16.0).clamp(120.0, viewportSize.width);
-    final estimatedWidth = isLocked
-        ? 210.0
-        : (textItem != null ? 760.0 : 420.0);
-    final actualWidth = math.min(estimatedWidth, maxAvailableWidth);
-
-    final double left = (centerViewport.dx - actualWidth / 2.0).clamp(
-      8.0,
-      math.max(8.0, viewportSize.width - actualWidth - 8.0),
-    ).toDouble();
 
     final handleInUpperHalf = handleViewport.dy < centerViewport.dy;
     final popoverExtra = (_showCornerRadiusSlider && textItem != null && !isLocked) ? 48.0 : 0.0;
@@ -631,10 +622,20 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       }
     }
 
+    // The pill is centered on the selection and clamped to the viewport using
+    // its REAL measured width (not an estimate), so it can get equally close
+    // (8px) to both the left and right edges.
     return Positioned(
-      left: left,
+      left: 0,
+      right: 0,
       top: top,
-      child: IgnorePointer(
+      height: pillHeight + popoverExtra,
+      child: CustomSingleChildLayout(
+        delegate: _CenteredClampedPillLayoutDelegate(
+          centerX: centerViewport.dx,
+          margin: 8.0,
+        ),
+        child: IgnorePointer(
         ignoring: controller.isRotatingSelection || controller.activeResizeHandle != null,
         child: Material(
           color: Colors.transparent,
@@ -676,6 +677,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
               ),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -2312,3 +2314,33 @@ class _DashedBoxPainter extends CustomPainter {
   }
 }
 
+/// Centers the child horizontally on [centerX] and keeps it fully inside the
+/// parent with [margin] on both sides, using the child's measured width.
+class _CenteredClampedPillLayoutDelegate extends SingleChildLayoutDelegate {
+  final double centerX;
+  final double margin;
+
+  const _CenteredClampedPillLayoutDelegate({
+    required this.centerX,
+    required this.margin,
+  });
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) {
+    return BoxConstraints(
+      maxWidth: math.max(0.0, constraints.maxWidth - margin * 2),
+      maxHeight: constraints.maxHeight,
+    );
+  }
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) {
+    final maxLeft = math.max(margin, size.width - childSize.width - margin);
+    final left = (centerX - childSize.width / 2.0).clamp(margin, maxLeft).toDouble();
+    return Offset(left, 0);
+  }
+
+  @override
+  bool shouldRelayout(covariant _CenteredClampedPillLayoutDelegate old) =>
+      old.centerX != centerX || old.margin != margin;
+}

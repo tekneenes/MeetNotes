@@ -231,7 +231,17 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                   ),
 
                   // 1c. Unified Interleaved Canvas Layers (Strokes + Text Boxes in true Z-Order)
-                  ..._buildUnifiedCanvasLayers(controller),
+                  // Rebuilt on full notifications (parent) AND on the lightweight
+                  // canvasDragTick used while dragging/resizing a selection.
+                  Positioned.fill(
+                    child: ListenableBuilder(
+                      listenable: controller.canvasDragTick,
+                      builder: (context, _) => Stack(
+                        clipBehavior: Clip.none,
+                        children: _buildUnifiedCanvasLayers(controller),
+                      ),
+                    ),
+                  ),
 
                   // 1c-format. Floating Unified Selection & Formatting Pill (Merged Lasso + Text Tools)
                   if ((controller.hasLassoSelection ||

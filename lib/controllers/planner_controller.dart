@@ -28,6 +28,13 @@ class PlannerController extends ChangeNotifier {
   /// pen movement no longer rebuilds the whole planner screen on every point.
   final ValueNotifier<int> activeStrokeTick = ValueNotifier<int>(0);
 
+  /// Bumped while a lasso loop is drawn or a selection is dragged/resized.
+  /// During these gestures only the canvas layers (stroke/text positions,
+  /// selection box) change, and the floating selection pill is hidden, so only
+  /// the canvas listens to this instead of the whole screen via notifyListeners.
+  /// Gesture start/end and rotation still use notifyListeners().
+  final ValueNotifier<int> canvasDragTick = ValueNotifier<int>(0);
+
   // Lasso Selection, Resize & 2D Rotation State
   List<Offset> _lassoPoints = [];
   final Set<int> _selectedStrokeIndices = {};
@@ -1074,7 +1081,7 @@ class PlannerController extends ChangeNotifier {
       } else {
         _lassoPoints = List<Offset>.from(_lassoPoints)..add(point);
       }
-      notifyListeners();
+      canvasDragTick.value++;
       return;
     }
 

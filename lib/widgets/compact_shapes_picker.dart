@@ -24,7 +24,6 @@ class CompactShapesPicker extends StatefulWidget {
 
   static const List<DrawingTool> lineTools = [
     DrawingTool.line,
-    DrawingTool.arrow,
     DrawingTool.curve,
   ];
 

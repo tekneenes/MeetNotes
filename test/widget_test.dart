@@ -139,8 +139,8 @@ void main() {
 
     // Verify sections and items
     expect(find.text('Düz Çizgi'), findsOneWidget);
-    expect(find.text('Ok Çizgisi'), findsOneWidget);
     expect(find.text('Kavisli Çizgi'), findsOneWidget);
+    expect(find.text('Ok Çizgisi'), findsNothing);
 
     // Tap Düz Çizgi
     await tester.tap(find.text('Düz Çizgi'));
@@ -235,13 +235,14 @@ void main() {
     expect(controller.selectedLineStroke!.points[0], const Offset(100, 150));
     expect(controller.selectedLineStroke!.points[1], const Offset(340, 180));
 
-    // 5. Convert line to arrow and curve
-    controller.updateSelectedLineTool(DrawingTool.arrow);
-    expect(controller.selectedLineStroke!.tool, DrawingTool.arrow);
-
+    // 5. Convert line to curve and back to straight line
     controller.updateSelectedLineTool(DrawingTool.curve);
     expect(controller.selectedLineStroke!.tool, DrawingTool.curve);
     expect(controller.selectedLineStroke!.points.length, 3);
+
+    controller.updateSelectedLineTool(DrawingTool.line);
+    expect(controller.selectedLineStroke!.tool, DrawingTool.line);
+    expect(controller.selectedLineStroke!.points.length, 2);
 
     // Drain debounce save timer
     await tester.pump(const Duration(milliseconds: 1000));

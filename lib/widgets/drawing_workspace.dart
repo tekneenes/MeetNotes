@@ -1452,12 +1452,6 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       ),
       const SizedBox(width: 2),
       buildLineTypeBtn(
-        tool: DrawingTool.arrow,
-        icon: Icons.arrow_right_alt_rounded,
-        tooltip: 'Ok Çizgisi Yap',
-      ),
-      const SizedBox(width: 2),
-      buildLineTypeBtn(
         tool: DrawingTool.curve,
         icon: Icons.gesture_rounded,
         tooltip: 'Kavisli Çizgi Yap',

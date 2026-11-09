@@ -153,8 +153,8 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
                       color: Colors.white.withValues(alpha: 0.90),
                       borderRadius: BorderRadius.circular(26),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.75),
-                        width: 1.2,
+                        color: Colors.black,
+                        width: 1.5,
                       ),
                       boxShadow: [
                         BoxShadow(

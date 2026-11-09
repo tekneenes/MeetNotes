@@ -4,6 +4,7 @@ import '../models/planner_models.dart';
 import '../controllers/planner_controller.dart';
 import 'compact_stroke_width_picker.dart';
 import 'compact_color_picker_dialog.dart';
+import 'compact_shapes_picker.dart';
 
 enum ToolbarDockEdge {
   bottom,
@@ -84,17 +85,6 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
     DrawingTool.eraser,
     DrawingTool.lasso,
     DrawingTool.text,
-  ];
-
-  static const List<DrawingTool> _shapeTools = [
-    DrawingTool.square,
-    DrawingTool.rectangle,
-    DrawingTool.circle,
-    DrawingTool.ellipse,
-    DrawingTool.triangle,
-    DrawingTool.pentagon,
-    DrawingTool.hexagon,
-    DrawingTool.deltoid,
   ];
 
   @override
@@ -747,173 +737,52 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
     final controller = widget.controller;
     final isShapeActive = controller.selectedTool.isShape;
 
-    Offset popupOffset;
-    switch (widget.dockEdge) {
-      case ToolbarDockEdge.bottom:
-        popupOffset = const Offset(0, -320);
-        break;
-      case ToolbarDockEdge.top:
-        popupOffset = const Offset(0, 48);
-        break;
-      case ToolbarDockEdge.left:
-        popupOffset = const Offset(52, 0);
-        break;
-      case ToolbarDockEdge.right:
-        popupOffset = const Offset(-220, 0);
-        break;
-    }
-
-    return PopupMenuButton<String>(
-      tooltip: isShapeActive ? controller.selectedTool.label : 'Daha Fazla Seçenek & Şekiller',
-      padding: EdgeInsets.zero,
-      offset: popupOffset,
-      elevation: 10,
-      icon: Container(
-        width: 28,
-        height: 28,
-        decoration: BoxDecoration(
-          color: isShapeActive
-              ? const Color(0xFF007AFF).withValues(alpha: 0.15)
-              : Colors.black.withValues(alpha: 0.04),
-          shape: BoxShape.circle,
-          border: isShapeActive
-              ? Border.all(color: const Color(0xFF007AFF), width: 1.5)
-              : null,
-        ),
-        child: Icon(
-          isShapeActive ? controller.selectedTool.icon : Icons.more_horiz_rounded,
-          size: 18,
-          color: isShapeActive ? const Color(0xFF007AFF) : const Color(0xFF1E293B),
-        ),
-      ),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      onSelected: (val) {
-        if (val == 'minimize') {
-          _minimizeToolbar();
-        } else if (val == 'clear') {
-          widget.controller.clearCanvas();
-        }
+    return Builder(
+      builder: (btnContext) {
+        return Tooltip(
+          message: isShapeActive
+              ? controller.selectedTool.label
+              : 'Daha Fazla Seçenek & Şekiller',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () {
+              final box = btnContext.findRenderObject() as RenderBox?;
+              if (box == null) return;
+              final anchorRect = box.localToGlobal(Offset.zero) & box.size;
+              CompactShapesPicker.showAnchored(
+                context: context,
+                anchorRect: anchorRect,
+                dockEdge: widget.dockEdge,
+                controller: controller,
+                onMinimize: _minimizeToolbar,
+                onClearCanvas: controller.clearCanvas,
+              );
+            },
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: isShapeActive
+                    ? const Color(0xFF007AFF).withValues(alpha: 0.15)
+                    : Colors.black.withValues(alpha: 0.04),
+                shape: BoxShape.circle,
+                border: isShapeActive
+                    ? Border.all(color: const Color(0xFF007AFF), width: 1.5)
+                    : null,
+              ),
+              child: Icon(
+                isShapeActive
+                    ? controller.selectedTool.icon
+                    : Icons.more_horiz_rounded,
+                size: 18,
+                color: isShapeActive
+                    ? const Color(0xFF007AFF)
+                    : const Color(0xFF1E293B),
+              ),
+            ),
+          ),
+        );
       },
-      itemBuilder: (ctx) => [
-        PopupMenuItem<String>(
-          enabled: false,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Row(
-                children: [
-                  Icon(Icons.category_outlined, size: 16, color: Color(0xFF64748B)),
-                  SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Geometrik Şekiller',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF334155),
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: _shapeTools.map((shapeTool) {
-                  final isSelected = controller.selectedTool == shapeTool;
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(10),
-                    onTap: () {
-                      controller.setTool(shapeTool);
-                      Navigator.of(ctx).pop();
-                    },
-                    child: Container(
-                      width: 53,
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? const Color(0xFF007AFF).withValues(alpha: 0.15)
-                            : const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: isSelected
-                              ? const Color(0xFF007AFF)
-                              : Colors.transparent,
-                          width: 1.2,
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            shapeTool.icon,
-                            size: 20,
-                            color: isSelected
-                                ? const Color(0xFF007AFF)
-                                : const Color(0xFF334155),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            shapeTool.label,
-                            style: TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                              color: isSelected
-                                  ? const Color(0xFF007AFF)
-                                  : const Color(0xFF475569),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
-        ),
-        const PopupMenuDivider(height: 10),
-        const PopupMenuItem(
-          value: 'minimize',
-          height: 36,
-          child: Row(
-            children: [
-              Icon(Icons.unfold_less_rounded, size: 18, color: Color(0xFF475569)),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Araç Çubuğunu Küçült',
-                  style: TextStyle(fontSize: 13),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const PopupMenuItem(
-          value: 'clear',
-          height: 36,
-          child: Row(
-            children: [
-              Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFFF3B30)),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Çizimleri Temizle',
-                  style: TextStyle(fontSize: 13, color: Color(0xFFFF3B30)),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }

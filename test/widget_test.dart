@@ -699,4 +699,101 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Çizim Rengi'), findsNothing);
   });
+
+  testWidgets(
+      'CompactShapesPicker anchored popover edge-adaptive test on bottom and right docks',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final controller = PlannerController();
+    while (controller.isLoading) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+
+    // 1. Bottom Dock Test
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                bottom: 12,
+                left: 100,
+                child: AppleNotesFloatingToolbar(
+                  controller: controller,
+                  dockEdge: ToolbarDockEdge.bottom,
+                  onDragDelta: (_) {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Tap 3-dots button
+    final moreBtn = find.byIcon(Icons.more_horiz_rounded);
+    expect(moreBtn, findsOneWidget);
+    await tester.tap(moreBtn);
+    await tester.pumpAndSettle();
+
+    // Verify popover is visible with all items
+    expect(find.text('Geometrik Şekiller'), findsOneWidget);
+    expect(find.text('Kare'), findsOneWidget);
+    expect(find.text('Dikdörtgen'), findsOneWidget);
+    expect(find.text('Daire'), findsOneWidget);
+    expect(find.text('Elips'), findsOneWidget);
+    expect(find.text('Üçgen'), findsOneWidget);
+    expect(find.text('Beşgen'), findsOneWidget);
+    expect(find.text('Altıgen'), findsOneWidget);
+    expect(find.text('Deltoid'), findsOneWidget);
+    expect(find.text('Araç Çubuğunu Küçült'), findsOneWidget);
+    expect(find.text('Çizimleri Temizle'), findsOneWidget);
+
+    // Tap Daire
+    await tester.tap(find.text('Daire'));
+    await tester.pumpAndSettle();
+
+    expect(controller.selectedTool, DrawingTool.circle);
+    expect(find.text('Geometrik Şekiller'), findsNothing);
+
+    // 2. Right Dock Test
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                top: 100,
+                right: 12,
+                child: AppleNotesFloatingToolbar(
+                  controller: controller,
+                  dockEdge: ToolbarDockEdge.right,
+                  onDragDelta: (_) {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The button now shows circle icon because DrawingTool.circle is active
+    final circleBtn = find.byIcon(Icons.circle_outlined);
+    expect(circleBtn, findsOneWidget);
+    await tester.tap(circleBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Geometrik Şekiller'), findsOneWidget);
+    // Tap Kare to switch shape
+    await tester.tap(find.text('Kare'));
+    await tester.pumpAndSettle();
+
+    expect(controller.selectedTool, DrawingTool.square);
+    expect(find.text('Geometrik Şekiller'), findsNothing);
+  });
 }

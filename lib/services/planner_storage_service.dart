@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/planner_models.dart';
@@ -8,6 +9,41 @@ class PlannerStorageService {
   static const String _strokesPrefix = 'meet_notes_strokes_';
   static const String _dayTextPrefix = 'meet_notes_day_';
   static const String _savedAssetsKey = 'meet_notes_saved_assets';
+
+  // --- Debounced (coalesced) writes for strokes & canvas texts ---
+  // jsonEncode of every stroke on the UI thread caused a dropped frame at the
+  // end of each stroke. Writes are now snapshotted immediately (so page/week
+  // switches stay correct) and encoded/persisted once after a short delay.
+  // State is static because every PlannerController owns its own service
+  // instance, but they all share the same SharedPreferences keys.
+  static const Duration _writeDelay = Duration(milliseconds: 600);
+  static final Map<String, String Function()> _pendingWrites = {};
+  static Timer? _writeTimer;
+  static Future<void> _writeChain = Future.value();
+
+  static void _scheduleWrite(String key, String Function() encoder) {
+    _pendingWrites[key] = encoder; // latest snapshot per key wins
+    _writeTimer ??= Timer(_writeDelay, () {
+      flushPendingWrites();
+    });
+  }
+
+  /// Persists all pending stroke/text writes now. Safe to call at any time.
+  static Future<void> flushPendingWrites() {
+    _writeTimer?.cancel();
+    _writeTimer = null;
+    if (_pendingWrites.isNotEmpty) {
+      final items = Map<String, String Function()>.of(_pendingWrites);
+      _pendingWrites.clear();
+      _writeChain = _writeChain.then((_) async {
+        final prefs = await SharedPreferences.getInstance();
+        for (final e in items.entries) {
+          await prefs.setString(e.key, e.value());
+        }
+      }).catchError((Object _) {});
+    }
+    return _writeChain;
+  }
 
   String _formatWeekKey(DateTime date) {
     return '${date.year}_${date.month}_${date.day}';
@@ -50,6 +86,7 @@ class PlannerStorageService {
 
   // --- Strokes per Page ---
   Future<List<DrawingStroke>> loadStrokes(DateTime weekStart, int pageIndex, {String prefix = ''}) async {
+    await flushPendingWrites();
     final prefs = await SharedPreferences.getInstance();
     final key = '$_strokesPrefix$prefix${_formatWeekKey(weekStart)}_p$pageIndex';
     final raw = prefs.getString(key);
@@ -63,10 +100,9 @@ class PlannerStorageService {
   }
 
   Future<void> saveStrokes(DateTime weekStart, int pageIndex, List<DrawingStroke> strokes, {String prefix = ''}) async {
-    final prefs = await SharedPreferences.getInstance();
     final key = '$_strokesPrefix$prefix${_formatWeekKey(weekStart)}_p$pageIndex';
-    final raw = jsonEncode(strokes.map((s) => s.toMap()).toList());
-    await prefs.setString(key, raw);
+    final snapshot = List<DrawingStroke>.of(strokes);
+    _scheduleWrite(key, () => jsonEncode(snapshot.map((s) => s.toMap()).toList()));
   }
 
   // --- Day Notes Text ---
@@ -105,6 +141,7 @@ class PlannerStorageService {
 
   // --- Canvas Text Items ---
   Future<List<CanvasTextItem>> loadCanvasTexts(DateTime weekStart, int pageIndex, {String prefix = ''}) async {
+    await flushPendingWrites();
     final prefs = await SharedPreferences.getInstance();
     final key = 'meet_notes_texts_$prefix${_formatWeekKey(weekStart)}_p$pageIndex';
     final raw = prefs.getString(key);
@@ -118,10 +155,9 @@ class PlannerStorageService {
   }
 
   Future<void> saveCanvasTexts(DateTime weekStart, int pageIndex, List<CanvasTextItem> texts, {String prefix = ''}) async {
-    final prefs = await SharedPreferences.getInstance();
     final key = 'meet_notes_texts_$prefix${_formatWeekKey(weekStart)}_p$pageIndex';
-    final raw = jsonEncode(texts.map((t) => t.toMap()).toList());
-    await prefs.setString(key, raw);
+    final snapshot = List<CanvasTextItem>.of(texts);
+    _scheduleWrite(key, () => jsonEncode(snapshot.map((t) => t.toMap()).toList()));
   }
 
   // --- Canvas Image Items ---

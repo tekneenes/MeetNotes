@@ -1,5 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import '../models/planner_models.dart';
 import '../services/planner_storage_service.dart';
 
@@ -69,8 +74,12 @@ class PlannerController extends ChangeNotifier {
   final Map<String, List<DrawingStroke>> _dayPreviewStrokes = {};
   List<PlannerTaskItem> _tasks = [];
   List<CanvasTextItem> _canvasTexts = [];
+  List<CanvasImageItem> _canvasImages = [];
+  List<CanvasFileItem> _canvasFiles = [];
   String? _selectedTextId;
   String? _editingTextId;
+  String? _selectedImageId;
+  String? _selectedFileId;
   List<SavedCanvasAsset> _savedAssets = [];
   double _zoomScale = 1.0;
 
@@ -121,6 +130,12 @@ class PlannerController extends ChangeNotifier {
   bool get isQuickAccessLayersPage => _quickAccessSubPage == QuickAccessSubPage.layers;
   bool get isQuickAccessGroupsPage => _quickAccessSubPage == QuickAccessSubPage.groups;
   bool get isQuickAccessAssetsPage => _quickAccessSubPage == QuickAccessSubPage.assets;
+  bool get isQuickAccessPhotosPage => _quickAccessSubPage == QuickAccessSubPage.photos;
+  bool get isQuickAccessFilesPage => _quickAccessSubPage == QuickAccessSubPage.files;
+  List<CanvasImageItem> get canvasImages => List.unmodifiable(_canvasImages);
+  List<CanvasFileItem> get canvasFiles => List.unmodifiable(_canvasFiles);
+  String? get selectedImageId => _selectedImageId;
+  String? get selectedFileId => _selectedFileId;
   List<SavedCanvasAsset> get savedAssets => List.unmodifiable(_savedAssets);
   bool get hasAnyLayerSelection =>
       _selectedStrokeIndices.isNotEmpty ||
@@ -283,6 +298,183 @@ class PlannerController extends ChangeNotifier {
       notifyListeners();
     });
     notifyListeners();
+  }
+
+  void openQuickAccessPhotosPage() {
+    _isQuickAccessOpen = true;
+    _quickAccessSubPage = QuickAccessSubPage.photos;
+    notifyListeners();
+  }
+
+  void openQuickAccessFilesPage() {
+    _isQuickAccessOpen = true;
+    _quickAccessSubPage = QuickAccessSubPage.files;
+    notifyListeners();
+  }
+
+  Future<CanvasImageItem?> pickAndAddPhoto({Offset? targetPosition}) async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return null;
+      final file = result.files.first;
+      Uint8List? bytes = file.bytes;
+      final filePath = file.path;
+      if (bytes == null && filePath != null) {
+        final f = File(filePath);
+        if (await f.exists()) {
+          bytes = await f.readAsBytes();
+        }
+      }
+      if (bytes == null || bytes.isEmpty) return null;
+      final base64Str = base64Encode(bytes);
+      final id = const Uuid().v4();
+      final pos = targetPosition ?? const Offset(120, 160);
+      final item = CanvasImageItem(
+        id: id,
+        position: pos,
+        name: file.name,
+        base64Data: base64Str,
+      );
+      _canvasImages.add(item);
+      _selectedImageId = id;
+      await _saveCurrentCanvasImages();
+      notifyListeners();
+      return item;
+    } catch (e) {
+      debugPrint('pickAndAddPhoto error: $e');
+      return null;
+    }
+  }
+
+  Future<CanvasFileItem?> pickAndAddFile({Offset? targetPosition}) async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.any,
+        allowMultiple: false,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return null;
+      final file = result.files.first;
+      Uint8List? bytes = file.bytes;
+      final filePath = file.path;
+      if (bytes == null && filePath != null) {
+        final f = File(filePath);
+        if (await f.exists()) {
+          bytes = await f.readAsBytes();
+        }
+      }
+      final id = const Uuid().v4();
+      final pos = targetPosition ?? const Offset(120, 160);
+      final item = CanvasFileItem(
+        id: id,
+        position: pos,
+        name: file.name,
+        sizeBytes: file.size,
+        extension: file.extension ?? (file.name.contains('.') ? file.name.split('.').last : ''),
+        path: filePath,
+        base64Data: bytes != null ? base64Encode(bytes) : null,
+      );
+      _canvasFiles.add(item);
+      _selectedFileId = id;
+      await _saveCurrentCanvasFiles();
+      notifyListeners();
+      return item;
+    } catch (e) {
+      debugPrint('pickAndAddFile error: $e');
+      return null;
+    }
+  }
+
+  void updateCanvasImagePosition(String id, Offset newPosition) {
+    final idx = _canvasImages.indexWhere((img) => img.id == id);
+    if (idx != -1 && !_canvasImages[idx].isLocked) {
+      _canvasImages[idx] = _canvasImages[idx].copyWith(position: newPosition);
+      _saveCurrentCanvasImages();
+      notifyListeners();
+    }
+  }
+
+  void updateCanvasImageSize(String id, double width, double height) {
+    final idx = _canvasImages.indexWhere((img) => img.id == id);
+    if (idx != -1 && !_canvasImages[idx].isLocked) {
+      _canvasImages[idx] = _canvasImages[idx].copyWith(
+        width: width.clamp(60.0, 1200.0),
+        height: height.clamp(40.0, 1200.0),
+      );
+      _saveCurrentCanvasImages();
+      notifyListeners();
+    }
+  }
+
+  void removeCanvasImage(String id) {
+    _canvasImages.removeWhere((img) => img.id == id);
+    if (_selectedImageId == id) _selectedImageId = null;
+    _saveCurrentCanvasImages();
+    notifyListeners();
+  }
+
+  void toggleCanvasImageLock(String id) {
+    final idx = _canvasImages.indexWhere((img) => img.id == id);
+    if (idx != -1) {
+      _canvasImages[idx] = _canvasImages[idx].copyWith(isLocked: !_canvasImages[idx].isLocked);
+      _saveCurrentCanvasImages();
+      notifyListeners();
+    }
+  }
+
+  void selectCanvasImage(String? id) {
+    _selectedImageId = id;
+    if (id != null) {
+      _selectedFileId = null;
+      _selectedTextId = null;
+    }
+    notifyListeners();
+  }
+
+  void updateCanvasFilePosition(String id, Offset newPosition) {
+    final idx = _canvasFiles.indexWhere((f) => f.id == id);
+    if (idx != -1 && !_canvasFiles[idx].isLocked) {
+      _canvasFiles[idx] = _canvasFiles[idx].copyWith(position: newPosition);
+      _saveCurrentCanvasFiles();
+      notifyListeners();
+    }
+  }
+
+  void removeCanvasFile(String id) {
+    _canvasFiles.removeWhere((f) => f.id == id);
+    if (_selectedFileId == id) _selectedFileId = null;
+    _saveCurrentCanvasFiles();
+    notifyListeners();
+  }
+
+  void toggleCanvasFileLock(String id) {
+    final idx = _canvasFiles.indexWhere((f) => f.id == id);
+    if (idx != -1) {
+      _canvasFiles[idx] = _canvasFiles[idx].copyWith(isLocked: !_canvasFiles[idx].isLocked);
+      _saveCurrentCanvasFiles();
+      notifyListeners();
+    }
+  }
+
+  void selectCanvasFile(String? id) {
+    _selectedFileId = id;
+    if (id != null) {
+      _selectedImageId = null;
+      _selectedTextId = null;
+    }
+    notifyListeners();
+  }
+
+  Future<void> _saveCurrentCanvasImages() async {
+    await _storage.saveCanvasImages(_currentWeekStart, _currentPageIndex, _canvasImages, prefix: _storagePrefix);
+  }
+
+  Future<void> _saveCurrentCanvasFiles() async {
+    await _storage.saveCanvasFiles(_currentWeekStart, _currentPageIndex, _canvasFiles, prefix: _storagePrefix);
   }
 
   // --- Varlıklar (Saved Reusable Single/Group Elements) ---
@@ -692,6 +884,8 @@ class PlannerController extends ChangeNotifier {
     _strokes = await _storage.loadStrokes(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
     _tasks = await _storage.loadTasks(_currentWeekStart);
     _canvasTexts = await _storage.loadCanvasTexts(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
+    _canvasImages = await _storage.loadCanvasImages(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
+    _canvasFiles = await _storage.loadCanvasFiles(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
     _normalizeUnifiedLayerOrders();
     _savedAssets = await _storage.loadSavedAssets();
 
@@ -775,19 +969,30 @@ class PlannerController extends ChangeNotifier {
 
   void addNewPage() {
     _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
+    _saveCurrentCanvasImages();
+    _saveCurrentCanvasFiles();
     _totalPages++;
     _currentPageIndex = _totalPages - 1;
     _strokes = [];
+    _canvasTexts = [];
+    _canvasImages = [];
+    _canvasFiles = [];
     _undoStack.clear();
     _redoStack.clear();
     _storage.savePageCount(_currentWeekStart, _totalPages, prefix: _storagePrefix);
     _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
+    _saveCurrentCanvasImages();
+    _saveCurrentCanvasFiles();
     notifyListeners();
   }
 
   Future<void> _loadPageStrokes() async {
     _strokes = await _storage.loadStrokes(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
     _canvasTexts = await _storage.loadCanvasTexts(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
+    _canvasImages = await _storage.loadCanvasImages(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
+    _canvasFiles = await _storage.loadCanvasFiles(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
     _normalizeUnifiedLayerOrders();
     notifyListeners();
   }
@@ -3005,16 +3210,22 @@ class PlannerController extends ChangeNotifier {
   }
 
   void clearCanvas() {
-    if (_strokes.isEmpty && _canvasTexts.isEmpty) return;
+    if (_strokes.isEmpty && _canvasTexts.isEmpty && _canvasImages.isEmpty && _canvasFiles.isEmpty) return;
     _selectedStrokeIndices.clear();
     _selectedTextId = null;
     _editingTextId = null;
+    _selectedImageId = null;
+    _selectedFileId = null;
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
     _strokes = [];
     _canvasTexts = [];
+    _canvasImages = [];
+    _canvasFiles = [];
     _saveCurrentStrokes();
     _saveCurrentCanvasTexts();
+    _saveCurrentCanvasImages();
+    _saveCurrentCanvasFiles();
     notifyListeners();
   }
 

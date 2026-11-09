@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -442,6 +443,8 @@ class _PlannerScreenState extends State<PlannerScreen>
     final isLayersPage = activeController.isQuickAccessLayersPage;
     final isGroupsPage = activeController.isQuickAccessGroupsPage;
     final isAssetsPage = activeController.isQuickAccessAssetsPage;
+    final isPhotosPage = activeController.isQuickAccessPhotosPage;
+    final isFilesPage = activeController.isQuickAccessFilesPage;
     final allGroups = activeController.allStrokeGroups;
     final savedAssets = activeController.savedAssets;
     final selectedSet = activeController.selectedStrokeIndices;
@@ -480,7 +483,7 @@ class _PlannerScreenState extends State<PlannerScreen>
             padding: const EdgeInsets.fromLTRB(10, 10, 8, 8),
             child: Row(
               children: [
-                if (isLayersPage || isGroupsPage || isAssetsPage) ...[
+                if (isLayersPage || isGroupsPage || isAssetsPage || isPhotosPage || isFilesPage) ...[
                   IconButton(
                     tooltip: 'Hızlı Erişime Dön',
                     icon: const Icon(
@@ -510,7 +513,11 @@ class _PlannerScreenState extends State<PlannerScreen>
                             ? 'Gruplar'
                             : isAssetsPage
                                 ? 'Varlıklar'
-                                : 'Hızlı Erişim',
+                                : isPhotosPage
+                                    ? 'Fotoğraflar'
+                                    : isFilesPage
+                                        ? 'Dosyalar'
+                                        : 'Hızlı Erişim',
                     style: const TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w700,
@@ -549,15 +556,21 @@ class _PlannerScreenState extends State<PlannerScreen>
           ),
           const Divider(height: 1),
 
-          // Sayfa 1: Hızlı Erişim Ana Sayfası (Hızlı İşlemler + Katmanlar + Gruplar + Varlıklar)
+          // Sayfa 1: Hızlı Erişim Ana Sayfası (Hızlı İşlemler + Katmanlar + Gruplar + Varlıklar + Fotoğraflar + Dosyalar)
           // Sayfa 2: Katmanlar Sayfası
           // Sayfa 3: Gruplar Sayfası
           // Sayfa 4: Varlıklar Sayfası
+          // Sayfa 5: Fotoğraflar Sayfası
+          // Sayfa 6: Dosyalar Sayfası
           Expanded(
             child: isAssetsPage
                 ? _buildAssetsSubPage(context, activeController)
                 : isGroupsPage
                 ? _buildGroupsSubPage(context, activeController, allGroups)
+                : isPhotosPage
+                ? _buildPhotosSubPage(context, activeController)
+                : isFilesPage
+                ? _buildFilesSubPage(context, activeController)
                 : isLayersPage
                 ? ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -1121,54 +1134,30 @@ class _PlannerScreenState extends State<PlannerScreen>
                       ),
                       const SizedBox(height: 8),
 
-                      // 1. Bugünün Notu Kısayolu
+                      // 0d. Fotoğraflar Sayfasına Geçiş Kartı
                       _buildQuickItem(
-                        icon: Icons.today_rounded,
-                        color: const Color(0xFF2563EB),
-                        title: 'Bugüne Git',
-                        subtitle: 'Mevcut günün planı',
+                        icon: Icons.photo_library_rounded,
+                        color: const Color(0xFFF59E0B),
+                        title: 'Fotoğraf',
+                        subtitle: activeController.canvasImages.isNotEmpty
+                            ? '${activeController.canvasImages.length} fotoğraf • Tuvalde konumlandır ve yönet'
+                            : 'Cihazdan fotoğraf veya görsel ekle',
                         onTap: () {
-                          activeController.goToToday();
-                          activeController.closeQuickAccess();
+                          activeController.openQuickAccessPhotosPage();
                         },
                       ),
                       const SizedBox(height: 8),
 
-                      // 2. Yeni Sayfa Ekle
+                      // 0e. Dosyalar Sayfasına Geçiş Kartı
                       _buildQuickItem(
-                        icon: Icons.note_add_outlined,
-                        color: const Color(0xFF10B981),
-                        title: 'Yeni Sayfa Ekle',
-                        subtitle: 'Boş tuval sayfası aç',
+                        icon: Icons.folder_open_rounded,
+                        color: const Color(0xFFEC4899),
+                        title: 'Dosya',
+                        subtitle: activeController.canvasFiles.isNotEmpty
+                            ? '${activeController.canvasFiles.length} dosya • Belgeleri görüntüle ve yönet'
+                            : 'PDF, belge veya dosya ekle',
                         onTap: () {
-                          activeController.addNewPage();
-                          activeController.closeQuickAccess();
-                        },
-                      ),
-                      const SizedBox(height: 8),
-
-                      // 3. Tuvali Temizle
-                      _buildQuickItem(
-                        icon: Icons.delete_sweep_outlined,
-                        color: const Color(0xFFEF4444),
-                        title: 'Sayfayı Temizle',
-                        subtitle: 'Çizimleri sıfırla',
-                        onTap: () {
-                          activeController.clearCanvas();
-                          activeController.closeQuickAccess();
-                        },
-                      ),
-                      const SizedBox(height: 8),
-
-                      // 4. Yakınlaştırmayı Sıfırla
-                      _buildQuickItem(
-                        icon: Icons.center_focus_strong_rounded,
-                        color: const Color(0xFF8B5CF6),
-                        title: 'Görünümü Sıfırla',
-                        subtitle: 'Tuvali %100 ölçeğe getir',
-                        onTap: () {
-                          activeController.resetZoom();
-                          activeController.closeQuickAccess();
+                          activeController.openQuickAccessFilesPage();
                         },
                       ),
                     ],
@@ -2022,6 +2011,437 @@ class _PlannerScreenState extends State<PlannerScreen>
               );
             },
           ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildPhotosSubPage(
+    BuildContext context,
+    PlannerController activeController,
+  ) {
+    final images = activeController.canvasImages;
+    final selectedImageId = activeController.selectedImageId;
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      children: [
+        // Fotoğraf Ekle Butonu
+        InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () async {
+            await activeController.pickAndAddPhoto();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEF3C7),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.45),
+              ),
+            ),
+            child: const Row(
+              children: [
+                Icon(
+                  Icons.add_photo_alternate_rounded,
+                  size: 20,
+                  color: Color(0xFFD97706),
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Fotoğraf Ekle',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF92400E),
+                        ),
+                      ),
+                      SizedBox(height: 1),
+                      Text(
+                        'Galeriden veya dosyadan görsel seçin',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Color(0xFFB45309),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.add_circle_rounded,
+                  size: 18,
+                  color: Color(0xFFD97706),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        if (images.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.photo_library_outlined,
+                  size: 32,
+                  color: Colors.grey.shade400,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Bu sayfada henüz fotoğraf yok',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Yukarıdaki butona dokunarak tuvalinize görsel veya fotoğraf yerleştirebilirsiniz.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                ),
+              ],
+            ),
+          )
+        else ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8, left: 2),
+            child: Text(
+              'Sayfadaki Fotoğraflar (${images.length})',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade600,
+              ),
+            ),
+          ),
+          ...List.generate(images.length, (idx) {
+            final img = images[idx];
+            final isSelected = selectedImageId == img.id;
+            Uint8List? thumbBytes;
+            try {
+              thumbBytes = base64Decode(img.base64Data);
+            } catch (_) {}
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isSelected ? const Color(0xFFFEF3C7) : Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isSelected
+                        ? const Color(0xFFF59E0B)
+                        : Colors.black.withValues(alpha: 0.07),
+                    width: isSelected ? 1.4 : 1.0,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  leading: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: thumbBytes != null
+                        ? Image.memory(thumbBytes, fit: BoxFit.cover)
+                        : const Icon(Icons.broken_image_rounded, size: 20, color: Colors.grey),
+                  ),
+                  title: Text(
+                    img.name ?? 'Fotoğraf #${idx + 1}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  subtitle: Text(
+                    '${img.width.round()} x ${img.height.round()} px • ${img.isLocked ? "Kilitli" : "Açık"}',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(
+                          img.isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
+                          size: 17,
+                          color: img.isLocked ? const Color(0xFFF59E0B) : Colors.grey.shade400,
+                        ),
+                        onPressed: () => activeController.toggleCanvasImageLock(img.id),
+                        tooltip: img.isLocked ? 'Kilidi Aç' : 'Kilitle',
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, size: 17, color: Color(0xFFEF4444)),
+                        onPressed: () => activeController.removeCanvasImage(img.id),
+                        tooltip: 'Sil',
+                      ),
+                    ],
+                  ),
+                  onTap: () {
+                    activeController.selectCanvasImage(img.id);
+                  },
+                ),
+              ),
+            );
+          }),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildFilesSubPage(
+    BuildContext context,
+    PlannerController activeController,
+  ) {
+    final files = activeController.canvasFiles;
+    final selectedFileId = activeController.selectedFileId;
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      children: [
+        // Dosya Ekle Butonu
+        InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () async {
+            await activeController.pickAndAddFile();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFCE7F3),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: const Color(0xFFEC4899).withValues(alpha: 0.45),
+              ),
+            ),
+            child: const Row(
+              children: [
+                Icon(
+                  Icons.note_add_rounded,
+                  size: 20,
+                  color: Color(0xFFDB2777),
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Dosya Ekle',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF9D174D),
+                        ),
+                      ),
+                      SizedBox(height: 1),
+                      Text(
+                        'PDF, belge veya dosya ekleyin',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Color(0xFFBE185D),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.add_circle_rounded,
+                  size: 18,
+                  color: Color(0xFFDB2777),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        if (files.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.folder_open_outlined,
+                  size: 32,
+                  color: Colors.grey.shade400,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Bu sayfada henüz dosya yok',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Yukarıdaki butona dokunarak PDF, belge veya istediğiniz dosyaları ekleyebilirsiniz.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                ),
+              ],
+            ),
+          )
+        else ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8, left: 2),
+            child: Text(
+              'Sayfadaki Dosyalar (${files.length})',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade600,
+              ),
+            ),
+          ),
+          ...List.generate(files.length, (idx) {
+            final f = files[idx];
+            final isSelected = selectedFileId == f.id;
+            final ext = (f.extension ?? '').toLowerCase();
+            final Color badgeColor;
+            final IconData badgeIcon;
+            if (ext == 'pdf') {
+              badgeColor = const Color(0xFFEF4444);
+              badgeIcon = Icons.picture_as_pdf_rounded;
+            } else if (['doc', 'docx', 'txt', 'rtf', 'odt'].contains(ext)) {
+              badgeColor = const Color(0xFF2563EB);
+              badgeIcon = Icons.description_rounded;
+            } else if (['xls', 'xlsx', 'csv'].contains(ext)) {
+              badgeColor = const Color(0xFF10B981);
+              badgeIcon = Icons.table_chart_rounded;
+            } else if (['ppt', 'pptx', 'key'].contains(ext)) {
+              badgeColor = const Color(0xFFF59E0B);
+              badgeIcon = Icons.slideshow_rounded;
+            } else if (['zip', 'rar', '7z', 'tar', 'gz'].contains(ext)) {
+              badgeColor = const Color(0xFF8B5CF6);
+              badgeIcon = Icons.folder_zip_rounded;
+            } else {
+              badgeColor = const Color(0xFF0D9488);
+              badgeIcon = Icons.insert_drive_file_rounded;
+            }
+
+            String sizeLabel = '';
+            if (f.sizeBytes > 0) {
+              if (f.sizeBytes < 1024) {
+                sizeLabel = '${f.sizeBytes} B';
+              } else if (f.sizeBytes < 1024 * 1024) {
+                sizeLabel = '${(f.sizeBytes / 1024).toStringAsFixed(1)} KB';
+              } else {
+                sizeLabel = '${(f.sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+              }
+            }
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isSelected ? const Color(0xFFFCE7F3) : Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isSelected
+                        ? const Color(0xFFEC4899)
+                        : Colors.black.withValues(alpha: 0.07),
+                    width: isSelected ? 1.4 : 1.0,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  leading: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: badgeColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(badgeIcon, color: badgeColor, size: 20),
+                  ),
+                  title: Text(
+                    f.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  subtitle: Text(
+                    [
+                      if (ext.isNotEmpty) ext.toUpperCase(),
+                      if (sizeLabel.isNotEmpty) sizeLabel,
+                      f.isLocked ? 'Kilitli' : 'Açık',
+                    ].join(' • '),
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(
+                          f.isLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
+                          size: 17,
+                          color: f.isLocked ? const Color(0xFFEC4899) : Colors.grey.shade400,
+                        ),
+                        onPressed: () => activeController.toggleCanvasFileLock(f.id),
+                        tooltip: f.isLocked ? 'Kilidi Aç' : 'Kilitle',
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, size: 17, color: Color(0xFFEF4444)),
+                        onPressed: () => activeController.removeCanvasFile(f.id),
+                        tooltip: 'Sil',
+                      ),
+                    ],
+                  ),
+                  onTap: () {
+                    activeController.selectCanvasFile(f.id);
+                  },
+                ),
+              ),
+            );
+          }),
         ],
       ],
     );

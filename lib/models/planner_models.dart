@@ -154,6 +154,8 @@ enum QuickAccessSubPage {
   layers,
   groups,
   assets,
+  photos,
+  files,
 }
 
 class DrawingStroke {
@@ -498,6 +500,8 @@ class CanvasImageItem {
   final double width;
   final double height;
   final String base64Data;
+  final String? name;
+  final bool isLocked;
 
   const CanvasImageItem({
     required this.id,
@@ -505,6 +509,8 @@ class CanvasImageItem {
     this.width = 220.0,
     this.height = 160.0,
     required this.base64Data,
+    this.name,
+    this.isLocked = false,
   });
 
   CanvasImageItem copyWith({
@@ -513,6 +519,8 @@ class CanvasImageItem {
     double? width,
     double? height,
     String? base64Data,
+    String? name,
+    bool? isLocked,
   }) {
     return CanvasImageItem(
       id: id ?? this.id,
@@ -520,6 +528,8 @@ class CanvasImageItem {
       width: width ?? this.width,
       height: height ?? this.height,
       base64Data: base64Data ?? this.base64Data,
+      name: name ?? this.name,
+      isLocked: isLocked ?? this.isLocked,
     );
   }
 
@@ -530,6 +540,8 @@ class CanvasImageItem {
     'width': width,
     'height': height,
     'base64Data': base64Data,
+    'name': name,
+    'isLocked': isLocked,
   };
 
   factory CanvasImageItem.fromMap(Map<String, dynamic> map) {
@@ -542,6 +554,80 @@ class CanvasImageItem {
       width: (map['width'] as num?)?.toDouble() ?? 220.0,
       height: (map['height'] as num?)?.toDouble() ?? 160.0,
       base64Data: map['base64Data'] as String? ?? '',
+      name: map['name'] as String?,
+      isLocked: map['isLocked'] as bool? ?? false,
+    );
+  }
+}
+
+class CanvasFileItem {
+  final String id;
+  final Offset position;
+  final String name;
+  final int sizeBytes;
+  final String? extension;
+  final String? path;
+  final String? base64Data;
+  final bool isLocked;
+
+  const CanvasFileItem({
+    required this.id,
+    required this.position,
+    required this.name,
+    this.sizeBytes = 0,
+    this.extension,
+    this.path,
+    this.base64Data,
+    this.isLocked = false,
+  });
+
+  CanvasFileItem copyWith({
+    String? id,
+    Offset? position,
+    String? name,
+    int? sizeBytes,
+    String? extension,
+    String? path,
+    String? base64Data,
+    bool? isLocked,
+  }) {
+    return CanvasFileItem(
+      id: id ?? this.id,
+      position: position ?? this.position,
+      name: name ?? this.name,
+      sizeBytes: sizeBytes ?? this.sizeBytes,
+      extension: extension ?? this.extension,
+      path: path ?? this.path,
+      base64Data: base64Data ?? this.base64Data,
+      isLocked: isLocked ?? this.isLocked,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'x': position.dx,
+    'y': position.dy,
+    'name': name,
+    'sizeBytes': sizeBytes,
+    'extension': extension,
+    'path': path,
+    'base64Data': base64Data,
+    'isLocked': isLocked,
+  };
+
+  factory CanvasFileItem.fromMap(Map<String, dynamic> map) {
+    return CanvasFileItem(
+      id: map['id'] as String? ?? '',
+      position: Offset(
+        (map['x'] as num?)?.toDouble() ?? 80.0,
+        (map['y'] as num?)?.toDouble() ?? 100.0,
+      ),
+      name: map['name'] as String? ?? 'Dosya',
+      sizeBytes: (map['sizeBytes'] as num?)?.toInt() ?? 0,
+      extension: map['extension'] as String?,
+      path: map['path'] as String?,
+      base64Data: map['base64Data'] as String?,
+      isLocked: map['isLocked'] as bool? ?? false,
     );
   }
 }

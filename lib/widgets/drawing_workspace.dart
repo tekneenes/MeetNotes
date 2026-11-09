@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../controllers/planner_controller.dart';
@@ -484,7 +486,318 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
 
     // Lasso / selection overlay always on top
     flushStrokeBatch(renderOverlay: true);
+
+    // Canvas Images
+    for (final img in controller.canvasImages) {
+      widgets.add(_buildCanvasImageWidget(img));
+    }
+
+    // Canvas Files
+    for (final file in controller.canvasFiles) {
+      widgets.add(_buildCanvasFileWidget(file));
+    }
+
     return widgets;
+  }
+
+  Widget _buildCanvasImageWidget(CanvasImageItem item) {
+    final viewportPos = item.position * _scale + _panOffset;
+    final isSelected = widget.controller.selectedImageId == item.id;
+    final isLassoMode = widget.controller.selectedTool == DrawingTool.lasso;
+
+    Uint8List? imageBytes;
+    try {
+      imageBytes = base64Decode(item.base64Data);
+    } catch (_) {}
+
+    return Positioned(
+      left: viewportPos.dx,
+      top: viewportPos.dy,
+      child: Transform.scale(
+        scale: _scale,
+        alignment: Alignment.topLeft,
+        child: GestureDetector(
+          onTap: () {
+            widget.controller.selectCanvasImage(item.id);
+          },
+          onPanUpdate: isLassoMode || item.isLocked
+              ? null
+              : (details) {
+                  widget.controller.updateCanvasImagePosition(
+                    item.id,
+                    item.position + details.delta / _scale,
+                  );
+                },
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: item.width,
+                height: item.height,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isSelected
+                        ? const Color(0xFF007AFF)
+                        : Colors.black.withValues(alpha: 0.12),
+                    width: isSelected ? 2.0 : 1.0,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.10),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(9),
+                  child: imageBytes != null
+                      ? Image.memory(
+                          imageBytes,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Center(
+                            child: Icon(Icons.broken_image_rounded, size: 36, color: Colors.grey),
+                          ),
+                        )
+                      : const Center(
+                          child: Icon(Icons.image_not_supported_rounded, size: 36, color: Colors.grey),
+                        ),
+                ),
+              ),
+
+              // Selection handles (Delete at top-right, Resize at bottom-right)
+              if (isSelected && !item.isLocked) ...[
+                Positioned(
+                  top: -12,
+                  right: -12,
+                  child: GestureDetector(
+                    onTap: () => widget.controller.removeCanvasImage(item.id),
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFEF4444),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 4,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                        size: 15,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  bottom: -10,
+                  right: -10,
+                  child: GestureDetector(
+                    onPanUpdate: (details) {
+                      widget.controller.updateCanvasImageSize(
+                        item.id,
+                        item.width + details.delta.dx / _scale,
+                        item.height + details.delta.dy / _scale,
+                      );
+                    },
+                    child: Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF007AFF),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 4,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.open_in_full_rounded,
+                        color: Colors.white,
+                        size: 12,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCanvasFileWidget(CanvasFileItem item) {
+    final viewportPos = item.position * _scale + _panOffset;
+    final isSelected = widget.controller.selectedFileId == item.id;
+    final isLassoMode = widget.controller.selectedTool == DrawingTool.lasso;
+
+    final ext = (item.extension ?? '').toLowerCase();
+    final Color badgeColor;
+    final IconData badgeIcon;
+    if (ext == 'pdf') {
+      badgeColor = const Color(0xFFEF4444);
+      badgeIcon = Icons.picture_as_pdf_rounded;
+    } else if (['doc', 'docx', 'txt', 'rtf', 'odt'].contains(ext)) {
+      badgeColor = const Color(0xFF2563EB);
+      badgeIcon = Icons.description_rounded;
+    } else if (['xls', 'xlsx', 'csv'].contains(ext)) {
+      badgeColor = const Color(0xFF10B981);
+      badgeIcon = Icons.table_chart_rounded;
+    } else if (['ppt', 'pptx', 'key'].contains(ext)) {
+      badgeColor = const Color(0xFFF59E0B);
+      badgeIcon = Icons.slideshow_rounded;
+    } else if (['zip', 'rar', '7z', 'tar', 'gz'].contains(ext)) {
+      badgeColor = const Color(0xFF8B5CF6);
+      badgeIcon = Icons.folder_zip_rounded;
+    } else {
+      badgeColor = const Color(0xFF0D9488);
+      badgeIcon = Icons.insert_drive_file_rounded;
+    }
+
+    String sizeLabel = '';
+    if (item.sizeBytes > 0) {
+      if (item.sizeBytes < 1024) {
+        sizeLabel = '${item.sizeBytes} B';
+      } else if (item.sizeBytes < 1024 * 1024) {
+        sizeLabel = '${(item.sizeBytes / 1024).toStringAsFixed(1)} KB';
+      } else {
+        sizeLabel = '${(item.sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+      }
+    }
+
+    return Positioned(
+      left: viewportPos.dx,
+      top: viewportPos.dy,
+      child: Transform.scale(
+        scale: _scale,
+        alignment: Alignment.topLeft,
+        child: GestureDetector(
+          onTap: () {
+            widget.controller.selectCanvasFile(item.id);
+          },
+          onPanUpdate: isLassoMode || item.isLocked
+              ? null
+              : (details) {
+                  widget.controller.updateCanvasFilePosition(
+                    item.id,
+                    item.position + details.delta / _scale,
+                  );
+                },
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 210,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isSelected
+                        ? const Color(0xFF007AFF)
+                        : Colors.black.withValues(alpha: 0.12),
+                    width: isSelected ? 2.0 : 1.0,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: badgeColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(badgeIcon, color: badgeColor, size: 20),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            item.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1E293B),
+                            ),
+                          ),
+                          if (sizeLabel.isNotEmpty || ext.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              [
+                                if (ext.isNotEmpty) ext.toUpperCase(),
+                                if (sizeLabel.isNotEmpty) sizeLabel,
+                              ].join(' • '),
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.grey.shade500,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              if (isSelected && !item.isLocked)
+                Positioned(
+                  top: -8,
+                  right: -8,
+                  child: GestureDetector(
+                    onTap: () => widget.controller.removeCanvasFile(item.id),
+                    child: Container(
+                      width: 20,
+                      height: 20,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFEF4444),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 4,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                        size: 13,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildCanvasTextWidget(CanvasTextItem item) {

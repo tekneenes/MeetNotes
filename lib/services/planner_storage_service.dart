@@ -181,6 +181,27 @@ class PlannerStorageService {
     await prefs.setString(key, raw);
   }
 
+  // --- Canvas File Items ---
+  Future<List<CanvasFileItem>> loadCanvasFiles(DateTime weekStart, int pageIndex, {String prefix = ''}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'meet_notes_files_$prefix${_formatWeekKey(weekStart)}_p$pageIndex';
+    final raw = prefs.getString(key);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list.map((e) => CanvasFileItem.fromMap(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveCanvasFiles(DateTime weekStart, int pageIndex, List<CanvasFileItem> files, {String prefix = ''}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'meet_notes_files_$prefix${_formatWeekKey(weekStart)}_p$pageIndex';
+    final raw = jsonEncode(files.map((f) => f.toMap()).toList());
+    await prefs.setString(key, raw);
+  }
+
   // --- Saved Canvas Assets (Reusable Single/Group Elements) ---
   Future<List<SavedCanvasAsset>> loadSavedAssets() async {
     final prefs = await SharedPreferences.getInstance();

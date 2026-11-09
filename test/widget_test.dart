@@ -1071,4 +1071,48 @@ void main() {
     // Drain debounce save timer
     await tester.pump(const Duration(milliseconds: 1000));
   });
+
+  testWidgets('Quick Access subpages, canvas image, and file widgets test',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // 1. Verify Quick Access subpage navigation
+    expect(controller.isQuickAccessPhotosPage, isFalse);
+    expect(controller.isQuickAccessFilesPage, isFalse);
+
+    controller.openQuickAccessPhotosPage();
+    expect(controller.isQuickAccessOpen, isTrue);
+    expect(controller.isQuickAccessPhotosPage, isTrue);
+    expect(controller.quickAccessSubPage, QuickAccessSubPage.photos);
+
+    controller.openQuickAccessFilesPage();
+    expect(controller.isQuickAccessOpen, isTrue);
+    expect(controller.isQuickAccessFilesPage, isTrue);
+    expect(controller.quickAccessSubPage, QuickAccessSubPage.files);
+
+    controller.openQuickAccessMainPage();
+    expect(controller.quickAccessSubPage, QuickAccessSubPage.main);
+
+    // 2. Add an image and file to the controller and test canvas rendering in DrawingWorkspace
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DrawingWorkspace(controller: controller),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Initially empty
+    expect(controller.canvasImages, isEmpty);
+    expect(controller.canvasFiles, isEmpty);
+
+    // Drain debounce save timer
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
 }

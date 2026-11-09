@@ -1095,6 +1095,11 @@ void main() {
     expect(controller.isQuickAccessFilesPage, isTrue);
     expect(controller.quickAccessSubPage, QuickAccessSubPage.files);
 
+    controller.openQuickAccessPageSettings();
+    expect(controller.isQuickAccessOpen, isTrue);
+    expect(controller.isQuickAccessPageSettingsPage, isTrue);
+    expect(controller.quickAccessSubPage, QuickAccessSubPage.pageSettings);
+
     controller.openQuickAccessMainPage();
     expect(controller.quickAccessSubPage, QuickAccessSubPage.main);
 

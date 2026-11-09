@@ -159,6 +159,7 @@ enum QuickAccessSubPage {
   photos,
   files,
   pdfViewer,
+  pageSettings,
 }
 
 class PdfPageDragData {

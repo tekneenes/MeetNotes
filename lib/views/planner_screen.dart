@@ -8,7 +8,6 @@ import '../models/planner_models.dart';
 import '../services/pdf_service.dart';
 import '../widgets/days_sidebar.dart';
 import '../widgets/drawing_workspace.dart';
-import '../widgets/paper_settings_dialog.dart';
 import '../widgets/planner_toolbar.dart';
 import '../widgets/tasks_sidebar.dart';
 
@@ -447,6 +446,7 @@ class _PlannerScreenState extends State<PlannerScreen>
     final isPhotosPage = activeController.isQuickAccessPhotosPage;
     final isFilesPage = activeController.isQuickAccessFilesPage;
     final isPdfViewerPage = activeController.isQuickAccessPdfViewerPage;
+    final isPageSettingsPage = activeController.isQuickAccessPageSettingsPage;
     final allGroups = activeController.allStrokeGroups;
     final savedAssets = activeController.savedAssets;
     final selectedSet = activeController.selectedStrokeIndices;
@@ -498,7 +498,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                     onPressed: activeController.closeQuickAccessPdfViewer,
                   ),
                   const SizedBox(width: 4),
-                ] else if (isLayersPage || isGroupsPage || isAssetsPage || isPhotosPage || isFilesPage) ...[
+                ] else if (isLayersPage || isGroupsPage || isAssetsPage || isPhotosPage || isFilesPage || isPageSettingsPage) ...[
                   IconButton(
                     tooltip: 'Hızlı Erişime Dön',
                     icon: const Icon(
@@ -534,7 +534,9 @@ class _PlannerScreenState extends State<PlannerScreen>
                                         ? 'Dosyalar'
                                         : isPdfViewerPage
                                             ? (activeController.activePdfFile?.name ?? 'PDF Görüntüle')
-                                            : 'Hızlı Erişim',
+                                            : isPageSettingsPage
+                                                ? 'Sayfa Düzeni'
+                                                : 'Hızlı Erişim',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -593,6 +595,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                 ? _buildFilesSubPage(context, activeController)
                 : isPdfViewerPage
                 ? _buildPdfViewerSubPage(context, activeController)
+                : isPageSettingsPage
+                ? _buildPageSettingsSubPage(context, activeController)
                 : isLayersPage
                 ? ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -1238,6 +1242,18 @@ class _PlannerScreenState extends State<PlannerScreen>
                             : 'PDF, belge veya dosya ekle',
                         onTap: () {
                           activeController.openQuickAccessFilesPage();
+                        },
+                      ),
+                      const SizedBox(height: 8),
+
+                      // 0f. Sayfa Düzeni (Ayarlar) Sayfasına Geçiş Kartı
+                      _buildQuickItem(
+                        icon: Icons.tune_rounded,
+                        color: const Color(0xFF6366F1),
+                        title: 'Sayfa Düzeni',
+                        subtitle: 'Şablon (kareli, çizgili, boş), kılavuz aralığı ve defter ayarları',
+                        onTap: () {
+                          activeController.openQuickAccessPageSettings();
                         },
                       ),
                     ],
@@ -2614,6 +2630,225 @@ class _PlannerScreenState extends State<PlannerScreen>
     );
   }
 
+  Widget _buildPageSettingsSubPage(
+    BuildContext context,
+    PlannerController activeController,
+  ) {
+    final config = activeController.paperConfig;
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      children: [
+        // ŞABLON SEÇİMİ
+        Text(
+          'ŞABLON SEÇİMİ',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.8,
+            color: Colors.grey.shade600,
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        // 4 Cards Grid with Hover & Realtime Selection
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 1.5,
+          children: PaperStyle.values.map((style) {
+            final isSelected = config.style == style;
+            return Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                hoverColor: const Color(0xFF007AFF).withValues(alpha: 0.06),
+                mouseCursor: SystemMouseCursors.click,
+                onTap: () {
+                  activeController.updatePaperConfig(config.copyWith(style: style));
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? const Color(0xFFEFF6FF)
+                        : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected
+                          ? const Color(0xFF007AFF)
+                          : Colors.black.withValues(alpha: 0.08),
+                      width: isSelected ? 2.0 : 1.0,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        style.icon,
+                        size: 24,
+                        color: isSelected
+                            ? const Color(0xFF007AFF)
+                            : Colors.grey.shade600,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        style.label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          color: isSelected
+                              ? const Color(0xFF007AFF)
+                              : const Color(0xFF1E293B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+
+        if (config.style != PaperStyle.blank) ...[
+          const SizedBox(height: 16),
+          const Divider(),
+          const SizedBox(height: 6),
+
+          // Spacing Slider
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Çizgi / Kare Boyutu',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '${config.spacing.toInt()} pt',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF007AFF),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3.5,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+            ),
+            child: Slider(
+              value: config.spacing,
+              min: 20.0,
+              max: 56.0,
+              divisions: 18,
+              activeColor: const Color(0xFF007AFF),
+              inactiveColor: Colors.black.withValues(alpha: 0.1),
+              onChanged: (val) {
+                activeController.updatePaperConfig(config.copyWith(spacing: val));
+              },
+            ),
+          ),
+
+          const SizedBox(height: 6),
+
+          // Opacity Slider
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Çizgi Belirginliği',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '%${(config.opacity * 100).toInt()}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF007AFF),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3.5,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+            ),
+            child: Slider(
+              value: config.opacity,
+              min: 0.08,
+              max: 0.45,
+              divisions: 15,
+              activeColor: const Color(0xFF007AFF),
+              inactiveColor: Colors.black.withValues(alpha: 0.1),
+              onChanged: (val) {
+                activeController.updatePaperConfig(config.copyWith(opacity: val));
+              },
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 12),
+        const Divider(),
+
+        // Spine Fold Switch
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: const Text(
+            'Orta Defter Katlama İzi',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+          subtitle: Text(
+            'Kitapçık formatında orta kıvrım çizgisi göster',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey.shade500,
+            ),
+          ),
+          value: config.showSpineFold,
+          activeTrackColor: const Color(0xFF007AFF),
+          onChanged: (val) {
+            activeController.updatePaperConfig(config.copyWith(showSpineFold: val));
+          },
+        ),
+      ],
+    );
+  }
+
   Widget _buildQuickItem({
     required IconData icon,
     required Color color,
@@ -3271,34 +3506,6 @@ class _PlannerScreenState extends State<PlannerScreen>
                                           : const Color(0xFF1E293B),
                                     ),
                                     onPressed: dayCanvasController.toggleQuickAccess,
-                                  ),
-                                  const SizedBox(width: 8),
-
-                                  // Ayarlar İkonu
-                                  IconButton(
-                                    tooltip: 'Sayfa Düzeni ve Ayarlar',
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                        side: BorderSide(
-                                          color: Colors.black.withValues(alpha: 0.08),
-                                        ),
-                                      ),
-                                    ),
-                                    icon: const Icon(
-                                      Icons.settings_outlined,
-                                      size: 20,
-                                      color: Color(0xFF1E293B),
-                                    ),
-                                    onPressed: () {
-                                      showDialog(
-                                        context: context,
-                                        builder: (_) => PaperSettingsDialog(
-                                          controller: dayCanvasController,
-                                        ),
-                                      );
-                                    },
                                   ),
                                 ],
                               ),

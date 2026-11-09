@@ -141,6 +141,7 @@ class PlannerController extends ChangeNotifier {
   bool get isQuickAccessPhotosPage => _quickAccessSubPage == QuickAccessSubPage.photos;
   bool get isQuickAccessFilesPage => _quickAccessSubPage == QuickAccessSubPage.files;
   bool get isQuickAccessPdfViewerPage => _quickAccessSubPage == QuickAccessSubPage.pdfViewer;
+  bool get isQuickAccessPageSettingsPage => _quickAccessSubPage == QuickAccessSubPage.pageSettings;
   CanvasFileItem? get activePdfFile => _activePdfFile;
   List<CanvasImageItem> get canvasImages => List.unmodifiable(_canvasImages);
   List<CanvasFileItem> get canvasFiles => List.unmodifiable(_canvasFiles);
@@ -346,6 +347,13 @@ class PlannerController extends ChangeNotifier {
   void closeQuickAccessPdfViewer() {
     _activePdfFile = null;
     _quickAccessSubPage = QuickAccessSubPage.files;
+    notifyListeners();
+  }
+
+  void openQuickAccessPageSettings() {
+    _isQuickAccessOpen = true;
+    _quickAccessSubPage = QuickAccessSubPage.pageSettings;
+    _activePdfFile = null;
     notifyListeners();
   }
 

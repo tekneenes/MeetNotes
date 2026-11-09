@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../controllers/planner_controller.dart';
-import 'paper_settings_dialog.dart';
 
 class PlannerToolbar extends StatelessWidget {
   final PlannerController controller;
@@ -230,30 +229,6 @@ class PlannerToolbar extends StatelessWidget {
                         : const Color(0xFF1E293B),
                   ),
                   onPressed: onToggleQuickAccess,
-                ),
-                const SizedBox(width: 8),
-
-                // Ayarlar İkonu
-                IconButton(
-                  tooltip: 'Sayfa Düzeni ve Ayarlar',
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: BorderSide(color: Colors.black.withValues(alpha: 0.08)),
-                    ),
-                  ),
-                  icon: const Icon(
-                    Icons.settings_outlined,
-                    size: 20,
-                    color: Color(0xFF1E293B),
-                  ),
-                  onPressed: () {
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => PaperSettingsDialog(controller: controller),
-                    );
-                  },
                 ),
               ],
             ),

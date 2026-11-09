@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/planner_models.dart';
 import '../controllers/planner_controller.dart';
 import 'compact_stroke_width_picker.dart';
+import 'compact_color_picker_dialog.dart';
 
 enum ToolbarDockEdge {
   bottom,
@@ -71,17 +72,6 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
     setState(() => _isMinimized = true);
     _animController.reverse();
   }
-
-  static const List<Color> _applePalette = [
-    Color(0xFF1C1C1E), // Dark Slate
-    Color(0xFF007AFF), // Apple Blue
-    Color(0xFF34C759), // Apple Green
-    Color(0xFFFF9500), // Apple Orange
-    Color(0xFFFF2D55), // Apple Pink / Red
-    Color(0xFFAF52DE), // Apple Purple
-    Color(0xFFFFCC00), // Highlighter Yellow
-    Color(0xFF8E8E93), // Apple Gray
-  ];
 
   static const List<DrawingTool> _penTools = [
     DrawingTool.pen,
@@ -697,84 +687,46 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
   Widget _buildColorPicker(BuildContext context) {
     final controller = widget.controller;
 
-    Offset popupOffset;
-    switch (widget.dockEdge) {
-      case ToolbarDockEdge.bottom:
-        popupOffset = const Offset(0, -125);
-        break;
-      case ToolbarDockEdge.top:
-        popupOffset = const Offset(0, 48);
-        break;
-      case ToolbarDockEdge.left:
-        popupOffset = const Offset(52, 0);
-        break;
-      case ToolbarDockEdge.right:
-        popupOffset = const Offset(-200, 0);
-        break;
-    }
-
-    return PopupMenuButton<Color>(
-      tooltip: 'Renk Seçimi',
-      offset: popupOffset,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      elevation: 8,
-      child: Container(
-        width: 30,
-        height: 30,
-        decoration: BoxDecoration(
-          color: controller.selectedColor,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 2),
-          boxShadow: [
-            BoxShadow(
-              color: controller.selectedColor.withValues(alpha: 0.35),
-              blurRadius: 4,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-      ),
-      itemBuilder: (ctx) {
-        return [
-          PopupMenuItem<Color>(
-            enabled: false,
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _applePalette.map((color) {
-                final isSelected = controller.selectedColor.toARGB32() == color.toARGB32();
-                return InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: () {
-                    controller.setColor(color);
-                    Navigator.of(ctx).pop();
-                  },
-                  child: Container(
-                    width: 26,
-                    height: 26,
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: isSelected ? const Color(0xFF007AFF) : Colors.black.withValues(alpha: 0.12),
-                        width: isSelected ? 2.5 : 1.0,
-                      ),
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color: color.withValues(alpha: 0.4),
-                                blurRadius: 4,
-                                spreadRadius: 1,
-                              ),
-                            ]
-                          : null,
-                    ),
+    return Builder(
+      builder: (btnContext) {
+        return Tooltip(
+          message: 'Renk Seçimi',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () {
+              final box = btnContext.findRenderObject() as RenderBox?;
+              if (box == null) return;
+              final anchorRect = box.localToGlobal(Offset.zero) & box.size;
+              CompactColorPickerDialog.showAnchored(
+                context: context,
+                anchorRect: anchorRect,
+                title: 'Çizim Rengi',
+                initialColor: controller.selectedColor,
+                allowOpacity: false,
+                dockEdge: widget.dockEdge,
+                onColorChanged: (newColor) {
+                  controller.setColor(newColor);
+                },
+              );
+            },
+            child: Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: controller.selectedColor,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: controller.selectedColor.withValues(alpha: 0.35),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
                   ),
-                );
-              }).toList(),
+                ],
+              ),
             ),
           ),
-        ];
+        );
       },
     );
   }

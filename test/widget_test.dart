@@ -614,4 +614,89 @@ void main() {
 
     expect(find.text('Başlık Ekle'), findsNothing);
   });
+
+  testWidgets(
+      'AppleNotesFloatingToolbar tapping color circle opens CompactColorPickerDialog and changes drawing color',
+      (WidgetTester tester) async {
+    final controller = PlannerController();
+    while (controller.isLoading) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                bottom: 12,
+                left: 100,
+                child: AppleNotesFloatingToolbar(
+                  controller: controller,
+                  dockEdge: ToolbarDockEdge.bottom,
+                  onDragDelta: (_) {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Tap toolbar color circle (tooltip: 'Renk Seçimi')
+    final colorPickerBtn = find.byTooltip('Renk Seçimi');
+    expect(colorPickerBtn, findsOneWidget);
+    await tester.tap(colorPickerBtn);
+    await tester.pumpAndSettle();
+
+    // Verify CompactColorPickerDialog opened with 'Çizim Rengi' title
+    expect(find.text('Çizim Rengi'), findsOneWidget);
+
+    // Pick a preset color (preset_6: Color(0xFFEF4444))
+    await tester.tap(find.byKey(const ValueKey('preset_6')));
+    await tester.pumpAndSettle();
+
+    expect(controller.selectedColor.toARGB32(), const Color(0xFFEF4444).toARGB32());
+
+    // Close the dialog via close icon
+    final closeBtn = find.byIcon(Icons.close_rounded);
+    expect(closeBtn, findsOneWidget);
+    await tester.tap(closeBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Çizim Rengi'), findsNothing);
+
+    // 2. Right dock test: verify it opens properly docked on right edge
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                top: 100,
+                right: 12,
+                child: AppleNotesFloatingToolbar(
+                  controller: controller,
+                  dockEdge: ToolbarDockEdge.right,
+                  onDragDelta: (_) {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final rightColorPickerBtn = find.byTooltip('Renk Seçimi');
+    await tester.tap(rightColorPickerBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Çizim Rengi'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('Çizim Rengi'), findsNothing);
+  });
 }

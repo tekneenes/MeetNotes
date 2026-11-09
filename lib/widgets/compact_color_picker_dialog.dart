@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'apple_notes_toolbar.dart' show ToolbarDockEdge;
 
 /// Compact HSV Color Picker Dialog matching iOS/Procreate/GoodNotes style.
 /// Features:
@@ -44,6 +45,7 @@ class CompactColorPickerDialog extends StatefulWidget {
     VoidCallback? onClear,
     Rect? boundaryRect,
     double width = 198.0,
+    ToolbarDockEdge? dockEdge,
   }) async {
     final mediaQuery = MediaQuery.of(context);
     final screenSize = mediaQuery.size;
@@ -61,27 +63,67 @@ class CompactColorPickerDialog extends StatefulWidget {
     // Approximate height based on opacity slider presence
     final estimatedHeight = allowOpacity ? 275.0 : 235.0;
 
-    // Horizontal placement: Center on anchor, clamped strictly within boundary
-    final left =
-        (anchorRect.center.dx - width / 2.0).clamp(minLeft, maxLeft).toDouble();
-
-    // Vertical placement: Prefer below anchorRect.bottom + 6.0
-    final spaceBelow =
-        screenSize.height - viewInsets.bottom - (anchorRect.bottom + 6.0);
-    final spaceAbove = anchorRect.top - 6.0;
-
+    double left;
     double top;
-    if (spaceBelow >= estimatedHeight || spaceBelow >= spaceAbove) {
-      top = anchorRect.bottom + 6.0;
-      if (top + estimatedHeight >
-          screenSize.height - viewInsets.bottom - 8.0) {
-        top = math.max(
-          8.0,
-          screenSize.height - viewInsets.bottom - estimatedHeight - 8.0,
-        );
+    Alignment scaleAlignment;
+
+    if (dockEdge != null) {
+      switch (dockEdge) {
+        case ToolbarDockEdge.bottom:
+          left = (anchorRect.center.dx - width / 2.0).clamp(minLeft, maxLeft).toDouble();
+          top = (anchorRect.top - estimatedHeight - 10.0)
+              .clamp(8.0, screenSize.height - viewInsets.bottom - estimatedHeight - 8.0);
+          final relAnchorX =
+              ((anchorRect.center.dx - left) / width * 2.0 - 1.0).clamp(-1.0, 1.0);
+          scaleAlignment = Alignment(relAnchorX, 1.0);
+          break;
+        case ToolbarDockEdge.top:
+          left = (anchorRect.center.dx - width / 2.0).clamp(minLeft, maxLeft).toDouble();
+          top = (anchorRect.bottom + 10.0)
+              .clamp(8.0, screenSize.height - viewInsets.bottom - estimatedHeight - 8.0);
+          final relAnchorX =
+              ((anchorRect.center.dx - left) / width * 2.0 - 1.0).clamp(-1.0, 1.0);
+          scaleAlignment = Alignment(relAnchorX, -1.0);
+          break;
+        case ToolbarDockEdge.left:
+          left = (anchorRect.right + 10.0).clamp(minLeft, maxLeft).toDouble();
+          top = (anchorRect.center.dy - estimatedHeight / 2.0)
+              .clamp(8.0, screenSize.height - viewInsets.bottom - estimatedHeight - 8.0);
+          final relAnchorY =
+              ((anchorRect.center.dy - top) / estimatedHeight * 2.0 - 1.0).clamp(-1.0, 1.0);
+          scaleAlignment = Alignment(-1.0, relAnchorY);
+          break;
+        case ToolbarDockEdge.right:
+          left = (anchorRect.left - width - 10.0).clamp(minLeft, maxLeft).toDouble();
+          top = (anchorRect.center.dy - estimatedHeight / 2.0)
+              .clamp(8.0, screenSize.height - viewInsets.bottom - estimatedHeight - 8.0);
+          final relAnchorY =
+              ((anchorRect.center.dy - top) / estimatedHeight * 2.0 - 1.0).clamp(-1.0, 1.0);
+          scaleAlignment = Alignment(1.0, relAnchorY);
+          break;
       }
     } else {
-      top = math.max(8.0, anchorRect.top - estimatedHeight - 6.0);
+      left = (anchorRect.center.dx - width / 2.0).clamp(minLeft, maxLeft).toDouble();
+      final spaceBelow =
+          screenSize.height - viewInsets.bottom - (anchorRect.bottom + 6.0);
+      final spaceAbove = anchorRect.top - 6.0;
+
+      if (spaceBelow >= estimatedHeight || spaceBelow >= spaceAbove) {
+        top = anchorRect.bottom + 6.0;
+        if (top + estimatedHeight >
+            screenSize.height - viewInsets.bottom - 8.0) {
+          top = math.max(
+            8.0,
+            screenSize.height - viewInsets.bottom - estimatedHeight - 8.0,
+          );
+        }
+      } else {
+        top = math.max(8.0, anchorRect.top - estimatedHeight - 6.0);
+      }
+      final isBelow = top >= anchorRect.top;
+      final relAnchorX =
+          ((anchorRect.center.dx - left) / width * 2.0 - 1.0).clamp(-1.0, 1.0);
+      scaleAlignment = Alignment(relAnchorX, isBelow ? -1.0 : 1.0);
     }
 
     await showGeneralDialog(
@@ -115,14 +157,11 @@ class CompactColorPickerDialog extends StatefulWidget {
       },
       transitionBuilder: (dialogCtx, anim, secondaryAnim, child) {
         final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
-        final isBelow = top >= anchorRect.top;
-        final relAnchorX =
-            ((anchorRect.center.dx - left) / width * 2.0 - 1.0).clamp(-1.0, 1.0);
         return FadeTransition(
           opacity: curved,
           child: ScaleTransition(
             scale: Tween<double>(begin: 0.92, end: 1.0).animate(curved),
-            alignment: Alignment(relAnchorX, isBelow ? -1.0 : 1.0),
+            alignment: scaleAlignment,
             child: child,
           ),
         );

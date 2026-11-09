@@ -397,6 +397,7 @@ class PlannerController extends ChangeNotifier {
       height: pageH,
       name: '${dragData.fileName} • Sayfa ${dragData.pageIndex + 1}',
       base64Data: base64Encode(pngBytes),
+      memoryBytes: pngBytes,
       layerOrder: _nextTopLayerOrder(),
     );
 
@@ -454,6 +455,7 @@ class PlannerController extends ChangeNotifier {
         position: pos,
         name: file.name,
         base64Data: base64Str,
+        memoryBytes: bytes,
         layerOrder: _nextTopLayerOrder(),
       );
       _canvasImages.add(item);
@@ -3942,9 +3944,11 @@ class PlannerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setZoomScale(double scale) {
+  void setZoomScale(double scale, {bool notify = true}) {
     _zoomScale = scale.clamp(0.5, 4.0);
-    notifyListeners();
+    if (notify) {
+      notifyListeners();
+    }
   }
 }
 

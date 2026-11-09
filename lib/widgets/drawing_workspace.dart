@@ -1,6 +1,4 @@
-import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../controllers/planner_controller.dart';
@@ -200,7 +198,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           _scale = newScale;
           _panOffset = currentMidpoint - (_anchorCanvasPoint * _scale);
         });
-        widget.controller.setZoomScale(_scale);
+        widget.controller.setZoomScale(_scale, notify: false);
       }
     } else if (_activePointers.length == 1 && !_isMultiTouchZooming) {
       if (widget.controller.selectedTool != DrawingTool.text) {
@@ -215,6 +213,9 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       widget.controller.endStroke();
     }
     if (_activePointers.isEmpty) {
+      if (_isMultiTouchZooming) {
+        widget.controller.setZoomScale(_scale, notify: true);
+      }
       _isMultiTouchZooming = false;
     }
   }
@@ -237,7 +238,11 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       _scale = newScale;
       _panOffset = _clampPanOffset(rawPan, newScale, viewportSize);
     });
-    widget.controller.setZoomScale(_scale);
+    widget.controller.setZoomScale(_scale, notify: false);
+  }
+
+  void _handleTrackpadPanZoomEnd(PointerPanZoomEndEvent event) {
+    widget.controller.setZoomScale(_scale, notify: true);
   }
 
   Offset _clampPanOffset(Offset pan, double scale, Size viewportSize) {
@@ -328,6 +333,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                       onPointerPanZoomStart: _handleTrackpadPanZoomStart,
                       onPointerPanZoomUpdate: (event) =>
                           _handleTrackpadPanZoomUpdate(event, viewportSize),
+                      onPointerPanZoomEnd: _handleTrackpadPanZoomEnd,
                       child: const SizedBox.expand(),
                     ),
                   ),
@@ -506,13 +512,10 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
 
   Widget _buildCanvasImageWidget(CanvasImageItem item) {
     final viewportPos = item.position * _scale + _panOffset;
-
-    Uint8List? imageBytes;
-    try {
-      imageBytes = base64Decode(item.base64Data);
-    } catch (_) {}
+    final imageBytes = item.bytes;
 
     return Positioned(
+      key: ValueKey('canvas_img_${item.id}'),
       left: viewportPos.dx,
       top: viewportPos.dy,
       child: Transform.scale(
@@ -521,34 +524,38 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         child: Transform.rotate(
           angle: item.rotation,
           alignment: Alignment.center,
-          child: IgnorePointer(
-            ignoring: true,
-            child: Container(
-              width: item.width,
-              height: item.height,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.12),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: imageBytes != null
-                    ? Image.memory(
-                        imageBytes,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const Center(
-                          child: Icon(Icons.broken_image_rounded, size: 36, color: Colors.grey),
+          child: RepaintBoundary(
+            child: IgnorePointer(
+              ignoring: true,
+              child: Container(
+                width: item.width,
+                height: item.height,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: imageBytes != null
+                      ? Image.memory(
+                          imageBytes,
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                          filterQuality: FilterQuality.medium,
+                          errorBuilder: (_, __, ___) => const Center(
+                            child: Icon(Icons.broken_image_rounded, size: 36, color: Colors.grey),
+                          ),
+                        )
+                      : const Center(
+                          child: Icon(Icons.image_not_supported_rounded, size: 36, color: Colors.grey),
                         ),
-                      )
-                    : const Center(
-                        child: Icon(Icons.image_not_supported_rounded, size: 36, color: Colors.grey),
-                      ),
+                ),
               ),
             ),
           ),

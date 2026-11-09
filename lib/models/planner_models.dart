@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 enum PaperStyle {
@@ -579,6 +581,7 @@ class CanvasImageItem {
   final bool isLocked;
   final double rotation;
   final int? layerOrder;
+  final Uint8List? memoryBytes;
 
   const CanvasImageItem({
     required this.id,
@@ -590,10 +593,21 @@ class CanvasImageItem {
     this.isLocked = false,
     this.rotation = 0.0,
     this.layerOrder,
+    this.memoryBytes,
   });
 
   Rect get rect => Rect.fromLTWH(position.dx, position.dy, width, height);
   Offset get center => Offset(position.dx + width / 2.0, position.dy + height / 2.0);
+
+  Uint8List? get bytes {
+    if (memoryBytes != null) return memoryBytes;
+    if (base64Data.isNotEmpty) {
+      try {
+        return base64Decode(base64Data);
+      } catch (_) {}
+    }
+    return null;
+  }
 
   CanvasImageItem copyWith({
     String? id,
@@ -605,6 +619,7 @@ class CanvasImageItem {
     bool? isLocked,
     double? rotation,
     int? layerOrder,
+    Uint8List? memoryBytes,
   }) {
     return CanvasImageItem(
       id: id ?? this.id,
@@ -616,6 +631,7 @@ class CanvasImageItem {
       isLocked: isLocked ?? this.isLocked,
       rotation: rotation ?? this.rotation,
       layerOrder: layerOrder ?? this.layerOrder,
+      memoryBytes: memoryBytes ?? this.memoryBytes,
     );
   }
 
@@ -633,6 +649,13 @@ class CanvasImageItem {
   };
 
   factory CanvasImageItem.fromMap(Map<String, dynamic> map) {
+    final b64 = map['base64Data'] as String? ?? '';
+    Uint8List? decoded;
+    if (b64.isNotEmpty) {
+      try {
+        decoded = base64Decode(b64);
+      } catch (_) {}
+    }
     return CanvasImageItem(
       id: map['id'] as String? ?? '',
       position: Offset(
@@ -641,11 +664,12 @@ class CanvasImageItem {
       ),
       width: (map['width'] as num?)?.toDouble() ?? 220.0,
       height: (map['height'] as num?)?.toDouble() ?? 160.0,
-      base64Data: map['base64Data'] as String? ?? '',
+      base64Data: b64,
       name: map['name'] as String?,
       isLocked: map['isLocked'] as bool? ?? false,
       rotation: (map['rotation'] as num?)?.toDouble() ?? 0.0,
       layerOrder: (map['layerOrder'] as num?)?.toInt(),
+      memoryBytes: decoded,
     );
   }
 }

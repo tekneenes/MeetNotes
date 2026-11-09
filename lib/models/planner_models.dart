@@ -151,6 +151,25 @@ enum SelectionHandle {
   lineControl,
 }
 
+enum LassoSelectionMode {
+  rectangle(
+    'Kare Seçim',
+    Icons.crop_square_rounded,
+    'Dikdörtgen veya kare alan seçimi',
+  ),
+  freeform(
+    'Serbest Kement',
+    Icons.gesture_rounded,
+    'Serbest çizgi ile çevreleyerek seç',
+  );
+
+  final String label;
+  final IconData icon;
+  final String description;
+
+  const LassoSelectionMode(this.label, this.icon, this.description);
+}
+
 enum QuickAccessSubPage {
   main,
   layers,

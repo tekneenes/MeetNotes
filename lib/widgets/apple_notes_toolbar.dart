@@ -5,6 +5,7 @@ import '../controllers/planner_controller.dart';
 import 'compact_stroke_width_picker.dart';
 import 'compact_color_picker_dialog.dart';
 import 'compact_shapes_picker.dart';
+import 'compact_lasso_picker_dialog.dart';
 
 enum ToolbarDockEdge {
   bottom,
@@ -517,57 +518,93 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
     final isSelected = controller.selectedTool == tool;
 
     final isVertical = widget.dockEdge.isVertical;
-    return Padding(
-      padding: isVertical
-          ? const EdgeInsets.symmetric(horizontal: 2.0, vertical: 1.5)
-          : const EdgeInsets.symmetric(horizontal: 2.0, vertical: 2.0),
-      child: Tooltip(
-        message: tool == DrawingTool.text
-            ? 'Metin Aracı'
-            : tool.label,
-        child: InkResponse(
-          customBorder: const CircleBorder(),
-          radius: 20,
-          onTap: () {
-            if (tool == DrawingTool.text) {
-              if (controller.selectedTool == DrawingTool.text) {
-                setState(() => _showTextPresetPopover = !_showTextPresetPopover);
-              } else {
-                setState(() => _showTextPresetPopover = true);
-                controller.setTool(DrawingTool.text);
-              }
-            } else {
-              setState(() => _showTextPresetPopover = false);
-              controller.setTool(tool);
-            }
-          },
-          onLongPress: tool == DrawingTool.text
-              ? () {
-                  setState(() => _showTextPresetPopover = !_showTextPresetPopover);
-                  controller.setTool(DrawingTool.text);
+    return Builder(
+      builder: (itemContext) {
+        return Padding(
+          padding: isVertical
+              ? const EdgeInsets.symmetric(horizontal: 2.0, vertical: 1.5)
+              : const EdgeInsets.symmetric(horizontal: 2.0, vertical: 2.0),
+          child: Tooltip(
+            message: tool == DrawingTool.text
+                ? 'Metin Aracı'
+                : tool == DrawingTool.lasso
+                    ? 'Kement (${controller.lassoSelectionMode.label})'
+                    : tool.label,
+            child: InkResponse(
+              customBorder: const CircleBorder(),
+              radius: 20,
+              onTap: () {
+                if (tool == DrawingTool.text) {
+                  if (controller.selectedTool == DrawingTool.text) {
+                    setState(() => _showTextPresetPopover = !_showTextPresetPopover);
+                  } else {
+                    setState(() => _showTextPresetPopover = true);
+                    controller.setTool(DrawingTool.text);
+                  }
+                } else if (tool == DrawingTool.lasso) {
+                  setState(() => _showTextPresetPopover = false);
+                  controller.setTool(DrawingTool.lasso);
+                  final box = itemContext.findRenderObject() as RenderBox?;
+                  if (box != null) {
+                    final anchorRect = box.localToGlobal(Offset.zero) & box.size;
+                    CompactLassoPickerDialog.showAnchored(
+                      context: context,
+                      anchorRect: anchorRect,
+                      dockEdge: widget.dockEdge,
+                      controller: controller,
+                    );
+                  }
+                } else {
+                  setState(() => _showTextPresetPopover = false);
+                  controller.setTool(tool);
                 }
-              : null,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isSelected
-                  ? const Color(0xFF007AFF).withValues(alpha: 0.15)
-                  : Colors.transparent,
-            ),
-            child: Center(
-              child: Icon(
-                tool.icon,
-                size: 20,
-                color: isSelected ? const Color(0xFF007AFF) : Colors.grey.shade700,
+              },
+              onLongPress: tool == DrawingTool.text
+                  ? () {
+                      setState(() => _showTextPresetPopover = !_showTextPresetPopover);
+                      controller.setTool(DrawingTool.text);
+                    }
+                  : tool == DrawingTool.lasso
+                      ? () {
+                          controller.setTool(DrawingTool.lasso);
+                          final box = itemContext.findRenderObject() as RenderBox?;
+                          if (box != null) {
+                            final anchorRect = box.localToGlobal(Offset.zero) & box.size;
+                            CompactLassoPickerDialog.showAnchored(
+                              context: context,
+                              anchorRect: anchorRect,
+                              dockEdge: widget.dockEdge,
+                              controller: controller,
+                            );
+                          }
+                        }
+                      : null,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isSelected
+                      ? const Color(0xFF007AFF).withValues(alpha: 0.15)
+                      : Colors.transparent,
+                ),
+                child: Center(
+                  child: Icon(
+                    tool == DrawingTool.lasso &&
+                            controller.lassoSelectionMode == LassoSelectionMode.rectangle
+                        ? Icons.crop_square_rounded
+                        : tool.icon,
+                    size: 20,
+                    color: isSelected ? const Color(0xFF007AFF) : Colors.grey.shade700,
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 

@@ -7,6 +7,7 @@ import 'package:meet_notes/models/planner_models.dart';
 import 'package:meet_notes/widgets/compact_color_picker_dialog.dart';
 import 'package:meet_notes/widgets/compact_font_picker_dialog.dart';
 import 'package:meet_notes/widgets/compact_stroke_width_picker.dart';
+import 'package:meet_notes/widgets/compact_lasso_picker_dialog.dart';
 import 'package:meet_notes/widgets/apple_notes_toolbar.dart';
 import 'package:meet_notes/widgets/drawing_workspace.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -264,6 +265,7 @@ void main() {
 
     // 2. Switch to Lasso tool and draw a lasso loop around the rectangle
     controller.setTool(DrawingTool.lasso);
+    controller.setLassoSelectionMode(LassoSelectionMode.freeform);
     controller.startStroke(const Offset(80, 80));
     controller.updateStroke(const Offset(220, 80));
     controller.updateStroke(const Offset(220, 220));
@@ -353,6 +355,7 @@ void main() {
     // 4. Draw lasso loop enclosing BOTH the sticky note and the text item
     controller.clearLassoSelection();
     expect(controller.hasLassoSelection, isFalse);
+    controller.setLassoSelectionMode(LassoSelectionMode.freeform);
 
     controller.startStroke(const Offset(50, 50));
     controller.updateStroke(const Offset(750, 50));
@@ -1150,6 +1153,88 @@ void main() {
     controller.closeQuickAccessPdfViewer();
     expect(controller.isQuickAccessPdfViewerPage, isFalse);
     expect(controller.isQuickAccessFilesPage, isTrue);
+
+    // Drain debounce save timer
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
+
+  testWidgets('CompactLassoPickerDialog and Rectangle selection test',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Default selection mode should be rectangle
+    expect(controller.lassoSelectionMode, LassoSelectionMode.rectangle);
+
+    // 1. Show anchored CompactLassoPickerDialog
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (ctx) => ElevatedButton(
+              onPressed: () {
+                CompactLassoPickerDialog.showAnchored(
+                  context: ctx,
+                  anchorRect: const Rect.fromLTWH(400, 700, 40, 40),
+                  dockEdge: ToolbarDockEdge.bottom,
+                  controller: controller,
+                );
+              },
+              child: const Text('Open Lasso Dialog'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Open Lasso Dialog'));
+    await tester.pumpAndSettle();
+
+    // Verify dialog contents
+    expect(find.text('Kement Seçimi'), findsOneWidget);
+    expect(find.text('Kare Seçim'), findsWidgets);
+    expect(find.text('Serbest Kement'), findsOneWidget);
+
+    // Switch to Serbest Kement by tapping option
+    await tester.tap(find.text('Serbest Kement'));
+    await tester.pumpAndSettle();
+    expect(controller.lassoSelectionMode, LassoSelectionMode.freeform);
+
+    // Switch back to Kare Seçim
+    await tester.tap(find.text('Kare Seçim').first);
+    await tester.pumpAndSettle();
+    expect(controller.lassoSelectionMode, LassoSelectionMode.rectangle);
+
+    // Close dialog by tapping barrier
+    await tester.tapAt(const Offset(50, 50));
+    await tester.pumpAndSettle();
+
+    // 2. Test Rectangle Selection on canvas
+    // Add a stroke to be selected
+    controller.setTool(DrawingTool.pen);
+    controller.startStroke(const Offset(100, 100));
+    controller.updateStroke(const Offset(200, 200));
+    controller.endStroke();
+    expect(controller.strokes.length, 1);
+
+    // Use lasso tool with rectangle mode: drag diagonally from (50, 50) to (250, 250)
+    controller.setTool(DrawingTool.lasso);
+    controller.startStroke(const Offset(50, 50));
+    controller.updateStroke(const Offset(250, 250));
+    controller.endStroke();
+
+    expect(controller.hasLassoSelection, isTrue);
+    expect(controller.selectedStrokeIndices, contains(0));
+
+    // Deselect with small tap
+    controller.startStroke(const Offset(10, 10));
+    controller.endStroke();
+    expect(controller.hasLassoSelection, isFalse);
 
     // Drain debounce save timer
     await tester.pump(const Duration(milliseconds: 1000));

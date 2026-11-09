@@ -42,6 +42,8 @@ class PlannerController extends ChangeNotifier {
   final ValueNotifier<int> canvasDragTick = ValueNotifier<int>(0);
 
   // Lasso Selection, Resize & 2D Rotation State
+  LassoSelectionMode _lassoSelectionMode = LassoSelectionMode.rectangle;
+  Offset? _lassoStartPoint;
   List<Offset> _lassoPoints = [];
   final Set<int> _selectedStrokeIndices = {};
   final Set<String> _selectedTextIds = {};
@@ -114,6 +116,15 @@ class PlannerController extends ChangeNotifier {
   double get strokeWidth => _strokeWidth;
   List<DrawingStroke> get strokes => List.unmodifiable(_strokes);
   DrawingStroke? get activeStroke => _activeStroke;
+  LassoSelectionMode get lassoSelectionMode => _lassoSelectionMode;
+
+  void setLassoSelectionMode(LassoSelectionMode mode) {
+    if (_lassoSelectionMode != mode) {
+      _lassoSelectionMode = mode;
+      notifyListeners();
+    }
+  }
+
   List<Offset> get lassoPoints => List.unmodifiable(_lassoPoints);
   Set<int> get selectedStrokeIndices => Set.unmodifiable(_selectedStrokeIndices);
   Set<String> get selectedTextIds => Set.unmodifiable(_selectedTextIds);
@@ -1188,6 +1199,7 @@ class PlannerController extends ChangeNotifier {
       _selectedTextIds.clear();
       _selectedImageIds.clear();
       _lassoPoints = [];
+      _lassoStartPoint = null;
       _isDraggingSelection = false;
     }
     notifyListeners();
@@ -1661,7 +1673,7 @@ class PlannerController extends ChangeNotifier {
         return;
       }
 
-      // 4. Otherwise, start drawing a freeform lasso loop in empty space
+      // 4. Otherwise, start drawing a lasso loop in empty space
       _selectedStrokeIndices.clear();
       _selectedTextIds.clear();
       _selectedImageIds.clear();
@@ -1669,7 +1681,12 @@ class PlannerController extends ChangeNotifier {
       _isDraggingSelection = false;
       _activeResizeHandle = null;
       _lastLassoDragPoint = null;
-      _lassoPoints = [point];
+      _lassoStartPoint = point;
+      if (_lassoSelectionMode == LassoSelectionMode.rectangle) {
+        _lassoPoints = [point, point, point, point];
+      } else {
+        _lassoPoints = [point];
+      }
       notifyListeners();
       return;
     }
@@ -1777,7 +1794,17 @@ class PlannerController extends ChangeNotifier {
           }
         }
       } else {
-        _lassoPoints = List<Offset>.from(_lassoPoints)..add(point);
+        if (_lassoSelectionMode == LassoSelectionMode.rectangle && _lassoStartPoint != null) {
+          final rect = Rect.fromPoints(_lassoStartPoint!, point);
+          _lassoPoints = [
+            rect.topLeft,
+            rect.topRight,
+            rect.bottomRight,
+            rect.bottomLeft,
+          ];
+        } else {
+          _lassoPoints = List<Offset>.from(_lassoPoints)..add(point);
+        }
       }
       canvasDragTick.value++;
       return;
@@ -1864,10 +1891,24 @@ class PlannerController extends ChangeNotifier {
         _saveCurrentCanvasTexts();
         if (_selectedImageIds.isNotEmpty) _saveCurrentCanvasImages();
       } else if (_lassoPoints.length >= 3) {
-        _selectStrokesInsideLasso();
+        if (_lassoSelectionMode == LassoSelectionMode.rectangle && _lassoStartPoint != null) {
+          final pEnd = _lassoPoints.length > 2 ? _lassoPoints[2] : _lassoStartPoint!;
+          final rect = Rect.fromPoints(_lassoStartPoint!, pEnd);
+          if (rect.width < 4.0 && rect.height < 4.0) {
+            _selectedStrokeIndices.clear();
+            _selectedTextIds.clear();
+            _selectedImageIds.clear();
+          } else {
+            _selectStrokesInsideLasso();
+          }
+        } else {
+          _selectStrokesInsideLasso();
+        }
         _lassoPoints = [];
+        _lassoStartPoint = null;
       } else {
         _lassoPoints = [];
+        _lassoStartPoint = null;
       }
       notifyListeners();
       return;

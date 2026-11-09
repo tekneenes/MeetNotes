@@ -572,11 +572,11 @@ void main() {
     await tester.tap(textToolBtn);
     await tester.pumpAndSettle();
 
-    // Verify presets are displayed and close button exists in horizontal mode
+    // Verify presets are displayed and close button does not exist in horizontal or vertical
     expect(find.text('Başlık Ekle'), findsOneWidget);
     expect(find.text('Alt Başlık'), findsOneWidget);
     expect(find.text('Post-it Not'), findsOneWidget);
-    expect(find.byIcon(Icons.close_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.close_rounded), findsNothing);
 
     // 2. Right Dock Test: Verify popover is rendered to the left (inward) and has NO close 'x' icon
     await tester.pumpWidget(

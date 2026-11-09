@@ -422,41 +422,6 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
           controller.addPresetCanvasText(CanvaTextPreset.bulletList);
         },
       ),
-      if (!isVertical) ...[
-        const SizedBox(width: 6),
-        Container(
-          width: 1,
-          height: 20,
-          color: Colors.black.withValues(alpha: 0.08),
-        ),
-        const SizedBox(width: 6),
-        Tooltip(
-          message: 'Kapat',
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: () {
-              setState(() => _showTextPresetPopover = false);
-              if (controller.selectedTool == DrawingTool.text) {
-                controller.setTool(DrawingTool.lasso);
-              }
-            },
-            child: Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.04),
-                shape: BoxShape.circle,
-              ),
-              alignment: Alignment.center,
-              child: const Icon(
-                Icons.close_rounded,
-                size: 14,
-                color: Color(0xFF64748B),
-              ),
-            ),
-          ),
-        ),
-      ],
     ];
 
     return ClipRRect(
@@ -580,9 +545,13 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
           radius: 20,
           onTap: () {
             if (tool == DrawingTool.text) {
-              setState(() => _showTextPresetPopover = true);
-              controller.setTool(DrawingTool.text);
-              controller.addPresetCanvasText(CanvaTextPreset.body);
+              if (controller.selectedTool == DrawingTool.text) {
+                setState(() => _showTextPresetPopover = !_showTextPresetPopover);
+              } else {
+                setState(() => _showTextPresetPopover = true);
+                controller.setTool(DrawingTool.text);
+                controller.addPresetCanvasText(CanvaTextPreset.body);
+              }
             } else {
               setState(() => _showTextPresetPopover = false);
               controller.setTool(tool);

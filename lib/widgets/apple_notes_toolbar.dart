@@ -33,9 +33,43 @@ class AppleNotesFloatingToolbar extends StatefulWidget {
   State<AppleNotesFloatingToolbar> createState() => _AppleNotesFloatingToolbarState();
 }
 
-class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar> {
+class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animController;
+  late final Animation<double> _animation;
   bool _isMinimized = false;
   bool _showTextPresetPopover = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+    );
+    _animation = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    _animController.value = _isMinimized ? 0.0 : 1.0;
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  void _expandToolbar() {
+    setState(() => _isMinimized = false);
+    _animController.forward();
+  }
+
+  void _minimizeToolbar() {
+    setState(() => _isMinimized = true);
+    _animController.reverse();
+  }
 
   static const List<Color> _applePalette = [
     Color(0xFF1C1C1E), // Dark Slate
@@ -76,144 +110,213 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar> {
 
   @override
   Widget build(BuildContext context) {
-    // Animated open/close: the dock and the minimized bubble cross-fade while
-    // scaling from the left (handle side), so the dock visibly "folds into"
-    // the bubble and unfolds back. Both children share the same 52px height and
-    // top-left anchor, so the toolbar position never jumps.
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 240),
-      reverseDuration: const Duration(milliseconds: 200),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      layoutBuilder: (currentChild, previousChildren) {
-        return Stack(
-          alignment: Alignment.topLeft,
-          clipBehavior: Clip.none,
-          children: [
-            ...previousChildren,
-            if (currentChild != null) currentChild,
-          ],
-        );
-      },
-      transitionBuilder: (child, animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.82, end: 1.0).animate(animation),
-            alignment: Alignment.centerLeft,
-            child: child,
-          ),
-        );
-      },
-      child: _isMinimized
-          ? KeyedSubtree(
-              key: const ValueKey('toolbar_minimized'),
-              child: _buildMinimizedBubble(),
-            )
-          : KeyedSubtree(
-              key: const ValueKey('toolbar_expanded'),
-              child: _buildExpandedDock(context),
-            ),
-    );
-  }
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, _) {
+        final t = _animation.value;
+        final isVertical = widget.dockEdge.isVertical;
 
-  Widget _buildMinimizedBubble() {
-    final controller = widget.controller;
+        final double targetWidth = isVertical ? 52.0 : 580.0;
+        final double targetHeight = isVertical ? 540.0 : 52.0;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onPanStart: (_) => widget.onDragStart?.call(),
-      onPanUpdate: (details) => widget.onDragDelta(details.delta),
-      onPanEnd: (_) => widget.onDragEnd?.call(),
-      onPanCancel: () => widget.onDragEnd?.call(),
-      child: Tooltip(
-        message: 'Araç Çubuğunu Aç (Sürükleyebilirsiniz)',
-        child: InkWell(
-          borderRadius: BorderRadius.circular(26),
-          onTap: () => setState(() => _isMinimized = false),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(26),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.92),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.8),
-                    width: 1.5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.12),
-                      blurRadius: 18,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Icon(
-                      controller.selectedTool.icon,
-                      size: 22,
-                      color: const Color(0xFF007AFF),
-                    ),
-                    Positioned(
-                      bottom: 8,
-                      child: Container(
-                        width: 5,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: controller.selectedTool == DrawingTool.eraser
-                              ? const Color(0xFF007AFF)
-                              : controller.selectedColor,
-                          shape: BoxShape.circle,
-                        ),
+        final double currentWidth = isVertical
+            ? 52.0
+            : (52.0 + (targetWidth - 52.0) * t);
+        final double currentHeight = isVertical
+            ? (52.0 + (targetHeight - 52.0) * t)
+            : 52.0;
+
+        final showTextBar = (_showTextPresetPopover ||
+                widget.controller.selectedTool == DrawingTool.text) &&
+            t > 0.85;
+
+        // The morphing capsule dock container
+        final dockContainer = GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanStart: (_) => widget.onDragStart?.call(),
+          onPanUpdate: (details) => widget.onDragDelta(details.delta),
+          onPanEnd: (_) => widget.onDragEnd?.call(),
+          onPanCancel: () => widget.onDragEnd?.call(),
+          child: Tooltip(
+            message: t < 0.5 ? 'Araç Çubuğunu Aç (Sürükleyebilirsiniz)' : '',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(26),
+              onTap: t < 0.5 ? _expandToolbar : null,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(26),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                  child: Container(
+                    width: currentWidth,
+                    height: currentHeight,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.90),
+                      borderRadius: BorderRadius.circular(26),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.75),
+                        width: 1.2,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 22,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
                     ),
-                  ],
+                    child: Stack(
+                      alignment: isVertical
+                          ? Alignment.topCenter
+                          : Alignment.centerLeft,
+                      clipBehavior: Clip.hardEdge,
+                      children: [
+                        // 1. Minimized bubble (active tool icon + color indicator dot)
+                        if (t < 0.45)
+                          Opacity(
+                            opacity: (1.0 - t / 0.45).clamp(0.0, 1.0),
+                            child: SizedBox(
+                              width: 52,
+                              height: 52,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Icon(
+                                    widget.controller.selectedTool.icon,
+                                    size: 22,
+                                    color: const Color(0xFF007AFF),
+                                  ),
+                                  Positioned(
+                                    bottom: 8,
+                                    child: Container(
+                                      width: 5,
+                                      height: 5,
+                                      decoration: BoxDecoration(
+                                        color: widget.controller.selectedTool ==
+                                                DrawingTool.eraser
+                                            ? const Color(0xFF007AFF)
+                                            : widget.controller.selectedColor,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                        // 2. Expanded dock items (tools, pickers, handle)
+                        if (t > 0.15)
+                          Opacity(
+                            opacity: ((t - 0.15) / 0.85).clamp(0.0, 1.0),
+                            child: OverflowBox(
+                              alignment: isVertical
+                                  ? Alignment.topCenter
+                                  : Alignment.centerLeft,
+                              minWidth: 0,
+                              maxWidth: isVertical ? 52 : 650,
+                              minHeight: 0,
+                              maxHeight: isVertical ? 650 : 52,
+                              child: Padding(
+                                padding: isVertical
+                                    ? const EdgeInsets.symmetric(vertical: 8)
+                                    : const EdgeInsets.symmetric(horizontal: 8),
+                                child: isVertical
+                                    ? Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: _buildDockItems(isVertical),
+                                      )
+                                    : Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: _buildDockItems(isVertical),
+                                      ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+
+        if (!showTextBar) {
+          return dockContainer;
+        }
+
+        final popover = AnimatedOpacity(
+          duration: const Duration(milliseconds: 180),
+          opacity: showTextBar ? 1.0 : 0.0,
+          child: _buildCanvaTextPresetPopover(widget.controller),
+        );
+
+        switch (widget.dockEdge) {
+          case ToolbarDockEdge.bottom:
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                popover,
+                const SizedBox(height: 6),
+                dockContainer,
+              ],
+            );
+          case ToolbarDockEdge.top:
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                dockContainer,
+                const SizedBox(height: 6),
+                popover,
+              ],
+            );
+          case ToolbarDockEdge.left:
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                dockContainer,
+                const SizedBox(width: 6),
+                popover,
+              ],
+            );
+          case ToolbarDockEdge.right:
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                popover,
+                const SizedBox(width: 6),
+                dockContainer,
+              ],
+            );
+        }
+      },
     );
   }
 
-  Widget _buildExpandedDock(BuildContext context) {
+  List<Widget> _buildDockItems(bool isVertical) {
     final controller = widget.controller;
-    final showTextBar =
-        _showTextPresetPopover || controller.selectedTool == DrawingTool.text;
-    final isVertical = widget.dockEdge.isVertical;
 
-    final dockItems = <Widget>[
-      // 1. Dedicated Drag Handle (Starts drag on pan!)
-      GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onPanStart: (_) => widget.onDragStart?.call(),
-        onPanUpdate: (details) => widget.onDragDelta(details.delta),
-        onPanEnd: (_) => widget.onDragEnd?.call(),
-        onPanCancel: () => widget.onDragEnd?.call(),
-        child: Tooltip(
-          message: 'Barı Taşımak İçin Sürükleyin\nKüçültmek İçin Dokunun',
-          child: InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: () => setState(() => _isMinimized = true),
+    return <Widget>[
+      // 1. Dedicated Drag Handle (Only this handle starts drag, tap to minimize)
+      Tooltip(
+        message: 'Barı Taşımak İçin Sürükleyin\nKüçültmek İçin Dokunun',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: _minimizeToolbar,
+          child: Container(
+            padding: isVertical
+                ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+                : const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
             child: Container(
-              padding: isVertical
-                  ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
-                  : const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-              child: Container(
-                width: isVertical ? 22 : 5,
-                height: isVertical ? 5 : 22,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF8E8E93),
-                  borderRadius: BorderRadius.circular(2.5),
-                ),
+              width: isVertical ? 22 : 5,
+              height: isVertical ? 5 : 22,
+              decoration: BoxDecoration(
+                color: const Color(0xFF8E8E93),
+                borderRadius: BorderRadius.circular(2.5),
               ),
             ),
           ),
@@ -240,99 +343,6 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar> {
       // 5. More Menu
       _buildMoreMenu(context),
     ];
-
-    final dockContainer = ClipRRect(
-      borderRadius: BorderRadius.circular(32),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-        child: Container(
-          width: isVertical ? 52 : null,
-          height: isVertical ? null : 52,
-          padding: isVertical
-              ? const EdgeInsets.symmetric(vertical: 8)
-              : const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.90),
-            borderRadius: BorderRadius.circular(32),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.7),
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 24,
-                spreadRadius: 1,
-                offset: const Offset(0, 8),
-              ),
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: isVertical
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: dockItems,
-                )
-              : Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: dockItems,
-                ),
-        ),
-      ),
-    );
-
-    if (!showTextBar) {
-      return dockContainer;
-    }
-
-    final popover = _buildCanvaTextPresetPopover(controller);
-
-    switch (widget.dockEdge) {
-      case ToolbarDockEdge.bottom:
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            popover,
-            const SizedBox(height: 6),
-            dockContainer,
-          ],
-        );
-      case ToolbarDockEdge.top:
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            dockContainer,
-            const SizedBox(height: 6),
-            popover,
-          ],
-        );
-      case ToolbarDockEdge.left:
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            dockContainer,
-            const SizedBox(width: 6),
-            popover,
-          ],
-        );
-      case ToolbarDockEdge.right:
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            popover,
-            const SizedBox(width: 6),
-            dockContainer,
-          ],
-        );
-    }
   }
 
   Widget _buildCanvaTextPresetPopover(PlannerController controller) {
@@ -805,9 +815,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       onSelected: (val) {
         if (val == 'minimize') {
-          setState(() {
-            _isMinimized = true;
-          });
+          _minimizeToolbar();
         } else if (val == 'clear') {
           widget.controller.clearCanvas();
         }

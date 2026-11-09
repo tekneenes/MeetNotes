@@ -773,14 +773,26 @@ class _PlannerScreenState extends State<PlannerScreen>
 
                             final isLocked = layerEntry.isLocked;
                             final isText = layerEntry.isText;
+                            final isImage = layerEntry.isImage;
                             final label = isText
                                 ? (layerEntry.textItem!.text.trim().isEmpty
                                     ? 'Metin Kutusu'
                                     : layerEntry.textItem!.text.split('\n').first)
-                                : layerEntry.stroke!.tool.label;
+                                : (isImage
+                                    ? (layerEntry.imageItem!.name ?? 'PDF Sayfası / Görsel')
+                                    : layerEntry.stroke!.tool.label);
                             final dotColor = isText
                                 ? layerEntry.textItem!.color
-                                : layerEntry.stroke!.color;
+                                : (isImage
+                                    ? const Color(0xFFEF4444)
+                                    : layerEntry.stroke!.color);
+
+                            Uint8List? layerImageBytes;
+                            if (isImage) {
+                              try {
+                                layerImageBytes = base64Decode(layerEntry.imageItem!.base64Data);
+                              } catch (_) {}
+                            }
 
                             return ReorderableDelayedDragStartListener(
                               key: ValueKey('unified_layer_${layerEntry.uniqueKey}'),
@@ -845,11 +857,31 @@ class _PlannerScreenState extends State<PlannerScreen>
                                                     color: Color(0xFF007AFF),
                                                   ),
                                                 )
-                                              : CustomPaint(
-                                                  painter: _StrokeLayerMiniPreviewPainter(
-                                                    stroke: layerEntry.stroke!,
-                                                  ),
-                                                ),
+                                              : (isImage
+                                                  ? ClipRRect(
+                                                      borderRadius: BorderRadius.circular(7),
+                                                      child: layerImageBytes != null
+                                                          ? Image.memory(
+                                                              layerImageBytes,
+                                                              fit: BoxFit.cover,
+                                                              errorBuilder: (_, __, ___) =>
+                                                                  const Icon(
+                                                                Icons.picture_as_pdf_rounded,
+                                                                size: 18,
+                                                                color: Color(0xFFEF4444),
+                                                              ),
+                                                            )
+                                                          : const Icon(
+                                                              Icons.picture_as_pdf_rounded,
+                                                              size: 18,
+                                                              color: Color(0xFFEF4444),
+                                                            ),
+                                                    )
+                                                  : CustomPaint(
+                                                      painter: _StrokeLayerMiniPreviewPainter(
+                                                        stroke: layerEntry.stroke!,
+                                                      ),
+                                                    )),
                                         ),
                                         const SizedBox(width: 8),
                                         Expanded(
@@ -945,6 +977,30 @@ class _PlannerScreenState extends State<PlannerScreen>
                                                         ),
                                                       ),
                                                     ),
+                                                  if (isImage)
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(
+                                                        horizontal: 4.5,
+                                                        vertical: 1.5,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(0xFFFEE2E2),
+                                                        borderRadius:
+                                                            BorderRadius.circular(4),
+                                                      ),
+                                                      child: Text(
+                                                        layerEntry.imageItem!.name
+                                                                    ?.contains('Sayfa') ==
+                                                                true
+                                                            ? 'PDF SAYFASI'
+                                                            : 'GÖRSEL',
+                                                        style: const TextStyle(
+                                                          fontSize: 8.5,
+                                                          fontWeight: FontWeight.w800,
+                                                          color: Color(0xFFDC2626),
+                                                        ),
+                                                      ),
+                                                    ),
                                                   Text(
                                                     'Katman #${unifiedIdx + 1}',
                                                     style: TextStyle(
@@ -1003,6 +1059,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                                                 onTap: () {
                                                   if (isText) {
                                                     activeController.toggleCanvasTextLock(layerEntry.textId!);
+                                                  } else if (isImage) {
+                                                    activeController.toggleCanvasImageLock(layerEntry.imageId!);
                                                   } else {
                                                     activeController.toggleStrokeLock(layerEntry.strokeIndex!);
                                                   }

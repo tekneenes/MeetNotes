@@ -45,6 +45,7 @@ class PlannerController extends ChangeNotifier {
   List<Offset> _lassoPoints = [];
   final Set<int> _selectedStrokeIndices = {};
   final Set<String> _selectedTextIds = {};
+  final Set<String> _selectedImageIds = {};
   bool _isDraggingSelection = false;
   Offset? _lastLassoDragPoint;
   SelectionHandle? _activeResizeHandle;
@@ -55,6 +56,7 @@ class PlannerController extends ChangeNotifier {
   Offset? _initialResizeCenter;
   Map<int, DrawingStroke> _initialResizeStrokes = {};
   Map<String, CanvasTextItem> _initialResizeTexts = {};
+  Map<String, CanvasImageItem> _initialResizeImages = {};
   bool _isRotatingSelection = false;
   Offset? _rotationCenter;
   double? _initialRotationAngle;
@@ -64,6 +66,7 @@ class PlannerController extends ChangeNotifier {
   Rect? _rotationAnchorBounds;
   Map<int, DrawingStroke> _initialRotationStrokes = {};
   Map<String, CanvasTextItem> _initialRotationTexts = {};
+  Map<String, CanvasImageItem> _initialRotationImages = {};
 
   // Hızlı Erişim, Katman Sıralaması & Gruplama State
   bool _isQuickAccessOpen = false;
@@ -79,7 +82,6 @@ class PlannerController extends ChangeNotifier {
   List<CanvasFileItem> _canvasFiles = [];
   String? _selectedTextId;
   String? _editingTextId;
-  String? _selectedImageId;
   String? _selectedFileId;
   CanvasFileItem? _activePdfFile;
   List<SavedCanvasAsset> _savedAssets = [];
@@ -115,9 +117,13 @@ class PlannerController extends ChangeNotifier {
   List<Offset> get lassoPoints => List.unmodifiable(_lassoPoints);
   Set<int> get selectedStrokeIndices => Set.unmodifiable(_selectedStrokeIndices);
   Set<String> get selectedTextIds => Set.unmodifiable(_selectedTextIds);
+  Set<String> get selectedImageIds => Set.unmodifiable(_selectedImageIds);
   bool get hasLassoSelection =>
-      _selectedStrokeIndices.isNotEmpty || _selectedTextIds.isNotEmpty;
+      _selectedStrokeIndices.isNotEmpty ||
+      _selectedTextIds.isNotEmpty ||
+      _selectedImageIds.isNotEmpty;
   bool isTextLassoSelected(String id) => _selectedTextIds.contains(id);
+  bool isImageLassoSelected(String id) => _selectedImageIds.contains(id);
   bool get isDraggingSelection =>
       _isDraggingSelection || _activeResizeHandle != null || _isRotatingSelection;
   SelectionHandle? get activeResizeHandle => _activeResizeHandle;
@@ -138,15 +144,18 @@ class PlannerController extends ChangeNotifier {
   CanvasFileItem? get activePdfFile => _activePdfFile;
   List<CanvasImageItem> get canvasImages => List.unmodifiable(_canvasImages);
   List<CanvasFileItem> get canvasFiles => List.unmodifiable(_canvasFiles);
-  String? get selectedImageId => _selectedImageId;
+  String? get selectedImageId =>
+      _selectedImageIds.length == 1 ? _selectedImageIds.first : null;
   String? get selectedFileId => _selectedFileId;
   List<SavedCanvasAsset> get savedAssets => List.unmodifiable(_savedAssets);
   bool get hasAnyLayerSelection =>
       _selectedStrokeIndices.isNotEmpty ||
       _selectedTextIds.isNotEmpty ||
+      _selectedImageIds.isNotEmpty ||
       _selectedTextId != null;
   int get selectedLayerCount =>
       _selectedStrokeIndices.length +
+      _selectedImageIds.length +
       (_selectedTextIds.isNotEmpty
           ? _selectedTextIds.length
           : (_selectedTextId != null ? 1 : 0));
@@ -156,7 +165,11 @@ class PlannerController extends ChangeNotifier {
       _showOnlySelectedGroups && hasGroupedStrokeInSelection;
 
   bool get isSingleLineOrArrowSelected {
-    if (_selectedStrokeIndices.length != 1 || _selectedTextIds.isNotEmpty) return false;
+    if (_selectedStrokeIndices.length != 1 ||
+        _selectedTextIds.isNotEmpty ||
+        _selectedImageIds.isNotEmpty) {
+      return false;
+    }
     final idx = _selectedStrokeIndices.first;
     if (idx < 0 || idx >= _strokes.length) return false;
     return _strokes[idx].tool.isLineOrArrow;
@@ -182,6 +195,12 @@ class PlannerController extends ChangeNotifier {
     if (_selectedTextId != null) {
       final idx = _canvasTexts.indexWhere((t) => t.id == _selectedTextId);
       if (idx != -1 && _canvasTexts[idx].isLocked) {
+        return true;
+      }
+    }
+    for (final id in _selectedImageIds) {
+      final idx = _canvasImages.indexWhere((img) => img.id == id);
+      if (idx != -1 && _canvasImages[idx].isLocked) {
         return true;
       }
     }
@@ -378,13 +397,35 @@ class PlannerController extends ChangeNotifier {
       height: pageH,
       name: '${dragData.fileName} • Sayfa ${dragData.pageIndex + 1}',
       base64Data: base64Encode(pngBytes),
+      layerOrder: _nextTopLayerOrder(),
     );
 
     _canvasImages.add(item);
-    _selectedImageId = id;
+    _normalizeUnifiedLayerOrders();
+    _selectImageInLasso(id);
     await _saveCurrentCanvasImages();
     notifyListeners();
     return item;
+  }
+
+  /// Selects a single canvas image using the shared lasso selection system
+  /// (same dashed frame, 8 resize handles and rotation knob as strokes).
+  void _selectImageInLasso(String id) {
+    if (_selectedTextId != null || _editingTextId != null) {
+      _editingTextId = null;
+      _selectedTextId = null;
+    }
+    _selectedTool = DrawingTool.lasso;
+    _selectedStrokeIndices.clear();
+    _selectedTextIds.clear();
+    _selectedImageIds
+      ..clear()
+      ..add(id);
+    _selectedFileId = null;
+    _lassoPoints = [];
+    _isDraggingSelection = false;
+    _activeResizeHandle = null;
+    _syncSelectionRotationFromStrokes();
   }
 
   Future<CanvasImageItem?> pickAndAddPhoto({Offset? targetPosition}) async {
@@ -413,9 +454,11 @@ class PlannerController extends ChangeNotifier {
         position: pos,
         name: file.name,
         base64Data: base64Str,
+        layerOrder: _nextTopLayerOrder(),
       );
       _canvasImages.add(item);
-      _selectedImageId = id;
+      _normalizeUnifiedLayerOrders();
+      _selectImageInLasso(id);
       await _saveCurrentCanvasImages();
       notifyListeners();
       return item;
@@ -487,7 +530,8 @@ class PlannerController extends ChangeNotifier {
 
   void removeCanvasImage(String id) {
     _canvasImages.removeWhere((img) => img.id == id);
-    if (_selectedImageId == id) _selectedImageId = null;
+    _selectedImageIds.remove(id);
+    _normalizeUnifiedLayerOrders();
     _saveCurrentCanvasImages();
     notifyListeners();
   }
@@ -502,10 +546,11 @@ class PlannerController extends ChangeNotifier {
   }
 
   void selectCanvasImage(String? id) {
-    _selectedImageId = id;
-    if (id != null) {
-      _selectedFileId = null;
-      _selectedTextId = null;
+    if (id == null) {
+      _selectedImageIds.clear();
+      if (!hasLassoSelection) _selectionRotationAngle = 0.0;
+    } else if (_canvasImages.any((img) => img.id == id)) {
+      _selectImageInLasso(id);
     }
     notifyListeners();
   }
@@ -538,7 +583,7 @@ class PlannerController extends ChangeNotifier {
   void selectCanvasFile(String? id) {
     _selectedFileId = id;
     if (id != null) {
-      _selectedImageId = null;
+      _selectedImageIds.clear();
       _selectedTextId = null;
     }
     notifyListeners();
@@ -748,7 +793,7 @@ class PlannerController extends ChangeNotifier {
   }
 
   void _syncSelectionRotationFromStrokes() {
-    if (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) {
+    if (!hasLassoSelection) {
       _selectionRotationAngle = 0.0;
       return;
     }
@@ -756,6 +801,18 @@ class PlannerController extends ChangeNotifier {
     for (final idx in _selectedStrokeIndices) {
       if (idx >= 0 && idx < _strokes.length) {
         final r = _strokes[idx].rotation;
+        if (commonRotation == null) {
+          commonRotation = r;
+        } else if ((commonRotation - r).abs() > 0.001) {
+          commonRotation = 0.0;
+          break;
+        }
+      }
+    }
+    for (final imageId in _selectedImageIds) {
+      final idx = _canvasImages.indexWhere((img) => img.id == imageId);
+      if (idx != -1) {
+        final r = _canvasImages[idx].rotation;
         if (commonRotation == null) {
           commonRotation = r;
         } else if ((commonRotation - r).abs() > 0.001) {
@@ -780,7 +837,7 @@ class PlannerController extends ChangeNotifier {
   }
 
   Rect? _computeRawSelectionBounds() {
-    if (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) return null;
+    if (!hasLassoSelection) return null;
     double minX = double.infinity;
     double minY = double.infinity;
     double maxX = double.negativeInfinity;
@@ -842,6 +899,30 @@ class PlannerController extends ChangeNotifier {
       }
     }
 
+    for (final imageId in _selectedImageIds) {
+      final idx = _canvasImages.indexWhere((img) => img.id == imageId);
+      if (idx == -1) continue;
+      final item = _canvasImages[idx];
+      final itemCenter = item.center;
+      final r = item.rect;
+      for (final c in [r.topLeft, r.topRight, r.bottomRight, r.bottomLeft]) {
+        found = true;
+        final worldCorner = item.rotation != 0.0
+            ? _rotatePointAround(c, itemCenter, item.rotation)
+            : c;
+        final lx = _selectionRotationAngle == 0.0
+            ? worldCorner.dx
+            : worldCorner.dx * cosNeg - worldCorner.dy * sinNeg;
+        final ly = _selectionRotationAngle == 0.0
+            ? worldCorner.dy
+            : worldCorner.dx * sinNeg + worldCorner.dy * cosNeg;
+        if (lx < minX) minX = lx;
+        if (ly < minY) minY = ly;
+        if (lx > maxX) maxX = lx;
+        if (ly > maxY) maxY = ly;
+      }
+    }
+
     if (!found) return null;
 
     if (_selectionRotationAngle == 0.0) {
@@ -865,9 +946,10 @@ class PlannerController extends ChangeNotifier {
   Rect? get selectionBounds {
     final raw = _computeRawSelectionBounds();
     if (raw == null) return null;
-    // When only text items are selected (no drawing strokes), the selection box
-    // hugs the exact outer edges of the text box without inflation padding.
-    if (_selectedStrokeIndices.isEmpty && _selectedTextIds.isNotEmpty) {
+    // When only text items / images are selected (no drawing strokes), the
+    // selection box hugs the exact outer edges without inflation padding.
+    if (_selectedStrokeIndices.isEmpty &&
+        (_selectedTextIds.isNotEmpty || _selectedImageIds.isNotEmpty)) {
       return raw;
     }
     return raw.inflate(8.0);
@@ -1053,6 +1135,7 @@ class PlannerController extends ChangeNotifier {
     _canvasTexts = [];
     _canvasImages = [];
     _canvasFiles = [];
+    _selectedImageIds.clear();
     _undoStack.clear();
     _redoStack.clear();
     _storage.savePageCount(_currentWeekStart, _totalPages, prefix: _storagePrefix);
@@ -1068,6 +1151,7 @@ class PlannerController extends ChangeNotifier {
     _canvasTexts = await _storage.loadCanvasTexts(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
     _canvasImages = await _storage.loadCanvasImages(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
     _canvasFiles = await _storage.loadCanvasFiles(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
+    _selectedImageIds.clear();
     _normalizeUnifiedLayerOrders();
     notifyListeners();
   }
@@ -1092,6 +1176,7 @@ class PlannerController extends ChangeNotifier {
     if (tool != DrawingTool.lasso) {
       _selectedStrokeIndices.clear();
       _selectedTextIds.clear();
+      _selectedImageIds.clear();
       _lassoPoints = [];
       _isDraggingSelection = false;
     }
@@ -1370,6 +1455,7 @@ class PlannerController extends ChangeNotifier {
       // Tapped outside the selected line: deselect it
       _selectedStrokeIndices.clear();
       _selectedTextIds.clear();
+      _selectedImageIds.clear();
       _activeResizeHandle = null;
       _isDraggingSelection = false;
       _lastLassoDragPoint = null;
@@ -1429,6 +1515,11 @@ class PlannerController extends ChangeNotifier {
                 for (final item in _canvasTexts)
                   if (item.id == id) id: item,
             };
+            _initialResizeImages = {
+              for (final id in _selectedImageIds)
+                for (final item in _canvasImages)
+                  if (item.id == id) id: item,
+            };
             _isDraggingSelection = false;
             _lastLassoDragPoint = null;
             notifyListeners();
@@ -1454,29 +1545,67 @@ class PlannerController extends ChangeNotifier {
         }
       }
 
-      // 3. Check if user directly touched/grabbed an existing stroke, shape, or text box
+      // 3. Check if user directly touched/grabbed an existing stroke, shape, text box or image
       final hitIndex = _findStrokeAtPoint(point);
       final hitText = _findTextAtPoint(point);
+      final hitImage = _findImageAtPoint(point);
 
       bool selectStroke = false;
       bool selectText = false;
+      bool selectImage = false;
 
-      if (hitIndex != null && hitText != null) {
-        final strokeOrder = _strokes[hitIndex].layerOrder ?? 0;
-        final textOrder = hitText.layerOrder ?? 0;
-        if (textOrder >= strokeOrder) {
-          selectText = true;
-        } else {
+      {
+        int bestOrder = -1 << 30;
+        if (hitIndex != null) {
+          bestOrder = _strokes[hitIndex].layerOrder ?? hitIndex;
           selectStroke = true;
         }
-      } else if (hitText != null) {
-        selectText = true;
-      } else if (hitIndex != null) {
-        selectStroke = true;
+        if (hitText != null) {
+          final textOrder = hitText.layerOrder ?? 0;
+          if (!selectStroke || textOrder >= bestOrder) {
+            bestOrder = textOrder;
+            selectText = true;
+            selectStroke = false;
+          }
+        }
+        if (hitImage != null) {
+          final imageOrder = hitImage.layerOrder ?? 0;
+          if ((!selectStroke && !selectText) || imageOrder >= bestOrder) {
+            bestOrder = imageOrder;
+            selectImage = true;
+            selectStroke = false;
+            selectText = false;
+          }
+        }
+      }
+
+      if (selectImage && hitImage != null) {
+        _selectedStrokeIndices.clear();
+        _selectedTextIds.clear();
+        _selectedImageIds
+          ..clear()
+          ..add(hitImage.id);
+        _selectedTextId = null;
+        _editingTextId = null;
+        _syncSelectionRotationFromStrokes();
+        if (isSelectionLocked) {
+          _isDraggingSelection = false;
+          _lastLassoDragPoint = null;
+        } else {
+          _undoStack.add(List.from(_strokes));
+          _redoStack.clear();
+          _isDraggingSelection = true;
+          _lastLassoDragPoint = point;
+        }
+        _activeResizeHandle = null;
+        _lassoPoints = [];
+        notifyListeners();
+        return;
       }
 
       if (selectText && hitText != null) {
         _selectedStrokeIndices.clear();
+        _selectedImageIds.clear();
         _selectedTextIds
           ..clear()
           ..add(hitText.id);
@@ -1500,6 +1629,7 @@ class PlannerController extends ChangeNotifier {
 
       if (selectStroke && hitIndex != null) {
         _selectedTextIds.clear();
+        _selectedImageIds.clear();
         _selectedStrokeIndices
           ..clear()
           ..add(hitIndex);
@@ -1524,6 +1654,7 @@ class PlannerController extends ChangeNotifier {
       // 4. Otherwise, start drawing a freeform lasso loop in empty space
       _selectedStrokeIndices.clear();
       _selectedTextIds.clear();
+      _selectedImageIds.clear();
       _selectionRotationAngle = 0.0;
       _isDraggingSelection = false;
       _activeResizeHandle = null;
@@ -1628,6 +1759,13 @@ class PlannerController extends ChangeNotifier {
             _canvasTexts[idx] = t.copyWith(position: t.position + delta);
           }
         }
+        for (final imageId in _selectedImageIds) {
+          final idx = _canvasImages.indexWhere((img) => img.id == imageId);
+          if (idx != -1) {
+            final img = _canvasImages[idx];
+            _canvasImages[idx] = img.copyWith(position: img.position + delta);
+          }
+        }
       } else {
         _lassoPoints = List<Offset>.from(_lassoPoints)..add(point);
       }
@@ -1704,13 +1842,17 @@ class PlannerController extends ChangeNotifier {
         _initialResizeRawBounds = null;
         _initialResizeStrokes.clear();
         _initialResizeTexts.clear();
+        final hadImages = _initialResizeImages.isNotEmpty;
+        _initialResizeImages.clear();
         _saveCurrentStrokes();
         _saveCurrentCanvasTexts();
+        if (hadImages) _saveCurrentCanvasImages();
       } else if (_isDraggingSelection) {
         _isDraggingSelection = false;
         _lastLassoDragPoint = null;
         _saveCurrentStrokes();
         _saveCurrentCanvasTexts();
+        if (_selectedImageIds.isNotEmpty) _saveCurrentCanvasImages();
       } else if (_lassoPoints.length >= 3) {
         _selectStrokesInsideLasso();
         _lassoPoints = [];
@@ -1735,6 +1877,7 @@ class PlannerController extends ChangeNotifier {
               _selectedStrokeIndices.clear();
               _selectedStrokeIndices.add(_strokes.length - 1);
               _selectedTextIds.clear();
+              _selectedImageIds.clear();
             }
           }
         }
@@ -2044,6 +2187,42 @@ class PlannerController extends ChangeNotifier {
         );
       }
     }
+
+    for (final entry in _initialResizeImages.entries) {
+      final idx = _canvasImages.indexWhere((img) => img.id == entry.key);
+      if (idx == -1) continue;
+      final origImage = entry.value;
+      final scaleX = initW > 0.001 ? (newW / initW) : 1.0;
+      final scaleY = initH > 0.001 ? (newH / initH) : 1.0;
+
+      final localCenter = _rotatePointAround(
+        origImage.center,
+        pivot,
+        -_selectionRotationAngle,
+      );
+      final mappedX = initW > 0.001
+          ? newLeft + ((localCenter.dx - initRect.left) / initW) * newW
+          : newLeft + (localCenter.dx - initRect.left);
+      final mappedY = initH > 0.001
+          ? newTop + ((localCenter.dy - initRect.top) / initH) * newH
+          : newTop + (localCenter.dy - initRect.top);
+      final newCenter = _rotatePointAround(
+        Offset(mappedX, mappedY),
+        pivot,
+        _selectionRotationAngle,
+      );
+
+      final newWidth = (origImage.width * scaleX).clamp(24.0, 4000.0);
+      final newHeight = (origImage.height * scaleY).clamp(24.0, 4000.0);
+      _canvasImages[idx] = origImage.copyWith(
+        position: Offset(
+          newCenter.dx - newWidth / 2.0,
+          newCenter.dy - newHeight / 2.0,
+        ),
+        width: newWidth,
+        height: newHeight,
+      );
+    }
   }
 
   int? _findStrokeAtPoint(Offset point) {
@@ -2094,6 +2273,18 @@ class PlannerController extends ChangeNotifier {
     return null;
   }
 
+  CanvasImageItem? _findImageAtPoint(Offset point) {
+    final sorted = List<CanvasImageItem>.from(_canvasImages)
+      ..sort((a, b) => (b.layerOrder ?? 0).compareTo(a.layerOrder ?? 0));
+    for (final img in sorted) {
+      final localPt = _rotatePointAround(point, img.center, -img.rotation);
+      if (img.rect.contains(localPt)) {
+        return img;
+      }
+    }
+    return null;
+  }
+
   double _distanceToSegment(Offset p, Offset a, Offset b) {
     final ab = b - a;
     final ap = p - a;
@@ -2109,6 +2300,7 @@ class PlannerController extends ChangeNotifier {
     final lassoBounds = lassoPath.getBounds();
     _selectedStrokeIndices.clear();
     _selectedTextIds.clear();
+    _selectedImageIds.clear();
 
     final unlockedHits = <int>{};
     final lockedHits = <int>{};
@@ -2236,12 +2428,48 @@ class PlannerController extends ChangeNotifier {
       }
     }
 
-    if (unlockedHits.isNotEmpty || unlockedTextHits.isNotEmpty) {
+    final unlockedImageHits = <String>{};
+    final lockedImageHits = <String>{};
+    for (final img in _canvasImages) {
+      final rect = img.rect;
+      final center = rect.center;
+      final samplePoints = [
+        center,
+        rect.topLeft,
+        rect.topRight,
+        rect.bottomLeft,
+        rect.bottomRight,
+        rect.topCenter,
+        rect.bottomCenter,
+        rect.centerLeft,
+        rect.centerRight,
+      ].map((p) => _rotatePointAround(p, center, img.rotation));
+
+      bool isSelected = samplePoints.any(lassoPath.contains);
+      if (!isSelected && lassoBounds.overlaps(rect)) {
+        final intersection = lassoBounds.intersect(rect);
+        if (intersection.width >= rect.width * 0.35 &&
+            intersection.height >= rect.height * 0.35) {
+          isSelected = true;
+        }
+      }
+      if (isSelected) {
+        (img.isLocked ? lockedImageHits : unlockedImageHits).add(img.id);
+      }
+    }
+
+    if (unlockedHits.isNotEmpty ||
+        unlockedTextHits.isNotEmpty ||
+        unlockedImageHits.isNotEmpty) {
       _selectedStrokeIndices.addAll(unlockedHits);
       _selectedTextIds.addAll(unlockedTextHits);
-    } else if (lockedHits.isNotEmpty || lockedTextHits.isNotEmpty) {
+      _selectedImageIds.addAll(unlockedImageHits);
+    } else if (lockedHits.isNotEmpty ||
+        lockedTextHits.isNotEmpty ||
+        lockedImageHits.isNotEmpty) {
       _selectedStrokeIndices.addAll(lockedHits);
       _selectedTextIds.addAll(lockedTextHits);
+      _selectedImageIds.addAll(lockedImageHits);
     }
     _selectedTextId = null;
     _editingTextId = null;
@@ -2287,9 +2515,11 @@ class PlannerController extends ChangeNotifier {
   void clearLassoSelection() {
     if (_selectedStrokeIndices.isNotEmpty ||
         _selectedTextIds.isNotEmpty ||
+        _selectedImageIds.isNotEmpty ||
         _lassoPoints.isNotEmpty) {
       _selectedStrokeIndices.clear();
       _selectedTextIds.clear();
+      _selectedImageIds.clear();
       _selectionRotationAngle = 0.0;
       _lassoPoints = [];
       _isDraggingSelection = false;
@@ -2298,8 +2528,7 @@ class PlannerController extends ChangeNotifier {
   }
 
   void deleteSelectedStrokes() {
-    if ((_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) ||
-        isSelectionLocked) {
+    if (!hasLassoSelection || isSelectionLocked) {
       return;
     }
     _undoStack.add(List.from(_strokes));
@@ -2313,18 +2542,24 @@ class PlannerController extends ChangeNotifier {
     for (final textId in _selectedTextIds) {
       _canvasTexts.removeWhere((t) => t.id == textId);
     }
+    final hadImages = _selectedImageIds.isNotEmpty;
+    for (final imageId in _selectedImageIds) {
+      _canvasImages.removeWhere((img) => img.id == imageId);
+    }
     _selectedStrokeIndices.clear();
     _selectedTextIds.clear();
+    _selectedImageIds.clear();
     _selectionRotationAngle = 0.0;
     _cleanupSingletonGroups();
     _normalizeUnifiedLayerOrders();
     _saveCurrentStrokes();
     _saveCurrentCanvasTexts();
+    if (hadImages) _saveCurrentCanvasImages();
     notifyListeners();
   }
 
   void duplicateSelectedStrokes() {
-    if (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) return;
+    if (!hasLassoSelection) return;
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
     final newIndices = <int>{};
@@ -2367,15 +2602,34 @@ class PlannerController extends ChangeNotifier {
         newTextIds.add(duplicatedText.id);
       }
     }
+    final newImageIds = <String>{};
+    for (final imageId in _selectedImageIds) {
+      final idx = _canvasImages.indexWhere((img) => img.id == imageId);
+      if (idx != -1) {
+        final orig = _canvasImages[idx];
+        final dup = orig.copyWith(
+          id: 'img_${nowMicros}_${newImageIds.length}',
+          position: orig.position + const Offset(24, 24),
+          isLocked: false,
+          layerOrder: _nextTopLayerOrder(),
+        );
+        _canvasImages.add(dup);
+        newImageIds.add(dup.id);
+      }
+    }
     _selectedStrokeIndices
       ..clear()
       ..addAll(newIndices);
     _selectedTextIds
       ..clear()
       ..addAll(newTextIds);
+    _selectedImageIds
+      ..clear()
+      ..addAll(newImageIds);
     _normalizeUnifiedLayerOrders();
     _saveCurrentStrokes();
     _saveCurrentCanvasTexts();
+    if (newImageIds.isNotEmpty) _saveCurrentCanvasImages();
     notifyListeners();
   }
 
@@ -2454,7 +2708,7 @@ class PlannerController extends ChangeNotifier {
   // --- Canva-Style Kilitleme (Lock / Unlock Management) ---
 
   void lockSelectedStrokes() {
-    if (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) return;
+    if (!hasLassoSelection) return;
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
 
@@ -2469,6 +2723,7 @@ class PlannerController extends ChangeNotifier {
         _canvasTexts[idx] = _canvasTexts[idx].copyWith(isLocked: true);
       }
     }
+    _setSelectedImagesLocked(true);
     _isDraggingSelection = false;
     _activeResizeHandle = null;
     _isRotatingSelection = false;
@@ -2478,7 +2733,7 @@ class PlannerController extends ChangeNotifier {
   }
 
   void unlockSelectedStrokes() {
-    if (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) return;
+    if (!hasLassoSelection) return;
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
 
@@ -2493,9 +2748,21 @@ class PlannerController extends ChangeNotifier {
         _canvasTexts[idx] = _canvasTexts[idx].copyWith(isLocked: false);
       }
     }
+    _setSelectedImagesLocked(false);
     _saveCurrentStrokes();
     _saveCurrentCanvasTexts();
     notifyListeners();
+  }
+
+  void _setSelectedImagesLocked(bool locked) {
+    if (_selectedImageIds.isEmpty) return;
+    for (final imageId in _selectedImageIds) {
+      final idx = _canvasImages.indexWhere((img) => img.id == imageId);
+      if (idx != -1) {
+        _canvasImages[idx] = _canvasImages[idx].copyWith(isLocked: locked);
+      }
+    }
+    _saveCurrentCanvasImages();
   }
 
   void toggleSelectionLock() {
@@ -2530,8 +2797,7 @@ class PlannerController extends ChangeNotifier {
   void startRotation(Offset startCanvasPoint) {
     if (isSelectionLocked) return;
     final rawBounds = _computeRawSelectionBounds();
-    if (rawBounds == null ||
-        (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty)) {
+    if (rawBounds == null || !hasLassoSelection) {
       return;
     }
 
@@ -2563,6 +2829,11 @@ class PlannerController extends ChangeNotifier {
     _initialRotationTexts = {
       for (final id in _selectedTextIds)
         for (final item in _canvasTexts)
+          if (item.id == id) id: item,
+    };
+    _initialRotationImages = {
+      for (final id in _selectedImageIds)
+        for (final item in _canvasImages)
           if (item.id == id) id: item,
     };
     notifyListeners();
@@ -2628,6 +2899,20 @@ class PlannerController extends ChangeNotifier {
         );
       }
     }
+
+    for (final entry in _initialRotationImages.entries) {
+      final idx = _canvasImages.indexWhere((img) => img.id == entry.key);
+      if (idx == -1) continue;
+      final orig = entry.value;
+      final newCenter = _rotatePointAround(orig.center, center, deltaAngle);
+      _canvasImages[idx] = orig.copyWith(
+        position: Offset(
+          newCenter.dx - orig.width / 2.0,
+          newCenter.dy - orig.height / 2.0,
+        ),
+        rotation: orig.rotation + deltaAngle,
+      );
+    }
     notifyListeners();
   }
 
@@ -2639,8 +2924,11 @@ class PlannerController extends ChangeNotifier {
     _rotationAnchorBounds = null;
     _initialRotationStrokes.clear();
     _initialRotationTexts.clear();
+    final hadImages = _initialRotationImages.isNotEmpty;
+    _initialRotationImages.clear();
     _saveCurrentStrokes();
     _saveCurrentCanvasTexts();
+    if (hadImages) _saveCurrentCanvasImages();
     notifyListeners();
   }
 
@@ -2648,7 +2936,7 @@ class PlannerController extends ChangeNotifier {
     if (isSelectionLocked) return;
     final rawBounds = _computeRawSelectionBounds();
     if (rawBounds == null ||
-        (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty)) {
+        !hasLassoSelection) {
       return;
     }
 
@@ -2676,6 +2964,18 @@ class PlannerController extends ChangeNotifier {
         );
       }
     }
+    for (final imageId in _selectedImageIds) {
+      final idx = _canvasImages.indexWhere((img) => img.id == imageId);
+      if (idx != -1) {
+        final img = _canvasImages[idx];
+        final newCenterDx = 2 * cx - img.center.dx;
+        _canvasImages[idx] = img.copyWith(
+          position: Offset(newCenterDx - img.width / 2.0, img.position.dy),
+          rotation: -img.rotation,
+        );
+      }
+    }
+    if (_selectedImageIds.isNotEmpty) _saveCurrentCanvasImages();
     _saveCurrentStrokes();
     _saveCurrentCanvasTexts();
     notifyListeners();
@@ -2685,7 +2985,7 @@ class PlannerController extends ChangeNotifier {
     if (isSelectionLocked) return;
     final rawBounds = _computeRawSelectionBounds();
     if (rawBounds == null ||
-        (_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty)) {
+        !hasLassoSelection) {
       return;
     }
 
@@ -2714,6 +3014,18 @@ class PlannerController extends ChangeNotifier {
         );
       }
     }
+    for (final imageId in _selectedImageIds) {
+      final idx = _canvasImages.indexWhere((img) => img.id == imageId);
+      if (idx != -1) {
+        final img = _canvasImages[idx];
+        final newCenterDy = 2 * cy - img.center.dy;
+        _canvasImages[idx] = img.copyWith(
+          position: Offset(img.position.dx, newCenterDy - img.height / 2.0),
+          rotation: -img.rotation,
+        );
+      }
+    }
+    if (_selectedImageIds.isNotEmpty) _saveCurrentCanvasImages();
     _saveCurrentStrokes();
     _saveCurrentCanvasTexts();
     notifyListeners();
@@ -2731,17 +3043,22 @@ class PlannerController extends ChangeNotifier {
       final order = _canvasTexts[i].layerOrder ?? (_strokes.length + i);
       if (order > maxOrder) maxOrder = order;
     }
+    for (int i = 0; i < _canvasImages.length; i++) {
+      final order = _canvasImages[i].layerOrder ??
+          (_strokes.length + _canvasTexts.length + i);
+      if (order > maxOrder) maxOrder = order;
+    }
     return maxOrder + 1;
   }
 
   void _normalizeUnifiedLayerOrders() {
-    if (_strokes.isEmpty && _canvasTexts.isEmpty) return;
+    if (_strokes.isEmpty && _canvasTexts.isEmpty && _canvasImages.isEmpty) return;
 
     final entries = <_InternalLayerSortItem>[];
     for (int i = 0; i < _strokes.length; i++) {
       entries.add(
         _InternalLayerSortItem(
-          isStroke: true,
+          type: CanvasLayerType.stroke,
           originalStrokeIndex: i,
           stroke: _strokes[i],
           sortOrder: _strokes[i].layerOrder,
@@ -2752,10 +3069,20 @@ class PlannerController extends ChangeNotifier {
     for (int i = 0; i < _canvasTexts.length; i++) {
       entries.add(
         _InternalLayerSortItem(
-          isStroke: false,
+          type: CanvasLayerType.text,
           textItem: _canvasTexts[i],
           sortOrder: _canvasTexts[i].layerOrder,
           tieBreaker: _strokes.length + i,
+        ),
+      );
+    }
+    for (int i = 0; i < _canvasImages.length; i++) {
+      entries.add(
+        _InternalLayerSortItem(
+          type: CanvasLayerType.image,
+          imageItem: _canvasImages[i],
+          sortOrder: _canvasImages[i].layerOrder,
+          tieBreaker: _strokes.length + _canvasTexts.length + i,
         ),
       );
     }
@@ -2771,6 +3098,7 @@ class PlannerController extends ChangeNotifier {
     final newStrokes = <DrawingStroke>[];
     final newSelected = <int>{};
     final newTexts = <CanvasTextItem>[];
+    final newImages = <CanvasImageItem>[];
 
     for (int unifiedIdx = 0; unifiedIdx < entries.length; unifiedIdx++) {
       final item = entries[unifiedIdx];
@@ -2780,8 +3108,10 @@ class PlannerController extends ChangeNotifier {
         if (prevSelected.contains(item.originalStrokeIndex)) {
           newSelected.add(newStrokeIdx);
         }
-      } else {
+      } else if (item.isText) {
         newTexts.add(item.textItem!.copyWith(layerOrder: unifiedIdx));
+      } else if (item.isImage) {
+        newImages.add(item.imageItem!.copyWith(layerOrder: unifiedIdx));
       }
     }
 
@@ -2790,6 +3120,7 @@ class PlannerController extends ChangeNotifier {
       ..clear()
       ..addAll(newSelected);
     _canvasTexts = newTexts;
+    _canvasImages = newImages;
   }
 
   /// Unified layer list ordered from BOTTOMMOST (0) to TOPMOST (length - 1).
@@ -2813,29 +3144,33 @@ class PlannerController extends ChangeNotifier {
         ),
       );
     }
+    for (int i = 0; i < _canvasImages.length; i++) {
+      result.add(
+        CanvasLayerEntry.image(
+          imageId: _canvasImages[i].id,
+          imageItem: _canvasImages[i],
+          layerOrder: _canvasImages[i].layerOrder ??
+              (_strokes.length + _canvasTexts.length + i),
+        ),
+      );
+    }
     result.sort((a, b) => a.layerOrder.compareTo(b.layerOrder));
     return [
       for (int i = 0; i < result.length; i++)
-        result[i].isStroke
-            ? CanvasLayerEntry.stroke(
-                strokeIndex: result[i].strokeIndex!,
-                stroke: result[i].stroke!,
-                layerOrder: i,
-              )
-            : CanvasLayerEntry.text(
-                textId: result[i].textId!,
-                textItem: result[i].textItem!,
-                layerOrder: i,
-              ),
+        result[i].withLayerOrder(i),
     ];
   }
 
   bool isUnifiedLayerSelected(CanvasLayerEntry entry) {
     if (entry.isStroke) {
       return _selectedStrokeIndices.contains(entry.strokeIndex);
+    } else if (entry.isText) {
+      return _selectedTextIds.contains(entry.textId) ||
+          (_selectedTextId != null && _selectedTextId == entry.textId);
+    } else if (entry.isImage) {
+      return _selectedImageIds.contains(entry.imageId);
     }
-    return _selectedTextIds.contains(entry.textId) ||
-        (_selectedTextId != null && _selectedTextId == entry.textId);
+    return false;
   }
 
   void _applyReorderedUnifiedLayers(List<CanvasLayerEntry> reordered) {
@@ -2843,6 +3178,7 @@ class PlannerController extends ChangeNotifier {
     final newStrokes = <DrawingStroke>[];
     final newSelected = <int>{};
     final newTexts = <CanvasTextItem>[];
+    final newImages = <CanvasImageItem>[];
 
     for (int i = 0; i < reordered.length; i++) {
       final entry = reordered[i];
@@ -2852,8 +3188,10 @@ class PlannerController extends ChangeNotifier {
         if (prevSelected.contains(entry.strokeIndex)) {
           newSelected.add(newStrokeIdx);
         }
-      } else {
+      } else if (entry.isText) {
         newTexts.add(entry.textItem!.copyWith(layerOrder: i));
+      } else if (entry.isImage) {
+        newImages.add(entry.imageItem!.copyWith(layerOrder: i));
       }
     }
 
@@ -2862,9 +3200,11 @@ class PlannerController extends ChangeNotifier {
       ..clear()
       ..addAll(newSelected);
     _canvasTexts = newTexts;
+    _canvasImages = newImages;
 
     _saveCurrentStrokes();
     _saveCurrentCanvasTexts();
+    _saveCurrentCanvasImages();
     notifyListeners();
   }
 
@@ -3005,7 +3345,7 @@ class PlannerController extends ChangeNotifier {
       return;
     }
     final layers = unifiedLayers;
-    if ((_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) ||
+    if (!hasLassoSelection ||
         layers.length <= 1) {
       return;
     }
@@ -3032,7 +3372,7 @@ class PlannerController extends ChangeNotifier {
       return;
     }
     final layers = unifiedLayers;
-    if ((_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) ||
+    if (!hasLassoSelection ||
         layers.length <= 1) {
       return;
     }
@@ -3059,7 +3399,7 @@ class PlannerController extends ChangeNotifier {
       return;
     }
     final layers = unifiedLayers;
-    if ((_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) ||
+    if (!hasLassoSelection ||
         layers.length <= 1) {
       return;
     }
@@ -3089,7 +3429,7 @@ class PlannerController extends ChangeNotifier {
       return;
     }
     final layers = unifiedLayers;
-    if ((_selectedStrokeIndices.isEmpty && _selectedTextIds.isEmpty) ||
+    if (!hasLassoSelection ||
         layers.length <= 1) {
       return;
     }
@@ -3122,7 +3462,37 @@ class PlannerController extends ChangeNotifier {
       selectStrokeFromLayerPanel(entry.strokeIndex!, additive: additive);
     } else if (entry.isText && entry.textId != null) {
       selectCanvasText(entry.textId!);
+    } else if (entry.isImage && entry.imageId != null) {
+      selectCanvasImage(entry.imageId!);
     }
+  }
+
+  int _findImageUnifiedIndex(String imageId, List<CanvasLayerEntry> layers) {
+    return layers.indexWhere((e) => e.isImage && e.imageId == imageId);
+  }
+
+  void moveImageLayerUp(String id) {
+    final layers = unifiedLayers;
+    final uIdx = _findImageUnifiedIndex(id, layers);
+    if (uIdx != -1) moveUnifiedLayerUp(uIdx);
+  }
+
+  void moveImageLayerDown(String id) {
+    final layers = unifiedLayers;
+    final uIdx = _findImageUnifiedIndex(id, layers);
+    if (uIdx != -1) moveUnifiedLayerDown(uIdx);
+  }
+
+  void bringImageToFront(String id) {
+    final layers = unifiedLayers;
+    final uIdx = _findImageUnifiedIndex(id, layers);
+    if (uIdx != -1) bringUnifiedLayerToFront(uIdx);
+  }
+
+  void sendImageToBack(String id) {
+    final layers = unifiedLayers;
+    final uIdx = _findImageUnifiedIndex(id, layers);
+    if (uIdx != -1) sendUnifiedLayerToBack(uIdx);
   }
 
   void selectStrokeFromLayerPanel(int index, {bool additive = false}) {
@@ -3289,7 +3659,8 @@ class PlannerController extends ChangeNotifier {
     _selectedStrokeIndices.clear();
     _selectedTextId = null;
     _editingTextId = null;
-    _selectedImageId = null;
+    _selectedImageIds.clear();
+    _selectedTextIds.clear();
     _selectedFileId = null;
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
@@ -3578,21 +3949,27 @@ class PlannerController extends ChangeNotifier {
 }
 
 class _InternalLayerSortItem {
-  final bool isStroke;
+  final CanvasLayerType type;
   final int? originalStrokeIndex;
   final DrawingStroke? stroke;
   final CanvasTextItem? textItem;
+  final CanvasImageItem? imageItem;
   final int? sortOrder;
   final int tieBreaker;
 
   const _InternalLayerSortItem({
-    required this.isStroke,
+    required this.type,
     this.originalStrokeIndex,
     this.stroke,
     this.textItem,
+    this.imageItem,
     this.sortOrder,
     required this.tieBreaker,
   });
+
+  bool get isStroke => type == CanvasLayerType.stroke;
+  bool get isText => type == CanvasLayerType.text;
+  bool get isImage => type == CanvasLayerType.image;
 }
 
 

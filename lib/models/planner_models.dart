@@ -477,6 +477,7 @@ class CanvasTextItem {
 enum CanvasLayerType {
   stroke,
   text,
+  image,
 }
 
 class CanvasLayerEntry {
@@ -485,6 +486,8 @@ class CanvasLayerEntry {
   final DrawingStroke? stroke;
   final String? textId;
   final CanvasTextItem? textItem;
+  final String? imageId;
+  final CanvasImageItem? imageItem;
   final int layerOrder;
 
   const CanvasLayerEntry.stroke({
@@ -493,7 +496,9 @@ class CanvasLayerEntry {
     required this.layerOrder,
   })  : type = CanvasLayerType.stroke,
         textId = null,
-        textItem = null;
+        textItem = null,
+        imageId = null,
+        imageItem = null;
 
   const CanvasLayerEntry.text({
     required String this.textId,
@@ -501,14 +506,67 @@ class CanvasLayerEntry {
     required this.layerOrder,
   })  : type = CanvasLayerType.text,
         strokeIndex = null,
-        stroke = null;
+        stroke = null,
+        imageId = null,
+        imageItem = null;
+
+  const CanvasLayerEntry.image({
+    required String this.imageId,
+    required CanvasImageItem this.imageItem,
+    required this.layerOrder,
+  })  : type = CanvasLayerType.image,
+        strokeIndex = null,
+        stroke = null,
+        textId = null,
+        textItem = null;
 
   bool get isStroke => type == CanvasLayerType.stroke;
   bool get isText => type == CanvasLayerType.text;
-  bool get isLocked =>
-      isStroke ? (stroke?.isLocked ?? false) : (textItem?.isLocked ?? false);
-  String get uniqueKey =>
-      isStroke ? 'layer_stroke_$strokeIndex' : 'layer_text_$textId';
+  bool get isImage => type == CanvasLayerType.image;
+  bool get isLocked {
+    switch (type) {
+      case CanvasLayerType.stroke:
+        return stroke?.isLocked ?? false;
+      case CanvasLayerType.text:
+        return textItem?.isLocked ?? false;
+      case CanvasLayerType.image:
+        return imageItem?.isLocked ?? false;
+    }
+  }
+
+  String get uniqueKey {
+    switch (type) {
+      case CanvasLayerType.stroke:
+        return 'layer_stroke_$strokeIndex';
+      case CanvasLayerType.text:
+        return 'layer_text_$textId';
+      case CanvasLayerType.image:
+        return 'layer_image_$imageId';
+    }
+  }
+
+  CanvasLayerEntry withLayerOrder(int order) {
+    switch (type) {
+      case CanvasLayerType.stroke:
+        return CanvasLayerEntry.stroke(
+          strokeIndex: strokeIndex!,
+          stroke: stroke!,
+          layerOrder: order,
+        );
+      case CanvasLayerType.text:
+        return CanvasLayerEntry.text(
+          textId: textId!,
+          textItem: textItem!,
+          layerOrder: order,
+        );
+      case CanvasLayerType.image:
+        return CanvasLayerEntry.image(
+          imageId: imageId!,
+          imageItem: imageItem!,
+          layerOrder: order,
+        );
+    }
+  }
 }
 
 class CanvasImageItem {
@@ -519,6 +577,8 @@ class CanvasImageItem {
   final String base64Data;
   final String? name;
   final bool isLocked;
+  final double rotation;
+  final int? layerOrder;
 
   const CanvasImageItem({
     required this.id,
@@ -528,7 +588,12 @@ class CanvasImageItem {
     required this.base64Data,
     this.name,
     this.isLocked = false,
+    this.rotation = 0.0,
+    this.layerOrder,
   });
+
+  Rect get rect => Rect.fromLTWH(position.dx, position.dy, width, height);
+  Offset get center => Offset(position.dx + width / 2.0, position.dy + height / 2.0);
 
   CanvasImageItem copyWith({
     String? id,
@@ -538,6 +603,8 @@ class CanvasImageItem {
     String? base64Data,
     String? name,
     bool? isLocked,
+    double? rotation,
+    int? layerOrder,
   }) {
     return CanvasImageItem(
       id: id ?? this.id,
@@ -547,6 +614,8 @@ class CanvasImageItem {
       base64Data: base64Data ?? this.base64Data,
       name: name ?? this.name,
       isLocked: isLocked ?? this.isLocked,
+      rotation: rotation ?? this.rotation,
+      layerOrder: layerOrder ?? this.layerOrder,
     );
   }
 
@@ -559,6 +628,8 @@ class CanvasImageItem {
     'base64Data': base64Data,
     'name': name,
     'isLocked': isLocked,
+    'rotation': rotation,
+    if (layerOrder != null) 'layerOrder': layerOrder,
   };
 
   factory CanvasImageItem.fromMap(Map<String, dynamic> map) {
@@ -573,6 +644,8 @@ class CanvasImageItem {
       base64Data: map['base64Data'] as String? ?? '',
       name: map['name'] as String?,
       isLocked: map['isLocked'] as bool? ?? false,
+      rotation: (map['rotation'] as num?)?.toDouble() ?? 0.0,
+      layerOrder: (map['layerOrder'] as num?)?.toInt(),
     );
   }
 }

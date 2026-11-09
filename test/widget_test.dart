@@ -1137,6 +1137,10 @@ void main() {
     await controller.insertPdfPageToCanvas(dragData, targetCenter: const Offset(300, 300));
     expect(controller.canvasImages.length, 1);
     expect(controller.canvasImages.first.name, contains('Sayfa 1'));
+    expect(controller.isImageLassoSelected(controller.canvasImages.first.id), isTrue);
+    expect(controller.hasLassoSelection, isTrue);
+    expect(controller.selectionBounds, isNotNull);
+    expect(controller.unifiedLayers.any((l) => l.isImage), isTrue);
 
     controller.closeQuickAccessPdfViewer();
     expect(controller.isQuickAccessPdfViewerPage, isFalse);

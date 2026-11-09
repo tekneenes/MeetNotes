@@ -462,6 +462,9 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       } else if (entry.isText && entry.textItem != null) {
         flushStrokeBatch(renderOverlay: false);
         widgets.add(_buildCanvasTextWidget(entry.textItem!));
+      } else if (entry.isImage && entry.imageItem != null) {
+        flushStrokeBatch(renderOverlay: false);
+        widgets.add(_buildCanvasImageWidget(entry.imageItem!));
       }
     }
 
@@ -493,11 +496,6 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     // Lasso / selection overlay always on top
     flushStrokeBatch(renderOverlay: true);
 
-    // Canvas Images
-    for (final img in controller.canvasImages) {
-      widgets.add(_buildCanvasImageWidget(img));
-    }
-
     // Canvas Files
     for (final file in controller.canvasFiles) {
       widgets.add(_buildCanvasFileWidget(file));
@@ -508,8 +506,6 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
 
   Widget _buildCanvasImageWidget(CanvasImageItem item) {
     final viewportPos = item.position * _scale + _panOffset;
-    final isSelected = widget.controller.selectedImageId == item.id;
-    final isLassoMode = widget.controller.selectedTool == DrawingTool.lasso;
 
     Uint8List? imageBytes;
     try {
@@ -522,121 +518,39 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       child: Transform.scale(
         scale: _scale,
         alignment: Alignment.topLeft,
-        child: GestureDetector(
-          onTap: () {
-            widget.controller.selectCanvasImage(item.id);
-          },
-          onPanUpdate: isLassoMode || item.isLocked
-              ? null
-              : (details) {
-                  widget.controller.updateCanvasImagePosition(
-                    item.id,
-                    item.position + details.delta / _scale,
-                  );
-                },
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                width: item.width,
-                height: item.height,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: isSelected
-                        ? const Color(0xFF007AFF)
-                        : Colors.black.withValues(alpha: 0.12),
-                    width: isSelected ? 2.0 : 1.0,
+        child: Transform.rotate(
+          angle: item.rotation,
+          alignment: Alignment.center,
+          child: IgnorePointer(
+            ignoring: true,
+            child: Container(
+              width: item.width,
+              height: item.height,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.10),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(9),
-                  child: imageBytes != null
-                      ? Image.memory(
-                          imageBytes,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Center(
-                            child: Icon(Icons.broken_image_rounded, size: 36, color: Colors.grey),
-                          ),
-                        )
-                      : const Center(
-                          child: Icon(Icons.image_not_supported_rounded, size: 36, color: Colors.grey),
-                        ),
-                ),
+                ],
               ),
-
-              // Selection handles (Delete at top-right, Resize at bottom-right)
-              if (isSelected && !item.isLocked) ...[
-                Positioned(
-                  top: -12,
-                  right: -12,
-                  child: GestureDetector(
-                    onTap: () => widget.controller.removeCanvasImage(item.id),
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFEF4444),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black26,
-                            blurRadius: 4,
-                            offset: Offset(0, 1),
-                          ),
-                        ],
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: imageBytes != null
+                    ? Image.memory(
+                        imageBytes,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const Center(
+                          child: Icon(Icons.broken_image_rounded, size: 36, color: Colors.grey),
+                        ),
+                      )
+                    : const Center(
+                        child: Icon(Icons.image_not_supported_rounded, size: 36, color: Colors.grey),
                       ),
-                      child: const Icon(
-                        Icons.close_rounded,
-                        color: Colors.white,
-                        size: 15,
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  bottom: -10,
-                  right: -10,
-                  child: GestureDetector(
-                    onPanUpdate: (details) {
-                      widget.controller.updateCanvasImageSize(
-                        item.id,
-                        item.width + details.delta.dx / _scale,
-                        item.height + details.delta.dy / _scale,
-                      );
-                    },
-                    child: Container(
-                      width: 22,
-                      height: 22,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF007AFF),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Colors.black26,
-                            blurRadius: 4,
-                            offset: Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.open_in_full_rounded,
-                        color: Colors.white,
-                        size: 12,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ],
+              ),
+            ),
           ),
         ),
       ),

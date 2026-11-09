@@ -27,6 +27,7 @@ class PdfDocumentInfo {
 
 class PdfService {
   static const MethodChannel _channel = MethodChannel('meet_notes/pdf_render');
+  static bool hasMissingPlugin = false;
 
   static Future<PdfDocumentInfo?> getPdfInfo({String? path, Uint8List? data}) async {
     try {
@@ -35,6 +36,7 @@ class PdfService {
         if (data != null) 'data': data,
       });
       if (res == null) return null;
+      hasMissingPlugin = false;
       final pageCount = (res['pageCount'] as num?)?.toInt() ?? 0;
       final rawPages = res['pages'] as List<dynamic>? ?? [];
       final pages = rawPages.map((p) {
@@ -46,6 +48,10 @@ class PdfService {
         );
       }).toList();
       return PdfDocumentInfo(pageCount: pageCount, pages: pages);
+    } on MissingPluginException catch (e) {
+      hasMissingPlugin = true;
+      debugPrint('PdfService.getPdfInfo MissingPluginException: $e');
+      return null;
     } catch (e) {
       debugPrint('PdfService.getPdfInfo error: $e');
       return null;

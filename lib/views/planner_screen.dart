@@ -3786,21 +3786,34 @@ class _QuickAccessPdfPageBrowserState extends State<_QuickAccessPdfPageBrowser> 
 
         final docInfo = snapshot.data;
         if (docInfo == null || docInfo.pages.isEmpty) {
+          final isMissingPlugin = PdfService.hasMissingPlugin;
           return Center(
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.error_outline_rounded, size: 36, color: Color(0xFFEF4444)),
+                  Icon(
+                    isMissingPlugin
+                        ? Icons.restart_alt_rounded
+                        : Icons.error_outline_rounded,
+                    size: 36,
+                    color: isMissingPlugin
+                        ? const Color(0xFFF59E0B)
+                        : const Color(0xFFEF4444),
+                  ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'PDF Sayfaları Okunamadı',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                  Text(
+                    isMissingPlugin
+                        ? 'Uygulamayı Baştan Başlatın'
+                        : 'PDF Sayfaları Okunamadı',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Dosya bozuk olabilir veya geçerli bir PDF formatında olmayabilir.',
+                    isMissingPlugin
+                        ? 'Yerel macOS PDF motoru derlendiği için "Hot Restart" yerine uygulamayı tamamen durdurup yeniden başlatmanız (Stop & Run) gerekmektedir.'
+                        : 'Dosya bozuk olabilir veya geçerli bir PDF formatında olmayabilir.',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                   ),

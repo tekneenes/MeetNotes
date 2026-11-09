@@ -3,19 +3,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'apple_notes_toolbar.dart' show ToolbarDockEdge;
 
-/// Modern, floating adjustable stroke width popover matching
+/// Modern, floating adjustable stroke width and opacity popover matching
 /// Apple Notes / GoodNotes / Procreate design language.
 ///
 /// Features:
-/// - Continuous, smooth adjustable slider bar (0.5 to 35.0 pt)
-/// - Live visual circle preview scaling physically with active tool color
-/// - Clear numeric pt badge with minus (-) and plus (+) precision steppers
-/// - One-tap quick preset pills ([1.5, 3.0, 5.0, 10.0, 18.0, 26.0])
+/// - Continuous, smooth adjustable stroke width slider (1.0 to 35.0 pt)
+/// - Continuous, smooth adjustable stroke opacity / transparency slider (5% to 100%)
+/// - Live visual circle preview with checkerboard background scaling physically with active tool color & opacity
+/// - Precision minus (-) and plus (+) stepper buttons for both width and opacity
 /// - Dock-edge aware positioning (bottom, top, left, right)
 class CompactStrokeWidthPicker extends StatefulWidget {
   final double initialWidth;
+  final double initialOpacity;
   final Color strokeColor;
   final ValueChanged<double> onWidthChanged;
+  final ValueChanged<double>? onOpacityChanged;
   final double minWidth;
   final double maxWidth;
 
@@ -24,11 +26,13 @@ class CompactStrokeWidthPicker extends StatefulWidget {
     required this.initialWidth,
     required this.strokeColor,
     required this.onWidthChanged,
+    this.initialOpacity = 1.0,
+    this.onOpacityChanged,
     this.minWidth = 1.0,
     this.maxWidth = 35.0,
   });
 
-  /// Displays the adjustable stroke width bar anchored relative to the button
+  /// Displays the adjustable stroke width & opacity popover anchored relative to the button
   /// and automatically oriented to the active toolbar dock edge.
   static Future<void> showAnchored({
     required BuildContext context,
@@ -37,13 +41,15 @@ class CompactStrokeWidthPicker extends StatefulWidget {
     required double initialWidth,
     required Color strokeColor,
     required ValueChanged<double> onWidthChanged,
+    double? initialOpacity,
+    ValueChanged<double>? onOpacityChanged,
   }) async {
     final mediaQuery = MediaQuery.of(context);
     final screenSize = mediaQuery.size;
     final viewInsets = mediaQuery.viewInsets;
 
-    const popoverWidth = 276.0;
-    const popoverHeight = 142.0;
+    const popoverWidth = 280.0;
+    const popoverHeight = 186.0;
 
     double left;
     double top;
@@ -119,8 +125,10 @@ class CompactStrokeWidthPicker extends StatefulWidget {
                 type: MaterialType.transparency,
                 child: CompactStrokeWidthPicker(
                   initialWidth: initialWidth,
+                  initialOpacity: initialOpacity ?? strokeColor.a,
                   strokeColor: strokeColor,
                   onWidthChanged: onWidthChanged,
+                  onOpacityChanged: onOpacityChanged,
                 ),
               ),
             ),
@@ -147,13 +155,13 @@ class CompactStrokeWidthPicker extends StatefulWidget {
 
 class _CompactStrokeWidthPickerState extends State<CompactStrokeWidthPicker> {
   late double _currentWidth;
-
-  static const List<double> _presets = [1.5, 3.0, 5.0, 10.0, 18.0, 26.0];
+  late double _currentOpacity;
 
   @override
   void initState() {
     super.initState();
     _currentWidth = widget.initialWidth.clamp(widget.minWidth, widget.maxWidth);
+    _currentOpacity = widget.initialOpacity.clamp(0.05, 1.0);
   }
 
   void _updateWidth(double newWidth) {
@@ -167,20 +175,38 @@ class _CompactStrokeWidthPickerState extends State<CompactStrokeWidthPicker> {
     }
   }
 
-  void _step(double delta) {
+  void _stepWidth(double delta) {
     HapticFeedback.selectionClick();
     _updateWidth(_currentWidth + delta);
   }
 
+  void _updateOpacity(double newOpacity) {
+    final clamped = (newOpacity * 100).roundToDouble() / 100;
+    final finalVal = clamped.clamp(0.05, 1.0);
+    if ((finalVal - _currentOpacity).abs() > 0.005) {
+      setState(() {
+        _currentOpacity = finalVal;
+      });
+      widget.onOpacityChanged?.call(finalVal);
+    }
+  }
+
+  void _stepOpacity(double delta) {
+    HapticFeedback.selectionClick();
+    _updateOpacity(_currentOpacity + delta);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final previewColor = widget.strokeColor.withValues(alpha: _currentOpacity);
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
-          width: 276,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          width: 280,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.94),
             borderRadius: BorderRadius.circular(20),
@@ -206,48 +232,49 @@ class _CompactStrokeWidthPickerState extends State<CompactStrokeWidthPicker> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 1. Header Row: Preview Dot, Title & Numeric Badge
+              // 1. Header: Live Preview Dot with Checkerboard Background & Title
               Row(
                 children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: Container(
-                      width: (_currentWidth * 0.85).clamp(3.0, 22.0),
-                      height: (_currentWidth * 0.85).clamp(3.0, 22.0),
-                      decoration: BoxDecoration(
-                        color: widget.strokeColor,
-                        shape: BoxShape.circle,
+                  ClipOval(
+                    child: CustomPaint(
+                      painter: const _CheckerboardPainter(squareSize: 4.0),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        alignment: Alignment.center,
+                        child: Container(
+                          width: (_currentWidth * 0.85).clamp(3.0, 24.0),
+                          height: (_currentWidth * 0.85).clamp(3.0, 24.0),
+                          decoration: BoxDecoration(
+                            color: previewColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   const Expanded(
                     child: Text(
-                      'Çizgi Kalınlığı',
+                      'Çizgi Ayarları',
                       style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
                         color: Color(0xFF1E293B),
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                     decoration: BoxDecoration(
                       color: const Color(0xFF007AFF).withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      '${_currentWidth.toStringAsFixed(1)} pt',
+                      '${_currentWidth.toStringAsFixed(1)} pt  •  %${(_currentOpacity * 100).round()}',
                       style: const TextStyle(
-                        fontSize: 12,
+                        fontSize: 10.5,
                         fontWeight: FontWeight.w700,
                         color: Color(0xFF007AFF),
                       ),
@@ -255,30 +282,54 @@ class _CompactStrokeWidthPickerState extends State<CompactStrokeWidthPicker> {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
 
-              // 2. Adjustable Slider Bar with - and + Steppers
+              // 2. Stroke Width Section
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Kalınlık',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF64748B),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    '${_currentWidth.toStringAsFixed(1)} pt',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
               Row(
                 children: [
                   _buildStepperButton(
                     icon: Icons.remove_rounded,
                     tooltip: '0.5 pt Azalt',
-                    onTap: () => _step(-0.5),
+                    onTap: () => _stepWidth(-0.5),
                   ),
                   Expanded(
                     child: SliderTheme(
                       data: SliderThemeData(
-                        trackHeight: 6,
+                        trackHeight: 5,
                         activeTrackColor: const Color(0xFF007AFF),
                         inactiveTrackColor: Colors.black.withValues(alpha: 0.08),
                         thumbColor: Colors.white,
                         thumbShape: const RoundSliderThumbShape(
-                          enabledThumbRadius: 9,
+                          enabledThumbRadius: 8.5,
                           elevation: 3,
                           pressedElevation: 6,
                         ),
                         overlayColor: const Color(0xFF007AFF).withValues(alpha: 0.15),
-                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
+                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
                       ),
                       child: Slider(
                         value: _currentWidth,
@@ -291,19 +342,73 @@ class _CompactStrokeWidthPickerState extends State<CompactStrokeWidthPicker> {
                   _buildStepperButton(
                     icon: Icons.add_rounded,
                     tooltip: '0.5 pt Artır',
-                    onTap: () => _step(0.5),
+                    onTap: () => _stepWidth(0.5),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
 
-              // 3. Quick Preset Pills Row
+              // 3. Opacity / Transparency Section
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: _presets.map((preset) {
-                  final isSelected = (_currentWidth - preset).abs() < 0.25;
-                  return _buildPresetPill(preset, isSelected);
-                }).toList(),
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Şeffaflık / Opaklık',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF64748B),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    '%${(_currentOpacity * 100).round()}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  _buildStepperButton(
+                    icon: Icons.remove_rounded,
+                    tooltip: '%5 Azalt',
+                    onTap: () => _stepOpacity(-0.05),
+                  ),
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderThemeData(
+                        trackHeight: 5,
+                        activeTrackColor: const Color(0xFF007AFF),
+                        inactiveTrackColor: Colors.black.withValues(alpha: 0.08),
+                        thumbColor: Colors.white,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 8.5,
+                          elevation: 3,
+                          pressedElevation: 6,
+                        ),
+                        overlayColor: const Color(0xFF007AFF).withValues(alpha: 0.15),
+                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                      ),
+                      child: Slider(
+                        value: _currentOpacity,
+                        min: 0.05,
+                        max: 1.0,
+                        onChanged: (val) => _updateOpacity(val),
+                      ),
+                    ),
+                  ),
+                  _buildStepperButton(
+                    icon: Icons.add_rounded,
+                    tooltip: '%5 Artır',
+                    onTap: () => _stepOpacity(0.05),
+                  ),
+                ],
               ),
             ],
           ),
@@ -339,38 +444,32 @@ class _CompactStrokeWidthPickerState extends State<CompactStrokeWidthPicker> {
       ),
     );
   }
+}
 
-  Widget _buildPresetPill(double preset, bool isSelected) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: () {
-        HapticFeedback.selectionClick();
-        _updateWidth(preset);
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 140),
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? const Color(0xFF007AFF)
-              : Colors.black.withValues(alpha: 0.04),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isSelected
-                ? const Color(0xFF007AFF)
-                : Colors.transparent,
-            width: 1.0,
-          ),
-        ),
-        child: Text(
-          preset.toStringAsFixed(preset == preset.roundToDouble() ? 0 : 1),
-          style: TextStyle(
-            fontSize: 10.5,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            color: isSelected ? Colors.white : const Color(0xFF475569),
-          ),
-        ),
-      ),
-    );
+/// Renders a subtle checkerboard pattern behind the preview dot
+/// to visibly represent transparency/opacity levels.
+class _CheckerboardPainter extends CustomPainter {
+  final double squareSize;
+
+  const _CheckerboardPainter({this.squareSize = 4.0});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final lightPaint = Paint()..color = const Color(0xFFF1F5F9);
+    final darkPaint = Paint()..color = const Color(0xFFCBD5E1);
+
+    for (double y = 0; y < size.height; y += squareSize) {
+      for (double x = 0; x < size.width; x += squareSize) {
+        final isEven =
+            ((x / squareSize).floor() + (y / squareSize).floor()) % 2 == 0;
+        canvas.drawRect(
+          Rect.fromLTWH(x, y, squareSize, squareSize),
+          isEven ? lightPaint : darkPaint,
+        );
+      }
+    }
   }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

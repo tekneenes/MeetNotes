@@ -572,11 +572,19 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
                 anchorRect: anchorRect,
                 dockEdge: widget.dockEdge,
                 initialWidth: controller.strokeWidth,
+                initialOpacity: controller.selectedColor.a,
                 strokeColor: controller.selectedTool == DrawingTool.eraser
                     ? Colors.grey.shade700
                     : controller.selectedColor,
                 onWidthChanged: (newWidth) {
                   controller.setStrokeWidth(newWidth);
+                },
+                onOpacityChanged: (newOpacity) {
+                  if (controller.selectedTool != DrawingTool.eraser) {
+                    controller.setColor(
+                      controller.selectedColor.withValues(alpha: newOpacity),
+                    );
+                  }
                 },
               );
             },

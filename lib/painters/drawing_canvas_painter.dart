@@ -140,7 +140,7 @@ class DrawingCanvasPainter extends CustomPainter {
     switch (stroke.tool) {
       case DrawingTool.marker:
         paint
-          ..color = stroke.color.withValues(alpha: 0.38)
+          ..color = stroke.color.withValues(alpha: stroke.color.a * 0.38)
           ..strokeCap = StrokeCap.square
           ..strokeJoin = StrokeJoin.miter
           ..blendMode = BlendMode.multiply;
@@ -148,7 +148,7 @@ class DrawingCanvasPainter extends CustomPainter {
 
       case DrawingTool.watercolor:
         paint
-          ..color = stroke.color.withValues(alpha: 0.26)
+          ..color = stroke.color.withValues(alpha: stroke.color.a * 0.26)
           ..strokeCap = StrokeCap.round
           ..strokeJoin = StrokeJoin.round
           ..blendMode = BlendMode.multiply
@@ -157,7 +157,7 @@ class DrawingCanvasPainter extends CustomPainter {
 
       case DrawingTool.pencil:
         paint
-          ..color = stroke.color.withValues(alpha: 0.78)
+          ..color = stroke.color.withValues(alpha: stroke.color.a * 0.78)
           ..strokeCap = StrokeCap.round
           ..strokeJoin = StrokeJoin.round
           ..blendMode = BlendMode.srcOver
@@ -166,7 +166,7 @@ class DrawingCanvasPainter extends CustomPainter {
 
       case DrawingTool.crayon:
         paint
-          ..color = stroke.color.withValues(alpha: 0.82)
+          ..color = stroke.color.withValues(alpha: stroke.color.a * 0.82)
           ..strokeCap = StrokeCap.round
           ..strokeJoin = StrokeJoin.round
           ..blendMode = BlendMode.srcOver

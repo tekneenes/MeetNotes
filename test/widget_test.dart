@@ -368,9 +368,10 @@ void main() {
   });
 
   testWidgets(
-      'CompactStrokeWidthPicker displays slider, steppers, presets, and updates width',
+      'CompactStrokeWidthPicker displays width and opacity sliders and steppers without preset chips',
       (WidgetTester tester) async {
     double currentWidth = 2.5;
+    double currentOpacity = 1.0;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -380,9 +381,13 @@ void main() {
               builder: (ctx, setState) {
                 return CompactStrokeWidthPicker(
                   initialWidth: currentWidth,
+                  initialOpacity: currentOpacity,
                   strokeColor: const Color(0xFF007AFF),
                   onWidthChanged: (val) {
                     setState(() => currentWidth = val);
+                  },
+                  onOpacityChanged: (val) {
+                    setState(() => currentOpacity = val);
                   },
                 );
               },
@@ -393,33 +398,35 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Çizgi Kalınlığı'), findsOneWidget);
+    expect(find.text('Çizgi Ayarları'), findsOneWidget);
+    expect(find.text('Kalınlık'), findsOneWidget);
+    expect(find.text('Şeffaflık / Opaklık'), findsOneWidget);
     expect(find.text('2.5 pt'), findsOneWidget);
-    expect(find.byType(Slider), findsOneWidget);
+    expect(find.text('%100'), findsOneWidget);
+    expect(find.byType(Slider), findsNWidgets(2));
 
-    // Tap the plus stepper (+) button to increase by 0.5
-    final plusBtn = find.byIcon(Icons.add_rounded);
-    expect(plusBtn, findsOneWidget);
-    await tester.tap(plusBtn);
+    // Preset chips should NOT exist
+    expect(find.text('10'), findsNothing);
+    expect(find.text('18'), findsNothing);
+    expect(find.text('26'), findsNothing);
+
+    // Tap the width plus stepper (+) button to increase by 0.5
+    final plusButtons = find.byIcon(Icons.add_rounded);
+    expect(plusButtons, findsNWidgets(2)); // One for width, one for opacity
+    await tester.tap(plusButtons.first);
     await tester.pumpAndSettle();
 
     expect(currentWidth, 3.0);
     expect(find.text('3.0 pt'), findsOneWidget);
 
-    // Tap the preset pill '10'
-    await tester.tap(find.text('10'));
+    // Tap the opacity minus stepper (-) button to decrease opacity by 5%
+    final minusButtons = find.byIcon(Icons.remove_rounded);
+    expect(minusButtons, findsNWidgets(2));
+    await tester.tap(minusButtons.last);
     await tester.pumpAndSettle();
 
-    expect(currentWidth, 10.0);
-    expect(find.text('10.0 pt'), findsOneWidget);
-
-    // Tap the minus stepper (-) button to decrease by 0.5
-    final minusBtn = find.byIcon(Icons.remove_rounded);
-    await tester.tap(minusBtn);
-    await tester.pumpAndSettle();
-
-    expect(currentWidth, 9.5);
-    expect(find.text('9.5 pt'), findsOneWidget);
+    expect(currentOpacity, 0.95);
+    expect(find.text('%95'), findsOneWidget);
   });
 
   testWidgets(
@@ -453,7 +460,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Find the width button tooltip or text
+    // Find the width button text
     final widthBtn = find.text('2.5');
     expect(widthBtn, findsOneWidget);
 
@@ -461,20 +468,30 @@ void main() {
     await tester.tap(widthBtn);
     await tester.pumpAndSettle();
 
-    expect(find.text('Çizgi Kalınlığı'), findsOneWidget);
-    expect(find.text('2.5 pt'), findsOneWidget);
+    expect(find.text('Çizgi Ayarları'), findsOneWidget);
+    expect(find.text('Kalınlık'), findsOneWidget);
+    expect(find.text('Şeffaflık / Opaklık'), findsOneWidget);
 
-    // Tap preset '5'
-    await tester.tap(find.text('5'));
+    // Tap plus stepper for width
+    final plusButtons = find.byIcon(Icons.add_rounded);
+    await tester.tap(plusButtons.first);
     await tester.pumpAndSettle();
 
-    expect(controller.strokeWidth, 5.0);
+    expect(controller.strokeWidth, 3.0);
+
+    // Tap minus stepper for opacity
+    final minusButtons = find.byIcon(Icons.remove_rounded);
+    await tester.tap(minusButtons.last);
+    await tester.pumpAndSettle();
+
+    expect(controller.selectedColor.a, closeTo(0.95, 0.01));
   });
 
   testWidgets(
-      'CompactStrokeWidthPicker.showAnchored opens properly for vertical and top dock edges',
+      'CompactStrokeWidthPicker.showAnchored opens properly for vertical dock edge',
       (WidgetTester tester) async {
     double selectedWidth = 4.0;
+    double selectedOpacity = 1.0;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -490,8 +507,10 @@ void main() {
                     anchorRect: rect,
                     dockEdge: ToolbarDockEdge.left,
                     initialWidth: selectedWidth,
+                    initialOpacity: selectedOpacity,
                     strokeColor: Colors.black,
                     onWidthChanged: (val) => selectedWidth = val,
+                    onOpacityChanged: (val) => selectedOpacity = val,
                   );
                 },
                 child: const Text('Open Left Dock Width'),
@@ -506,13 +525,14 @@ void main() {
     await tester.tap(find.text('Open Left Dock Width'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Çizgi Kalınlığı'), findsOneWidget);
+    expect(find.text('Çizgi Ayarları'), findsOneWidget);
     expect(find.text('4.0 pt'), findsOneWidget);
 
-    // Tap preset '18'
-    await tester.tap(find.text('18'));
+    // Tap plus stepper for width
+    final plusButtons = find.byIcon(Icons.add_rounded);
+    await tester.tap(plusButtons.first);
     await tester.pumpAndSettle();
 
-    expect(selectedWidth, 18.0);
+    expect(selectedWidth, 4.5);
   });
 }

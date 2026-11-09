@@ -140,7 +140,7 @@ void main() {
     // Verify sections and items
     expect(find.text('Düz Çizgi'), findsOneWidget);
     expect(find.text('Ok Çizgisi'), findsOneWidget);
-    expect(find.text('3 Noktalı Açı'), findsOneWidget);
+    expect(find.text('Kavisli Çizgi'), findsOneWidget);
 
     // Tap Düz Çizgi
     await tester.tap(find.text('Düz Çizgi'));
@@ -170,12 +170,12 @@ void main() {
     controller.endStroke();
     expect(controller.strokes.last.tool, DrawingTool.arrow);
 
-    // 3. Draw a 3-point angle
-    controller.setTool(DrawingTool.angle);
+    // 3. Draw a 3-point curved line
+    controller.setTool(DrawingTool.curve);
     controller.startStroke(const Offset(50, 50));
     controller.updateStroke(const Offset(120, 120));
     controller.endStroke();
-    expect(controller.strokes.last.tool, DrawingTool.angle);
+    expect(controller.strokes.last.tool, DrawingTool.curve);
     expect(controller.strokes.last.points.length, 3);
 
     // 4. Draw a filled circle
@@ -235,12 +235,12 @@ void main() {
     expect(controller.selectedLineStroke!.points[0], const Offset(100, 150));
     expect(controller.selectedLineStroke!.points[1], const Offset(340, 180));
 
-    // 5. Convert line to arrow and angle
+    // 5. Convert line to arrow and curve
     controller.updateSelectedLineTool(DrawingTool.arrow);
     expect(controller.selectedLineStroke!.tool, DrawingTool.arrow);
 
-    controller.updateSelectedLineTool(DrawingTool.angle);
-    expect(controller.selectedLineStroke!.tool, DrawingTool.angle);
+    controller.updateSelectedLineTool(DrawingTool.curve);
+    expect(controller.selectedLineStroke!.tool, DrawingTool.curve);
     expect(controller.selectedLineStroke!.points.length, 3);
 
     // Drain debounce save timer

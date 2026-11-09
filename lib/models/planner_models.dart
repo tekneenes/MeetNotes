@@ -101,7 +101,6 @@ enum DrawingTool {
       this == DrawingTool.line ||
       this == DrawingTool.arrow ||
       this == DrawingTool.curve ||
-      this == DrawingTool.angle ||
       this == DrawingTool.rectangle ||
       this == DrawingTool.square ||
       this == DrawingTool.circle ||
@@ -132,8 +131,7 @@ enum DrawingTool {
   bool get isLineOrArrow =>
       this == DrawingTool.line ||
       this == DrawingTool.arrow ||
-      this == DrawingTool.curve ||
-      this == DrawingTool.angle;
+      this == DrawingTool.curve;
 }
 
 enum SelectionHandle {

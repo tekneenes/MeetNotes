@@ -306,10 +306,11 @@ class DrawingCanvasPainter extends CustomPainter {
 
       case DrawingTool.curve:
         final pStart = stroke.points[0];
-        final pControl = stroke.points.length >= 3
-            ? stroke.points[1]
-            : (pStart + stroke.points.last) / 2.0;
         final pEnd = stroke.points.last;
+        final pMid = (pStart + pEnd) / 2.0;
+        final pApex = stroke.points.length >= 3 ? stroke.points[1] : pMid;
+        // Quadratic Bézier control point calculated so curve passes exactly through pApex:
+        final pControl = pApex * 2.0 - pMid;
         final curvePath = Path()
           ..moveTo(pStart.dx, pStart.dy)
           ..quadraticBezierTo(pControl.dx, pControl.dy, pEnd.dx, pEnd.dy);
@@ -634,8 +635,10 @@ class DrawingCanvasPainter extends CustomPainter {
     final linePath = Path();
     if (stroke.tool == DrawingTool.curve && stroke.points.length >= 3) {
       final pStart = stroke.points[0];
-      final pControl = stroke.points[1];
       final pEnd = stroke.points.last;
+      final pMid = (pStart + pEnd) / 2.0;
+      final pApex = stroke.points[1];
+      final pControl = pApex * 2.0 - pMid;
       linePath.moveTo(pStart.dx, pStart.dy);
       linePath.quadraticBezierTo(pControl.dx, pControl.dy, pEnd.dx, pEnd.dy);
     } else {

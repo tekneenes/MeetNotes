@@ -1462,12 +1462,6 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         icon: Icons.gesture_rounded,
         tooltip: 'Kavisli Çizgi Yap',
       ),
-      const SizedBox(width: 2),
-      buildLineTypeBtn(
-        tool: DrawingTool.angle,
-        icon: Icons.polyline_rounded,
-        tooltip: '3 Noktalı Açılı Çizgi Yap',
-      ),
       _buildPillDivider(),
       // Add text label near center of the line
       Tooltip(

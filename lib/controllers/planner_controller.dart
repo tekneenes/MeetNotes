@@ -875,7 +875,8 @@ class PlannerController extends ChangeNotifier {
 
   // Endpoint-to-endpoint magnetic snapping (AutoCAD OSNAP style)
   Offset _applyEndpointSnapping(Offset point, {int? excludeStrokeIndex}) {
-    final snapThreshold = 18.0 / _zoomScale;
+    // Gentle snap threshold: Allows precise micro-adjustments and placing lines close together
+    final snapThreshold = 8.0 / _zoomScale;
     Offset? closestSnap;
     double closestDistance = double.infinity;
 
@@ -887,8 +888,7 @@ class PlannerController extends ChangeNotifier {
       final candidates = <Offset>[
         s.points.first,
         s.points.last,
-        if ((s.tool == DrawingTool.angle || s.tool == DrawingTool.curve) &&
-            s.points.length >= 3)
+        if (s.tool == DrawingTool.curve && s.points.length >= 3)
           s.points[1],
       ];
 
@@ -1228,15 +1228,10 @@ class PlannerController extends ChangeNotifier {
             startPoint.dy + (dy >= 0 ? side : -side),
           );
         }
-        if (_selectedTool == DrawingTool.angle) {
-          final pVertex = Offset(startPoint.dx, targetPoint.dy);
+        if (_selectedTool == DrawingTool.curve) {
+          final pApex = (startPoint + targetPoint) / 2.0;
           _activeStroke = _activeStroke!.copyWith(
-            points: [startPoint, pVertex, targetPoint],
-          );
-        } else if (_selectedTool == DrawingTool.curve) {
-          final pControl = (startPoint + targetPoint) / 2.0;
-          _activeStroke = _activeStroke!.copyWith(
-            points: [startPoint, pControl, targetPoint],
+            points: [startPoint, pApex, targetPoint],
           );
         } else {
           _activeStroke = _activeStroke!.copyWith(
@@ -1394,14 +1389,12 @@ class PlannerController extends ChangeNotifier {
 
   bool _isPointNearLineStroke(Offset point, DrawingStroke stroke) {
     final hitRadius = (stroke.strokeWidth / 2) + (16.0 / _zoomScale);
-    if (stroke.tool == DrawingTool.angle && stroke.points.length >= 3) {
-      final d1 = _distanceToSegment(point, stroke.points[0], stroke.points[1]);
-      final d2 = _distanceToSegment(point, stroke.points[1], stroke.points[2]);
-      return math.min(d1, d2) <= hitRadius;
-    } else if (stroke.tool == DrawingTool.curve && stroke.points.length >= 3) {
+    if (stroke.tool == DrawingTool.curve && stroke.points.length >= 3) {
       final p0 = stroke.points[0];
-      final p1 = stroke.points[1];
+      final pApex = stroke.points[1];
       final p2 = stroke.points.last;
+      final pMid = (p0 + p2) / 2.0;
+      final p1 = pApex * 2.0 - pMid;
       double minD = double.infinity;
       Offset prev = p0;
       const steps = 16;
@@ -1435,16 +1428,11 @@ class PlannerController extends ChangeNotifier {
     final pEnd = stroke.points.last;
     List<Offset> newPoints;
 
-    if (newTool == DrawingTool.angle) {
-      final pVertex = stroke.points.length >= 3
-          ? stroke.points[1]
-          : Offset(pStart.dx, pEnd.dy);
-      newPoints = [pStart, pVertex, pEnd];
-    } else if (newTool == DrawingTool.curve) {
-      final pControl = stroke.points.length >= 3
+    if (newTool == DrawingTool.curve) {
+      final pApex = stroke.points.length >= 3
           ? stroke.points[1]
           : (pStart + pEnd) / 2.0;
-      newPoints = [pStart, pControl, pEnd];
+      newPoints = [pStart, pApex, pEnd];
     } else {
       newPoints = [pStart, pEnd];
     }

@@ -26,7 +26,6 @@ class CompactShapesPicker extends StatefulWidget {
     DrawingTool.line,
     DrawingTool.arrow,
     DrawingTool.curve,
-    DrawingTool.angle,
   ];
 
   static const List<DrawingTool> outlinedShapeTools = [
@@ -293,8 +292,8 @@ class _CompactShapesPickerState extends State<CompactShapesPicker> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Section 1: Çizgiler & Açı
-                    _buildSectionHeader('Çizgiler & Açı'),
+                    // Section 1: Çizgiler
+                    _buildSectionHeader('Çizgiler'),
                     Row(
                       children: [
                         for (int i = 0; i < CompactShapesPicker.lineTools.length; i++) ...[

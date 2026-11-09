@@ -70,7 +70,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     const margin = 12.0;
     final isVertical = edge.isVertical;
     final tbWidth = isVertical ? 52.0 : 580.0;
-    final tbHeight = isVertical ? 540.0 : 52.0;
+    final tbHeight = isVertical ? 560.0 : 52.0;
 
     switch (edge) {
       case ToolbarDockEdge.bottom:
@@ -106,7 +106,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
 
     final isVertical = _dockEdge.isVertical;
     final tbWidth = isVertical ? 52.0 : 580.0;
-    final tbHeight = isVertical ? 540.0 : 52.0;
+    final tbHeight = isVertical ? 560.0 : 52.0;
 
     final centerX = _toolbarPosition!.dx + tbWidth / 2.0;
     final centerY = _toolbarPosition!.dy + tbHeight / 2.0;

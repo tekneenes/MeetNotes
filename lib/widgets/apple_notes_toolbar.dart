@@ -117,7 +117,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
         final isVertical = widget.dockEdge.isVertical;
 
         final double targetWidth = isVertical ? 52.0 : 580.0;
-        final double targetHeight = isVertical ? 540.0 : 52.0;
+        final double targetHeight = isVertical ? 560.0 : 52.0;
 
         final double currentWidth = isVertical
             ? 52.0
@@ -357,7 +357,12 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
       SizedBox(width: isVertical ? 0 : 4, height: isVertical ? 4 : 0),
 
       // 5. More Menu
-      _buildMoreMenu(context),
+      Padding(
+        padding: isVertical
+            ? const EdgeInsets.only(bottom: 8)
+            : const EdgeInsets.only(right: 2),
+        child: _buildMoreMenu(context),
+      ),
     ];
   }
 
@@ -497,8 +502,11 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
     final controller = widget.controller;
     final isSelected = controller.selectedTool == tool;
 
+    final isVertical = widget.dockEdge.isVertical;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2.0, vertical: 2.0),
+      padding: isVertical
+          ? const EdgeInsets.symmetric(horizontal: 2.0, vertical: 1.5)
+          : const EdgeInsets.symmetric(horizontal: 2.0, vertical: 2.0),
       child: Tooltip(
         message: tool == DrawingTool.text
             ? 'Tek Tıkla Metin Ekle (Şablonlar İçin Basılı Tutun)'

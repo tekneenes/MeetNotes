@@ -72,6 +72,7 @@ enum DrawingTool {
   lasso('Kement Seçim', Icons.gesture_rounded, 1.0),
   line('Düz Çizgi', Icons.horizontal_rule_rounded, 2.5),
   arrow('Ok Çizgisi', Icons.arrow_right_alt_rounded, 2.5),
+  curve('Kavisli Çizgi', Icons.gesture_rounded, 2.5),
   angle('3 Noktalı Açı', Icons.polyline_rounded, 2.5),
   rectangle('Dikdörtgen', Icons.crop_square_rounded, 2.5),
   square('Kare', Icons.square_outlined, 2.5),
@@ -99,6 +100,7 @@ enum DrawingTool {
   bool get isShape =>
       this == DrawingTool.line ||
       this == DrawingTool.arrow ||
+      this == DrawingTool.curve ||
       this == DrawingTool.angle ||
       this == DrawingTool.rectangle ||
       this == DrawingTool.square ||
@@ -130,6 +132,7 @@ enum DrawingTool {
   bool get isLineOrArrow =>
       this == DrawingTool.line ||
       this == DrawingTool.arrow ||
+      this == DrawingTool.curve ||
       this == DrawingTool.angle;
 }
 
@@ -145,6 +148,7 @@ enum SelectionHandle {
   lineStart,
   lineEnd,
   lineVertex,
+  lineControl,
 }
 
 enum QuickAccessSubPage {

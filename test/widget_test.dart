@@ -8,6 +8,7 @@ import 'package:meet_notes/widgets/compact_color_picker_dialog.dart';
 import 'package:meet_notes/widgets/compact_font_picker_dialog.dart';
 import 'package:meet_notes/widgets/compact_stroke_width_picker.dart';
 import 'package:meet_notes/widgets/apple_notes_toolbar.dart';
+import 'package:meet_notes/widgets/drawing_workspace.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -965,5 +966,60 @@ void main() {
 
     expect(controller.selectedTool, DrawingTool.square);
     expect(find.text('Geometrik Şekiller'), findsNothing);
+  });
+
+  testWidgets(
+      'Curved line (3-point quadratic Bézier) drawing, middle handle bending, and magnetic endpoint snapping test',
+      (WidgetTester tester) async {
+    final controller = PlannerController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DrawingWorkspace(controller: controller),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 1. Draw a 3-point curved line
+    controller.setTool(DrawingTool.curve);
+    controller.startStroke(const Offset(50, 100));
+    controller.updateStroke(const Offset(250, 100));
+    controller.endStroke();
+    await tester.pumpAndSettle();
+
+    expect(controller.strokes.length, 1);
+    final curveStroke = controller.strokes.first;
+    expect(curveStroke.tool, DrawingTool.curve);
+    expect(curveStroke.points.length, 3);
+    expect(curveStroke.points[0], const Offset(50, 100));
+    expect(curveStroke.points[1], const Offset(150, 100)); // Middle control point initialized at midpoint
+    expect(curveStroke.points[2], const Offset(250, 100));
+    expect(controller.isSingleLineOrArrowSelected, isTrue);
+
+    // 2. Bend the curve by dragging the middle handle down to (150, 220)
+    controller.startStroke(const Offset(150, 100));
+    expect(controller.activeResizeHandle, SelectionHandle.lineControl);
+    controller.updateStroke(const Offset(150, 220));
+    controller.endStroke();
+    await tester.pumpAndSettle();
+
+    expect(controller.strokes.first.points[1], const Offset(150, 220));
+
+    // 3. Magnetic endpoint snapping: draw a straight line whose end approaches (250, 100)
+    controller.setTool(DrawingTool.line);
+    controller.startStroke(const Offset(350, 300));
+    controller.updateStroke(const Offset(245, 104)); // Within 18pt snapping threshold of (250, 100)
+    expect(controller.activeSnapPoint, const Offset(250, 100));
+    controller.endStroke();
+    await tester.pumpAndSettle();
+
+    expect(controller.strokes.length, 2);
+    final secondLine = controller.strokes.last;
+    expect(secondLine.points.last, const Offset(250, 100)); // Magnetically snapped!
+    expect(controller.activeSnapPoint, isNull);
+
+    // Drain debounce save timer
+    await tester.pump(const Duration(milliseconds: 1000));
   });
 }

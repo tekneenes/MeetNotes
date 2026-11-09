@@ -9,11 +9,13 @@ import '../models/planner_models.dart';
 /// [DrawingCanvasPainter] so the look is identical to before.
 class ActiveStrokePainter extends CustomPainter {
   final DrawingStroke? Function() activeStrokeGetter;
+  final Offset? Function()? activeSnapPointGetter;
   final double scale;
   final Offset panOffset;
 
   ActiveStrokePainter({
     required this.activeStrokeGetter,
+    this.activeSnapPointGetter,
     required Listenable repaint,
     required this.scale,
     required this.panOffset,
@@ -22,11 +24,13 @@ class ActiveStrokePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final stroke = activeStrokeGetter();
-    if (stroke == null) return;
+    final snapPoint = activeSnapPointGetter?.call();
+    if (stroke == null && snapPoint == null) return;
     DrawingCanvasPainter(
       strokes: const [],
       strokeIndicesToRender: const [],
       activeStroke: stroke,
+      activeSnapPoint: snapPoint,
       scale: scale,
       panOffset: panOffset,
     ).paint(canvas, size);
@@ -49,6 +53,7 @@ class DrawingCanvasPainter extends CustomPainter {
   final Set<int> selectedStrokeIndices;
   final SelectionHandle? activeResizeHandle;
   final DrawingStroke? selectedLineStroke;
+  final Offset? activeSnapPoint;
   final bool isRotatingSelection;
   final bool isSelectionLocked;
   final double? selectionBorderRadius;
@@ -66,6 +71,7 @@ class DrawingCanvasPainter extends CustomPainter {
     this.selectedStrokeIndices = const {},
     this.activeResizeHandle,
     this.selectedLineStroke,
+    this.activeSnapPoint,
     this.isRotatingSelection = false,
     this.isSelectionLocked = false,
     this.selectionBorderRadius,
@@ -109,6 +115,9 @@ class DrawingCanvasPainter extends CustomPainter {
         _drawLineSelectionOverlay(canvas, selectedLineStroke!);
       } else if (selectionBounds != null) {
         _drawSelectionBox(canvas, selectionBounds!);
+      }
+      if (activeSnapPoint != null) {
+        _drawSnapIndicator(canvas, activeSnapPoint!);
       }
     }
 
@@ -278,7 +287,9 @@ class DrawingCanvasPainter extends CustomPainter {
   }
 
   void _drawShapeWithPaint(Canvas canvas, DrawingStroke stroke, Paint paint) {
-    if (stroke.points.length > 2 && stroke.tool != DrawingTool.angle) {
+    if (stroke.points.length > 2 &&
+        stroke.tool != DrawingTool.angle &&
+        stroke.tool != DrawingTool.curve) {
       final path = Path()..addPolygon(stroke.points, true);
       canvas.drawPath(path, paint);
       return;
@@ -291,6 +302,18 @@ class DrawingCanvasPainter extends CustomPainter {
     switch (stroke.tool) {
       case DrawingTool.line:
         canvas.drawLine(p1, p2, paint);
+        break;
+
+      case DrawingTool.curve:
+        final pStart = stroke.points[0];
+        final pControl = stroke.points.length >= 3
+            ? stroke.points[1]
+            : (pStart + stroke.points.last) / 2.0;
+        final pEnd = stroke.points.last;
+        final curvePath = Path()
+          ..moveTo(pStart.dx, pStart.dy)
+          ..quadraticBezierTo(pControl.dx, pControl.dy, pEnd.dx, pEnd.dy);
+        canvas.drawPath(curvePath, paint);
         break;
 
       case DrawingTool.arrow:
@@ -609,15 +632,23 @@ class DrawingCanvasPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     final linePath = Path();
-    linePath.moveTo(stroke.points[0].dx, stroke.points[0].dy);
-    for (int i = 1; i < stroke.points.length; i++) {
-      linePath.lineTo(stroke.points[i].dx, stroke.points[i].dy);
+    if (stroke.tool == DrawingTool.curve && stroke.points.length >= 3) {
+      final pStart = stroke.points[0];
+      final pControl = stroke.points[1];
+      final pEnd = stroke.points.last;
+      linePath.moveTo(pStart.dx, pStart.dy);
+      linePath.quadraticBezierTo(pControl.dx, pControl.dy, pEnd.dx, pEnd.dy);
+    } else {
+      linePath.moveTo(stroke.points[0].dx, stroke.points[0].dy);
+      for (int i = 1; i < stroke.points.length; i++) {
+        linePath.lineTo(stroke.points[i].dx, stroke.points[i].dy);
+      }
     }
     _drawDashedPath(canvas, linePath, dashPaint, 6.0 / scale, 4.0 / scale);
 
     if (isSelectionLocked) return;
 
-    // 2. Circular handles at start, end (and vertex if angle)
+    // 2. Circular handles at start, end (and vertex/control point)
     void drawPointHandle(Offset pt, bool isActive) {
       final handleRadius = (isActive ? 9.5 : 8.0) / scale;
       final borderThickness = 2.0 / scale;
@@ -664,6 +695,30 @@ class DrawingCanvasPainter extends CustomPainter {
         activeResizeHandle == SelectionHandle.lineVertex,
       );
     }
+    if (stroke.tool == DrawingTool.curve && stroke.points.length >= 3) {
+      drawPointHandle(
+        stroke.points[1],
+        activeResizeHandle == SelectionHandle.lineControl,
+      );
+    }
+  }
+
+  void _drawSnapIndicator(Canvas canvas, Offset snapPt) {
+    final snapRadius = 9.0 / scale;
+    final ringPaint = Paint()
+      ..color = const Color(0xFF10B981)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5 / scale;
+    final fillPaint = Paint()
+      ..color = const Color(0xFF10B981).withValues(alpha: 0.25)
+      ..style = PaintingStyle.fill;
+    final centerDotPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(snapPt, snapRadius, fillPaint);
+    canvas.drawCircle(snapPt, snapRadius, ringPaint);
+    canvas.drawCircle(snapPt, 2.5 / scale, centerDotPaint);
   }
 
   void _drawDashedPath(

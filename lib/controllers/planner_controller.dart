@@ -42,6 +42,7 @@ class PlannerController extends ChangeNotifier {
   bool _isDraggingSelection = false;
   Offset? _lastLassoDragPoint;
   SelectionHandle? _activeResizeHandle;
+  Offset? _activeSnapPoint;
   Offset? _resizeStartPoint;
   Rect? _initialResizeRawBounds;
   Offset? _initialResizeCenter;
@@ -108,6 +109,7 @@ class PlannerController extends ChangeNotifier {
   bool get isDraggingSelection =>
       _isDraggingSelection || _activeResizeHandle != null || _isRotatingSelection;
   SelectionHandle? get activeResizeHandle => _activeResizeHandle;
+  Offset? get activeSnapPoint => _activeSnapPoint;
   bool get isRotatingSelection => _isRotatingSelection;
   double get selectionRotationAngle => _selectionRotationAngle;
   int get currentRotationDegrees => _currentRotationDegrees;
@@ -871,6 +873,38 @@ class PlannerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Endpoint-to-endpoint magnetic snapping (AutoCAD OSNAP style)
+  Offset _applyEndpointSnapping(Offset point, {int? excludeStrokeIndex}) {
+    final snapThreshold = 18.0 / _zoomScale;
+    Offset? closestSnap;
+    double closestDistance = double.infinity;
+
+    for (int i = 0; i < _strokes.length; i++) {
+      if (excludeStrokeIndex != null && i == excludeStrokeIndex) continue;
+      final s = _strokes[i];
+      if (!s.tool.isLineOrArrow || s.points.isEmpty) continue;
+
+      final candidates = <Offset>[
+        s.points.first,
+        s.points.last,
+        if ((s.tool == DrawingTool.angle || s.tool == DrawingTool.curve) &&
+            s.points.length >= 3)
+          s.points[1],
+      ];
+
+      for (final candidate in candidates) {
+        final dist = (point - candidate).distance;
+        if (dist <= snapThreshold && dist < closestDistance) {
+          closestDistance = dist;
+          closestSnap = candidate;
+        }
+      }
+    }
+
+    _activeSnapPoint = closestSnap;
+    return closestSnap ?? point;
+  }
+
   // Drawing Gesture Handlers
   void startStroke(Offset point) {
     if (_selectedTextId != null || _editingTextId != null) {
@@ -1077,12 +1111,21 @@ class PlannerController extends ChangeNotifier {
     _redoStack.clear();
 
     if (_selectedTool.isShape) {
-      _activeStroke = DrawingStroke(
-        points: [point, point],
-        color: _selectedColor,
-        strokeWidth: _strokeWidth,
-        tool: _selectedTool,
-      );
+      if (_selectedTool == DrawingTool.curve) {
+        _activeStroke = DrawingStroke(
+          points: [point, point, point],
+          color: _selectedColor,
+          strokeWidth: _strokeWidth,
+          tool: _selectedTool,
+        );
+      } else {
+        _activeStroke = DrawingStroke(
+          points: [point, point],
+          color: _selectedColor,
+          strokeWidth: _strokeWidth,
+          tool: _selectedTool,
+        );
+      }
     } else {
       _activeStroke = DrawingStroke(
         points: [point],
@@ -1107,10 +1150,14 @@ class PlannerController extends ChangeNotifier {
       List<Offset> newPoints = List.from(stroke.points);
 
       if (_activeResizeHandle == SelectionHandle.lineStart && newPoints.isNotEmpty) {
-        newPoints[0] = point;
+        final snapped = _applyEndpointSnapping(point, excludeStrokeIndex: idx);
+        newPoints[0] = snapped;
       } else if (_activeResizeHandle == SelectionHandle.lineEnd && newPoints.length >= 2) {
-        newPoints[newPoints.length - 1] = point;
+        final snapped = _applyEndpointSnapping(point, excludeStrokeIndex: idx);
+        newPoints[newPoints.length - 1] = snapped;
       } else if (_activeResizeHandle == SelectionHandle.lineVertex && newPoints.length >= 3) {
+        newPoints[1] = point;
+      } else if (_activeResizeHandle == SelectionHandle.lineControl && newPoints.length >= 3) {
         newPoints[1] = point;
       }
 
@@ -1166,6 +1213,9 @@ class PlannerController extends ChangeNotifier {
       if (_selectedTool.isShape) {
         final startPoint = _activeStroke!.points.first;
         Offset targetPoint = point;
+        if (_selectedTool.isLineOrArrow) {
+          targetPoint = _applyEndpointSnapping(point);
+        }
         if (_selectedTool == DrawingTool.square ||
             _selectedTool == DrawingTool.circle ||
             _selectedTool == DrawingTool.squareFilled ||
@@ -1182,6 +1232,11 @@ class PlannerController extends ChangeNotifier {
           final pVertex = Offset(startPoint.dx, targetPoint.dy);
           _activeStroke = _activeStroke!.copyWith(
             points: [startPoint, pVertex, targetPoint],
+          );
+        } else if (_selectedTool == DrawingTool.curve) {
+          final pControl = (startPoint + targetPoint) / 2.0;
+          _activeStroke = _activeStroke!.copyWith(
+            points: [startPoint, pControl, targetPoint],
           );
         } else {
           _activeStroke = _activeStroke!.copyWith(
@@ -1208,6 +1263,7 @@ class PlannerController extends ChangeNotifier {
     if (isSingleLineOrArrowSelected &&
         (_activeResizeHandle != null || _isDraggingSelection)) {
       _activeResizeHandle = null;
+      _activeSnapPoint = null;
       _isDraggingSelection = false;
       _lastLassoDragPoint = null;
       _saveCurrentStrokes();
@@ -1250,7 +1306,7 @@ class PlannerController extends ChangeNotifier {
       if (_selectedTool.isShape) {
         if (strokeWithOrder.points.length >= 2) {
           final p1 = strokeWithOrder.points[0];
-          final p2 = strokeWithOrder.points[1];
+          final p2 = strokeWithOrder.points.last;
           if ((p1 - p2).distance > 3.0) {
             _strokes.add(strokeWithOrder);
             if (_selectedTool.isLineOrArrow) {
@@ -1264,6 +1320,7 @@ class PlannerController extends ChangeNotifier {
         _strokes.add(strokeWithOrder);
       }
       _activeStroke = null;
+      _activeSnapPoint = null;
       _normalizeUnifiedLayerOrders();
       _saveCurrentStrokes();
       _saveCurrentCanvasTexts();
@@ -1277,6 +1334,7 @@ class PlannerController extends ChangeNotifier {
         _activeResizeHandle != null ||
         _isRotatingSelection) {
       _lassoPoints = [];
+      _activeSnapPoint = null;
       if (_isDraggingSelection || _activeResizeHandle != null || _isRotatingSelection) {
         _isDraggingSelection = false;
         _activeResizeHandle = null;
@@ -1299,6 +1357,7 @@ class PlannerController extends ChangeNotifier {
     }
     if (_activeStroke != null) {
       _activeStroke = null;
+      _activeSnapPoint = null;
       if (_undoStack.isNotEmpty) {
         _undoStack.removeLast();
       }
@@ -1323,6 +1382,12 @@ class PlannerController extends ChangeNotifier {
           return SelectionHandle.lineVertex;
         }
       }
+      if (stroke.tool == DrawingTool.curve && stroke.points.length >= 3) {
+        final pControl = stroke.points[1];
+        if ((point - pControl).distance <= threshold) {
+          return SelectionHandle.lineControl;
+        }
+      }
     }
     return null;
   }
@@ -1333,6 +1398,24 @@ class PlannerController extends ChangeNotifier {
       final d1 = _distanceToSegment(point, stroke.points[0], stroke.points[1]);
       final d2 = _distanceToSegment(point, stroke.points[1], stroke.points[2]);
       return math.min(d1, d2) <= hitRadius;
+    } else if (stroke.tool == DrawingTool.curve && stroke.points.length >= 3) {
+      final p0 = stroke.points[0];
+      final p1 = stroke.points[1];
+      final p2 = stroke.points.last;
+      double minD = double.infinity;
+      Offset prev = p0;
+      const steps = 16;
+      for (int i = 1; i <= steps; i++) {
+        final t = i / steps;
+        final curr = Offset(
+          (1 - t) * (1 - t) * p0.dx + 2 * (1 - t) * t * p1.dx + t * t * p2.dx,
+          (1 - t) * (1 - t) * p0.dy + 2 * (1 - t) * t * p1.dy + t * t * p2.dy,
+        );
+        final d = _distanceToSegment(point, prev, curr);
+        if (d < minD) minD = d;
+        prev = curr;
+      }
+      return minD <= hitRadius;
     } else if (stroke.points.length >= 2) {
       return _distanceToSegment(point, stroke.points[0], stroke.points.last) <= hitRadius;
     }
@@ -1348,18 +1431,22 @@ class PlannerController extends ChangeNotifier {
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
 
-    List<Offset> newPoints = List.from(stroke.points);
+    final pStart = stroke.points.first;
+    final pEnd = stroke.points.last;
+    List<Offset> newPoints;
+
     if (newTool == DrawingTool.angle) {
-      if (newPoints.length == 2) {
-        final p1 = newPoints[0];
-        final p2 = newPoints[1];
-        final pVertex = Offset(p1.dx, p2.dy);
-        newPoints = [p1, pVertex, p2];
-      }
+      final pVertex = stroke.points.length >= 3
+          ? stroke.points[1]
+          : Offset(pStart.dx, pEnd.dy);
+      newPoints = [pStart, pVertex, pEnd];
+    } else if (newTool == DrawingTool.curve) {
+      final pControl = stroke.points.length >= 3
+          ? stroke.points[1]
+          : (pStart + pEnd) / 2.0;
+      newPoints = [pStart, pControl, pEnd];
     } else {
-      if (newPoints.length >= 3) {
-        newPoints = [newPoints.first, newPoints.last];
-      }
+      newPoints = [pStart, pEnd];
     }
     _strokes[idx] = stroke.copyWith(tool: newTool, points: newPoints);
     _saveCurrentStrokes();
@@ -1440,6 +1527,7 @@ class PlannerController extends ChangeNotifier {
       case SelectionHandle.lineStart:
       case SelectionHandle.lineEnd:
       case SelectionHandle.lineVertex:
+      case SelectionHandle.lineControl:
         break;
     }
 

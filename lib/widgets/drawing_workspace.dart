@@ -435,6 +435,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 selectedStrokeIndices: controller.selectedStrokeIndices,
                 selectedLineStroke: controller.selectedLineStroke,
                 activeResizeHandle: controller.activeResizeHandle,
+                activeSnapPoint: controller.activeSnapPoint,
                 isRotatingSelection: controller.isRotatingSelection,
                 isSelectionLocked: controller.isSelectionLocked,
                 scale: _scale,
@@ -468,6 +469,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
             child: CustomPaint(
               painter: ActiveStrokePainter(
                 activeStrokeGetter: () => controller.activeStroke,
+                activeSnapPointGetter: () => controller.activeSnapPoint,
                 repaint: controller.activeStrokeTick,
                 scale: _scale,
                 panOffset: _panOffset,
@@ -1453,6 +1455,12 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         tool: DrawingTool.arrow,
         icon: Icons.arrow_right_alt_rounded,
         tooltip: 'Ok Çizgisi Yap',
+      ),
+      const SizedBox(width: 2),
+      buildLineTypeBtn(
+        tool: DrawingTool.curve,
+        icon: Icons.gesture_rounded,
+        tooltip: 'Kavisli Çizgi Yap',
       ),
       const SizedBox(width: 2),
       buildLineTypeBtn(

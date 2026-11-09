@@ -572,12 +572,13 @@ void main() {
     await tester.tap(textToolBtn);
     await tester.pumpAndSettle();
 
-    // Verify presets are displayed
+    // Verify presets are displayed and close button exists in horizontal mode
     expect(find.text('Başlık Ekle'), findsOneWidget);
     expect(find.text('Alt Başlık'), findsOneWidget);
     expect(find.text('Post-it Not'), findsOneWidget);
+    expect(find.byIcon(Icons.close_rounded), findsOneWidget);
 
-    // 2. Right Dock Test: Verify popover is rendered to the left (inward)
+    // 2. Right Dock Test: Verify popover is rendered to the left (inward) and has NO close 'x' icon
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -602,12 +603,12 @@ void main() {
     final popoverFinder = find.text('Başlık Ekle');
     expect(popoverFinder, findsOneWidget);
 
-    final popoverRect = tester.getRect(popoverFinder);
-    final closeBtnFinder = find.byIcon(Icons.close_rounded);
-    expect(closeBtnFinder, findsOneWidget);
+    // Close button 'x' MUST NOT exist in vertical dock mode
+    expect(find.byIcon(Icons.close_rounded), findsNothing);
 
-    // Close the preset popover
-    await tester.tap(closeBtnFinder);
+    // Switching tool or tapping text tool button again toggles/closes the popover
+    final penToolBtn = find.byTooltip('Tükenmez Kalem');
+    await tester.tap(penToolBtn);
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 700));
 

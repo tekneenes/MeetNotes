@@ -372,6 +372,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
         icon: Icons.title_rounded,
         label: 'Başlık Ekle',
         color: const Color(0xFF007AFF),
+        isVertical: isVertical,
         onTap: () {
           controller.setTool(DrawingTool.text);
           controller.addPresetCanvasText(CanvaTextPreset.heading);
@@ -382,6 +383,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
         icon: Icons.subtitles_outlined,
         label: 'Alt Başlık',
         color: const Color(0xFF8B5CF6),
+        isVertical: isVertical,
         onTap: () {
           controller.setTool(DrawingTool.text);
           controller.addPresetCanvasText(CanvaTextPreset.subheading);
@@ -392,6 +394,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
         icon: Icons.notes_rounded,
         label: 'Düz Metin',
         color: const Color(0xFF475569),
+        isVertical: isVertical,
         onTap: () {
           controller.setTool(DrawingTool.text);
           controller.addPresetCanvasText(CanvaTextPreset.body);
@@ -402,6 +405,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
         icon: Icons.sticky_note_2_outlined,
         label: 'Post-it Not',
         color: const Color(0xFFF59E0B),
+        isVertical: isVertical,
         onTap: () {
           controller.setTool(DrawingTool.text);
           controller.addPresetCanvasText(CanvaTextPreset.stickyNote);
@@ -412,44 +416,47 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
         icon: Icons.format_list_bulleted_rounded,
         label: 'Madde Listesi',
         color: const Color(0xFF10B981),
+        isVertical: isVertical,
         onTap: () {
           controller.setTool(DrawingTool.text);
           controller.addPresetCanvasText(CanvaTextPreset.bulletList);
         },
       ),
-      SizedBox(width: isVertical ? 0 : 6, height: isVertical ? 6 : 0),
-      Container(
-        width: isVertical ? 24 : 1,
-        height: isVertical ? 1 : 20,
-        color: Colors.black.withValues(alpha: 0.08),
-      ),
-      SizedBox(width: isVertical ? 0 : 6, height: isVertical ? 6 : 0),
-      Tooltip(
-        message: 'Kapat',
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () {
-            setState(() => _showTextPresetPopover = false);
-            if (controller.selectedTool == DrawingTool.text) {
-              controller.setTool(DrawingTool.lasso);
-            }
-          },
-          child: Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.04),
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: const Icon(
-              Icons.close_rounded,
-              size: 14,
-              color: Color(0xFF64748B),
+      if (!isVertical) ...[
+        const SizedBox(width: 6),
+        Container(
+          width: 1,
+          height: 20,
+          color: Colors.black.withValues(alpha: 0.08),
+        ),
+        const SizedBox(width: 6),
+        Tooltip(
+          message: 'Kapat',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () {
+              setState(() => _showTextPresetPopover = false);
+              if (controller.selectedTool == DrawingTool.text) {
+                controller.setTool(DrawingTool.lasso);
+              }
+            },
+            child: Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.04),
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.close_rounded,
+                size: 14,
+                color: Color(0xFF64748B),
+              ),
             ),
           ),
         ),
-      ),
+      ],
     ];
 
     return ClipRRect(
@@ -457,6 +464,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
+          width: isVertical ? 154 : null,
           padding: isVertical
               ? const EdgeInsets.symmetric(horizontal: 8, vertical: 8)
               : const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -484,7 +492,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
           child: isVertical
               ? Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: chips,
                 )
               : Row(
@@ -501,29 +509,53 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
     required String label,
     required Color color,
     required VoidCallback onTap,
+    bool isVertical = false,
   }) {
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        padding: isVertical
+            ? const EdgeInsets.symmetric(horizontal: 10, vertical: 7)
+            : const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize: isVertical ? MainAxisSize.max : MainAxisSize.min,
           children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF1E293B),
+            Container(
+              width: isVertical ? 22 : 18,
+              height: isVertical ? 22 : 18,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
               ),
+              alignment: Alignment.center,
+              child: Icon(icon, size: isVertical ? 13 : 11.5, color: color),
             ),
+            const SizedBox(width: 8),
+            isVertical
+                ? Expanded(
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1E293B),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  )
+                : Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
           ],
         ),
       ),

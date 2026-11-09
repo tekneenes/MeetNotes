@@ -273,7 +273,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 popover,
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 dockContainer,
               ],
             );
@@ -283,27 +283,27 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 dockContainer,
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 popover,
               ],
             );
           case ToolbarDockEdge.left:
             return Row(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 dockContainer,
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 popover,
               ],
             );
           case ToolbarDockEdge.right:
             return Row(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 popover,
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 dockContainer,
               ],
             );
@@ -371,95 +371,128 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
       _buildPresetChip(
         icon: Icons.title_rounded,
         label: 'Başlık Ekle',
-        color: const Color(0xFF38BDF8),
+        color: const Color(0xFF007AFF),
         onTap: () {
           controller.setTool(DrawingTool.text);
           controller.addPresetCanvasText(CanvaTextPreset.heading);
         },
       ),
-      SizedBox(width: isVertical ? 0 : 4, height: isVertical ? 4 : 0),
+      SizedBox(width: isVertical ? 0 : 5, height: isVertical ? 5 : 0),
       _buildPresetChip(
         icon: Icons.subtitles_outlined,
         label: 'Alt Başlık',
-        color: const Color(0xFFA78BFA),
+        color: const Color(0xFF8B5CF6),
         onTap: () {
           controller.setTool(DrawingTool.text);
           controller.addPresetCanvasText(CanvaTextPreset.subheading);
         },
       ),
-      SizedBox(width: isVertical ? 0 : 4, height: isVertical ? 4 : 0),
+      SizedBox(width: isVertical ? 0 : 5, height: isVertical ? 5 : 0),
       _buildPresetChip(
         icon: Icons.notes_rounded,
         label: 'Düz Metin',
-        color: Colors.white,
+        color: const Color(0xFF475569),
         onTap: () {
           controller.setTool(DrawingTool.text);
           controller.addPresetCanvasText(CanvaTextPreset.body);
         },
       ),
-      SizedBox(width: isVertical ? 0 : 4, height: isVertical ? 4 : 0),
+      SizedBox(width: isVertical ? 0 : 5, height: isVertical ? 5 : 0),
       _buildPresetChip(
         icon: Icons.sticky_note_2_outlined,
         label: 'Post-it Not',
-        color: const Color(0xFFFDE047),
+        color: const Color(0xFFF59E0B),
         onTap: () {
           controller.setTool(DrawingTool.text);
           controller.addPresetCanvasText(CanvaTextPreset.stickyNote);
         },
       ),
-      SizedBox(width: isVertical ? 0 : 4, height: isVertical ? 4 : 0),
+      SizedBox(width: isVertical ? 0 : 5, height: isVertical ? 5 : 0),
       _buildPresetChip(
         icon: Icons.format_list_bulleted_rounded,
         label: 'Madde Listesi',
-        color: const Color(0xFF34D399),
+        color: const Color(0xFF10B981),
         onTap: () {
           controller.setTool(DrawingTool.text);
           controller.addPresetCanvasText(CanvaTextPreset.bulletList);
         },
       ),
-      SizedBox(width: isVertical ? 0 : 4, height: isVertical ? 4 : 0),
-      InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: () {
-          setState(() => _showTextPresetPopover = false);
-          if (controller.selectedTool == DrawingTool.text) {
-            controller.setTool(DrawingTool.lasso);
-          }
-        },
-        child: const Padding(
-          padding: EdgeInsets.all(4),
-          child: Icon(
-            Icons.close_rounded,
-            size: 14,
-            color: Colors.white60,
+      SizedBox(width: isVertical ? 0 : 6, height: isVertical ? 6 : 0),
+      Container(
+        width: isVertical ? 24 : 1,
+        height: isVertical ? 1 : 20,
+        color: Colors.black.withValues(alpha: 0.08),
+      ),
+      SizedBox(width: isVertical ? 0 : 6, height: isVertical ? 6 : 0),
+      Tooltip(
+        message: 'Kapat',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            setState(() => _showTextPresetPopover = false);
+            if (controller.selectedTool == DrawingTool.text) {
+              controller.setTool(DrawingTool.lasso);
+            }
+          },
+          child: Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.04),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.close_rounded,
+              size: 14,
+              color: Color(0xFF64748B),
+            ),
           ),
         ),
       ),
     ];
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E293B).withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.16),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: isVertical
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: chips,
-            )
-          : Row(
-              mainAxisSize: MainAxisSize.min,
-              children: chips,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          padding: isVertical
+              ? const EdgeInsets.symmetric(horizontal: 8, vertical: 8)
+              : const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.95),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.black.withValues(alpha: 0.08),
+              width: 1.0,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF0F172A).withValues(alpha: 0.12),
+                blurRadius: 20,
+                spreadRadius: 1,
+                offset: const Offset(0, 6),
+              ),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: isVertical
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: chips,
+                )
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: chips,
+                ),
+        ),
+      ),
     );
   }
 
@@ -473,22 +506,22 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: Colors.black.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 13.5, color: color),
-            const SizedBox(width: 4),
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 5),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 11,
+              style: const TextStyle(
+                fontSize: 11.5,
                 fontWeight: FontWeight.w600,
-                color: color,
+                color: Color(0xFF1E293B),
               ),
             ),
           ],

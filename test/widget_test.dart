@@ -535,4 +535,82 @@ void main() {
 
     expect(selectedWidth, 4.5);
   });
+
+  testWidgets(
+      'Text tool preset popover does not push toolbar down and stays inward on right dock',
+      (WidgetTester tester) async {
+    final controller = PlannerController();
+    while (controller.isLoading) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+
+    // 1. Bottom Dock Test: Verify popover sits above and toolbar stays at bottom
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                bottom: 12,
+                left: 100,
+                child: AppleNotesFloatingToolbar(
+                  controller: controller,
+                  dockEdge: ToolbarDockEdge.bottom,
+                  onDragDelta: (_) {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Tap Text tool 'T'
+    final textToolBtn = find.byTooltip('Tek Tıkla Metin Ekle (Şablonlar İçin Basılı Tutun)');
+    expect(textToolBtn, findsOneWidget);
+    await tester.tap(textToolBtn);
+    await tester.pumpAndSettle();
+
+    // Verify presets are displayed
+    expect(find.text('Başlık Ekle'), findsOneWidget);
+    expect(find.text('Alt Başlık'), findsOneWidget);
+    expect(find.text('Post-it Not'), findsOneWidget);
+
+    // 2. Right Dock Test: Verify popover is rendered to the left (inward)
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                top: 50,
+                right: 12,
+                child: AppleNotesFloatingToolbar(
+                  controller: controller,
+                  dockEdge: ToolbarDockEdge.right,
+                  onDragDelta: (_) {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final popoverFinder = find.text('Başlık Ekle');
+    expect(popoverFinder, findsOneWidget);
+
+    final popoverRect = tester.getRect(popoverFinder);
+    final closeBtnFinder = find.byIcon(Icons.close_rounded);
+    expect(closeBtnFinder, findsOneWidget);
+
+    // Close the preset popover
+    await tester.tap(closeBtnFinder);
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 700));
+
+    expect(find.text('Başlık Ekle'), findsNothing);
+  });
 }

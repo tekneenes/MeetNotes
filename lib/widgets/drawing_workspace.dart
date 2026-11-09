@@ -357,8 +357,22 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                         ? Duration.zero
                         : const Duration(milliseconds: 260),
                     curve: Curves.easeOutCubic,
-                    left: activeToolbarPos.dx,
-                    top: activeToolbarPos.dy,
+                    left: _isDraggingToolbar
+                        ? activeToolbarPos.dx
+                        : (_dockEdge == ToolbarDockEdge.right ? null : activeToolbarPos.dx),
+                    right: _isDraggingToolbar
+                        ? null
+                        : (_dockEdge == ToolbarDockEdge.right
+                            ? (availableWidth - activeToolbarPos.dx - 52.0)
+                            : null),
+                    top: _isDraggingToolbar
+                        ? activeToolbarPos.dy
+                        : (_dockEdge == ToolbarDockEdge.bottom ? null : activeToolbarPos.dy),
+                    bottom: _isDraggingToolbar
+                        ? null
+                        : (_dockEdge == ToolbarDockEdge.bottom
+                            ? (availableHeight - activeToolbarPos.dy - 52.0)
+                            : null),
                     child: AppleNotesFloatingToolbar(
                       controller: controller,
                       dockEdge: _dockEdge,

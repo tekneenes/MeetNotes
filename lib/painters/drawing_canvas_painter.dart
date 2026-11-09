@@ -48,6 +48,7 @@ class DrawingCanvasPainter extends CustomPainter {
   final double selectionRotationAngle;
   final Set<int> selectedStrokeIndices;
   final SelectionHandle? activeResizeHandle;
+  final DrawingStroke? selectedLineStroke;
   final bool isRotatingSelection;
   final bool isSelectionLocked;
   final double? selectionBorderRadius;
@@ -64,6 +65,7 @@ class DrawingCanvasPainter extends CustomPainter {
     this.selectionRotationAngle = 0.0,
     this.selectedStrokeIndices = const {},
     this.activeResizeHandle,
+    this.selectedLineStroke,
     this.isRotatingSelection = false,
     this.isSelectionLocked = false,
     this.selectionBorderRadius,
@@ -103,7 +105,9 @@ class DrawingCanvasPainter extends CustomPainter {
       if (lassoPoints.length >= 2) {
         _drawLassoLoop(canvas);
       }
-      if (selectionBounds != null) {
+      if (selectedLineStroke != null) {
+        _drawLineSelectionOverlay(canvas, selectedLineStroke!);
+      } else if (selectionBounds != null) {
         _drawSelectionBox(canvas, selectionBounds!);
       }
     }
@@ -115,16 +119,20 @@ class DrawingCanvasPainter extends CustomPainter {
     if (stroke.points.isEmpty) return;
 
     if (isSelected) {
-      final glowPaint = Paint()
-        ..color = const Color(0xFF007AFF).withValues(alpha: 0.22)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke.strokeWidth + 6.0
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round;
-      if (stroke.tool.isShape && stroke.points.length >= 2) {
-        _drawShapeWithPaint(canvas, stroke, glowPaint);
+      if (selectedLineStroke != null && stroke == selectedLineStroke) {
+        // Line selection is highlighted via _drawLineSelectionOverlay
       } else {
-        _drawFreehandStrokePath(canvas, stroke.points, glowPaint);
+        final glowPaint = Paint()
+          ..color = const Color(0xFF007AFF).withValues(alpha: 0.22)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke.strokeWidth + 6.0
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
+        if (stroke.tool.isShape && stroke.points.length >= 2) {
+          _drawShapeWithPaint(canvas, stroke, glowPaint);
+        } else {
+          _drawFreehandStrokePath(canvas, stroke.points, glowPaint);
+        }
       }
     }
 
@@ -588,6 +596,74 @@ class DrawingCanvasPainter extends CustomPainter {
     canvas.drawPath(arrowPath, iconPaint);
 
     canvas.restore();
+  }
+
+  void _drawLineSelectionOverlay(Canvas canvas, DrawingStroke stroke) {
+    if (stroke.points.length < 2) return;
+
+    // 1. Dashed cyan overlay directly along the line path
+    final dashPaint = Paint()
+      ..color = const Color(0xFF38BDF8)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = math.max(stroke.strokeWidth + 1.8, 2.2) / scale
+      ..strokeCap = StrokeCap.round;
+
+    final linePath = Path();
+    linePath.moveTo(stroke.points[0].dx, stroke.points[0].dy);
+    for (int i = 1; i < stroke.points.length; i++) {
+      linePath.lineTo(stroke.points[i].dx, stroke.points[i].dy);
+    }
+    _drawDashedPath(canvas, linePath, dashPaint, 6.0 / scale, 4.0 / scale);
+
+    if (isSelectionLocked) return;
+
+    // 2. Circular handles at start, end (and vertex if angle)
+    void drawPointHandle(Offset pt, bool isActive) {
+      final handleRadius = (isActive ? 9.5 : 8.0) / scale;
+      final borderThickness = 2.0 / scale;
+
+      // Soft drop shadow
+      canvas.drawCircle(
+        pt + Offset(0, 1.5 / scale),
+        handleRadius,
+        Paint()..color = Colors.black.withValues(alpha: 0.25),
+      );
+
+      // White outer border
+      canvas.drawCircle(
+        pt,
+        handleRadius,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.fill,
+      );
+
+      // Inner sky-blue circle matching AutoCAD / Goodnotes / Apple Freeform style
+      canvas.drawCircle(
+        pt,
+        handleRadius - borderThickness,
+        Paint()
+          ..color = isActive
+              ? const Color(0xFF0284C7)
+              : const Color(0xFF38BDF8)
+          ..style = PaintingStyle.fill,
+      );
+    }
+
+    drawPointHandle(
+      stroke.points[0],
+      activeResizeHandle == SelectionHandle.lineStart,
+    );
+    drawPointHandle(
+      stroke.points.last,
+      activeResizeHandle == SelectionHandle.lineEnd,
+    );
+    if (stroke.tool == DrawingTool.angle && stroke.points.length >= 3) {
+      drawPointHandle(
+        stroke.points[1],
+        activeResizeHandle == SelectionHandle.lineVertex,
+      );
+    }
   }
 
   void _drawDashedPath(

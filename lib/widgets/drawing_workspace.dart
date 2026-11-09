@@ -433,6 +433,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                     : null,
                 selectionRotationAngle: controller.selectionRotationAngle,
                 selectedStrokeIndices: controller.selectedStrokeIndices,
+                selectedLineStroke: controller.selectedLineStroke,
                 activeResizeHandle: controller.activeResizeHandle,
                 isRotatingSelection: controller.isRotatingSelection,
                 isSelectionLocked: controller.isSelectionLocked,
@@ -790,9 +791,11 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                     mainAxisSize: MainAxisSize.min,
                     children: isLocked
                         ? _buildLockedPillItems(controller, textItem)
-                        : (textItem != null
-                            ? _buildUnifiedTextAndLassoItems(controller, textItem)
-                            : _buildStrokeLassoItems(controller)),
+                        : (controller.isSingleLineOrArrowSelected
+                            ? _buildLineSelectionItems(controller)
+                            : (textItem != null
+                                ? _buildUnifiedTextAndLassoItems(controller, textItem)
+                                : _buildStrokeLassoItems(controller))),
                   ),
                 ),
               ),
@@ -1402,6 +1405,146 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
 
       // 14. More Options Popup (En sağ tarafta)
       _buildUnifiedMoreOptionsMenu(controller, item),
+    ];
+  }
+
+  List<Widget> _buildLineSelectionItems(PlannerController controller) {
+    final stroke = controller.selectedLineStroke;
+    if (stroke == null) return [];
+    final currentTool = stroke.tool;
+
+    Widget buildLineTypeBtn({
+      required DrawingTool tool,
+      required IconData icon,
+      required String tooltip,
+    }) {
+      final isCurrent = currentTool == tool;
+      return Tooltip(
+        message: tooltip,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => controller.updateSelectedLineTool(tool),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+            decoration: BoxDecoration(
+              color: isCurrent
+                  ? const Color(0xFF007AFF).withValues(alpha: 0.35)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              size: 16,
+              color: isCurrent ? const Color(0xFF38BDF8) : Colors.white,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return [
+      buildLineTypeBtn(
+        tool: DrawingTool.line,
+        icon: Icons.horizontal_rule_rounded,
+        tooltip: 'Düz Çizgi Yap',
+      ),
+      const SizedBox(width: 2),
+      buildLineTypeBtn(
+        tool: DrawingTool.arrow,
+        icon: Icons.arrow_right_alt_rounded,
+        tooltip: 'Ok Çizgisi Yap',
+      ),
+      const SizedBox(width: 2),
+      buildLineTypeBtn(
+        tool: DrawingTool.angle,
+        icon: Icons.polyline_rounded,
+        tooltip: '3 Noktalı Açılı Çizgi Yap',
+      ),
+      _buildPillDivider(),
+      // Add text label near center of the line
+      Tooltip(
+        message: 'Çizgiye Metin Ekle',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () {
+            final mid = (stroke.points.first + stroke.points.last) / 2.0;
+            controller.addCanvasText(
+              mid - const Offset(30, 20),
+              'Açıklama',
+            );
+          },
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Icon(Icons.title_rounded, size: 16, color: Colors.white),
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+      // Color picker
+      Builder(
+        builder: (btnCtx) => Tooltip(
+          message: 'Çizgi Rengi',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () {
+              final box = btnCtx.findRenderObject() as RenderBox?;
+              final offset = box?.localToGlobal(Offset.zero) ?? Offset.zero;
+              final size = box?.size ?? Size.zero;
+              CompactColorPickerDialog.showAnchored(
+                context: context,
+                anchorRect: offset & size,
+                boundaryRect: _getWorkspaceGlobalRect(),
+                title: 'Çizgi Rengi',
+                initialColor: stroke.color,
+                allowOpacity: true,
+                onColorChanged: controller.setColor,
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+              child: Container(
+                width: 15,
+                height: 15,
+                decoration: BoxDecoration(
+                  color: stroke.color,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1.5),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+      // Duplicate
+      Tooltip(
+        message: 'Çoğalt',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: controller.duplicateSelectedStrokes,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Icon(Icons.copy_rounded, size: 15, color: Colors.white),
+          ),
+        ),
+      ),
+      _buildPillDivider(),
+      // Delete
+      Tooltip(
+        message: 'Çizgiyi Sil',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: controller.deleteSelectedStrokes,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Icon(
+              Icons.delete_outline_rounded,
+              size: 16,
+              color: Color(0xFFFF453A),
+            ),
+          ),
+        ),
+      ),
     ];
   }
 

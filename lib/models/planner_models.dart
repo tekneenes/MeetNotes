@@ -142,6 +142,9 @@ enum SelectionHandle {
   bottomCenter,
   bottomLeft,
   centerLeft,
+  lineStart,
+  lineEnd,
+  lineVertex,
 }
 
 enum QuickAccessSubPage {

@@ -132,6 +132,18 @@ class PlannerController extends ChangeNotifier {
   bool get showOnlySelectedGroups =>
       _showOnlySelectedGroups && hasGroupedStrokeInSelection;
 
+  bool get isSingleLineOrArrowSelected {
+    if (_selectedStrokeIndices.length != 1 || _selectedTextIds.isNotEmpty) return false;
+    final idx = _selectedStrokeIndices.first;
+    if (idx < 0 || idx >= _strokes.length) return false;
+    return _strokes[idx].tool.isLineOrArrow;
+  }
+
+  DrawingStroke? get selectedLineStroke {
+    if (!isSingleLineOrArrowSelected) return null;
+    return _strokes[_selectedStrokeIndices.first];
+  }
+
   bool get isSelectionLocked {
     for (final idx in _selectedStrokeIndices) {
       if (idx >= 0 && idx < _strokes.length && _strokes[idx].isLocked) {
@@ -869,6 +881,41 @@ class PlannerController extends ChangeNotifier {
       return;
     }
 
+    // Handle line selection endpoints & body hit testing
+    if (isSingleLineOrArrowSelected) {
+      final lineStroke = selectedLineStroke!;
+      if (!isSelectionLocked) {
+        final lineHandle = _findLineHandleAtPoint(point, lineStroke);
+        if (lineHandle != null) {
+          _undoStack.add(List.from(_strokes));
+          _redoStack.clear();
+          _activeResizeHandle = lineHandle;
+          _isDraggingSelection = false;
+          _lastLassoDragPoint = null;
+          notifyListeners();
+          return;
+        }
+
+        if (_isPointNearLineStroke(point, lineStroke)) {
+          _undoStack.add(List.from(_strokes));
+          _redoStack.clear();
+          _isDraggingSelection = true;
+          _lastLassoDragPoint = point;
+          _activeResizeHandle = null;
+          notifyListeners();
+          return;
+        }
+      }
+
+      // Tapped outside the selected line: deselect it
+      _selectedStrokeIndices.clear();
+      _selectedTextIds.clear();
+      _activeResizeHandle = null;
+      _isDraggingSelection = false;
+      _lastLassoDragPoint = null;
+      notifyListeners();
+    }
+
     if (_selectedTool == DrawingTool.lasso) {
       final bounds = selectionBounds;
       if (bounds != null) {
@@ -1053,6 +1100,36 @@ class PlannerController extends ChangeNotifier {
       return;
     }
 
+    // Handle dragging endpoints or body of an active line selection
+    if (isSingleLineOrArrowSelected && _activeResizeHandle != null) {
+      final idx = _selectedStrokeIndices.first;
+      final stroke = _strokes[idx];
+      List<Offset> newPoints = List.from(stroke.points);
+
+      if (_activeResizeHandle == SelectionHandle.lineStart && newPoints.isNotEmpty) {
+        newPoints[0] = point;
+      } else if (_activeResizeHandle == SelectionHandle.lineEnd && newPoints.length >= 2) {
+        newPoints[newPoints.length - 1] = point;
+      } else if (_activeResizeHandle == SelectionHandle.lineVertex && newPoints.length >= 3) {
+        newPoints[1] = point;
+      }
+
+      _strokes[idx] = stroke.copyWith(points: newPoints);
+      canvasDragTick.value++;
+      return;
+    }
+
+    if (isSingleLineOrArrowSelected && _isDraggingSelection && _lastLassoDragPoint != null) {
+      final delta = point - _lastLassoDragPoint!;
+      _lastLassoDragPoint = point;
+      final idx = _selectedStrokeIndices.first;
+      final stroke = _strokes[idx];
+      final movedPoints = stroke.points.map((p) => p + delta).toList();
+      _strokes[idx] = stroke.copyWith(points: movedPoints);
+      canvasDragTick.value++;
+      return;
+    }
+
     if (_selectedTool == DrawingTool.lasso) {
       if (_isRotatingSelection) {
         updateRotation(point);
@@ -1128,6 +1205,16 @@ class PlannerController extends ChangeNotifier {
       return;
     }
 
+    if (isSingleLineOrArrowSelected &&
+        (_activeResizeHandle != null || _isDraggingSelection)) {
+      _activeResizeHandle = null;
+      _isDraggingSelection = false;
+      _lastLassoDragPoint = null;
+      _saveCurrentStrokes();
+      notifyListeners();
+      return;
+    }
+
     if (_selectedTool == DrawingTool.lasso) {
       if (_isRotatingSelection) {
         endRotation();
@@ -1166,6 +1253,11 @@ class PlannerController extends ChangeNotifier {
           final p2 = strokeWithOrder.points[1];
           if ((p1 - p2).distance > 3.0) {
             _strokes.add(strokeWithOrder);
+            if (_selectedTool.isLineOrArrow) {
+              _selectedStrokeIndices.clear();
+              _selectedStrokeIndices.add(_strokes.length - 1);
+              _selectedTextIds.clear();
+            }
           }
         }
       } else {
@@ -1212,6 +1304,66 @@ class PlannerController extends ChangeNotifier {
       }
       notifyListeners();
     }
+  }
+
+  SelectionHandle? _findLineHandleAtPoint(Offset point, DrawingStroke stroke) {
+    final threshold = 22.0 / _zoomScale;
+    if (stroke.points.length >= 2) {
+      final pStart = stroke.points[0];
+      final pEnd = stroke.points.last;
+      if ((point - pStart).distance <= threshold) {
+        return SelectionHandle.lineStart;
+      }
+      if ((point - pEnd).distance <= threshold) {
+        return SelectionHandle.lineEnd;
+      }
+      if (stroke.tool == DrawingTool.angle && stroke.points.length >= 3) {
+        final pVertex = stroke.points[1];
+        if ((point - pVertex).distance <= threshold) {
+          return SelectionHandle.lineVertex;
+        }
+      }
+    }
+    return null;
+  }
+
+  bool _isPointNearLineStroke(Offset point, DrawingStroke stroke) {
+    final hitRadius = (stroke.strokeWidth / 2) + (16.0 / _zoomScale);
+    if (stroke.tool == DrawingTool.angle && stroke.points.length >= 3) {
+      final d1 = _distanceToSegment(point, stroke.points[0], stroke.points[1]);
+      final d2 = _distanceToSegment(point, stroke.points[1], stroke.points[2]);
+      return math.min(d1, d2) <= hitRadius;
+    } else if (stroke.points.length >= 2) {
+      return _distanceToSegment(point, stroke.points[0], stroke.points.last) <= hitRadius;
+    }
+    return false;
+  }
+
+  void updateSelectedLineTool(DrawingTool newTool) {
+    if (!isSingleLineOrArrowSelected || !newTool.isLineOrArrow) return;
+    final idx = _selectedStrokeIndices.first;
+    final stroke = _strokes[idx];
+    if (stroke.tool == newTool) return;
+
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    List<Offset> newPoints = List.from(stroke.points);
+    if (newTool == DrawingTool.angle) {
+      if (newPoints.length == 2) {
+        final p1 = newPoints[0];
+        final p2 = newPoints[1];
+        final pVertex = Offset(p1.dx, p2.dy);
+        newPoints = [p1, pVertex, p2];
+      }
+    } else {
+      if (newPoints.length >= 3) {
+        newPoints = [newPoints.first, newPoints.last];
+      }
+    }
+    _strokes[idx] = stroke.copyWith(tool: newTool, points: newPoints);
+    _saveCurrentStrokes();
+    notifyListeners();
   }
 
   SelectionHandle? _findResizeHandleAtPoint(Offset point, Rect bounds) {
@@ -1284,6 +1436,10 @@ class PlannerController extends ChangeNotifier {
         break;
       case SelectionHandle.centerLeft:
         newLeft += delta.dx;
+        break;
+      case SelectionHandle.lineStart:
+      case SelectionHandle.lineEnd:
+      case SelectionHandle.lineVertex:
         break;
     }
 
@@ -1391,7 +1547,7 @@ class PlannerController extends ChangeNotifier {
       if (stroke.points.isEmpty) continue;
       final hitRadius = (stroke.strokeWidth / 2) + 14.0;
 
-      if (stroke.tool.isShape && stroke.points.length >= 2) {
+      if (stroke.tool.isShape && !stroke.tool.isLineOrArrow && stroke.points.length >= 2) {
         final rect = Rect.fromPoints(stroke.points.first, stroke.points.last).inflate(hitRadius);
         if (rect.contains(point)) {
           return i;
@@ -2577,7 +2733,7 @@ class PlannerController extends ChangeNotifier {
 
     _strokes.removeWhere((stroke) {
       if (stroke.isLocked) return false;
-      if (stroke.tool.isShape && stroke.points.length >= 2) {
+      if (stroke.tool.isShape && !stroke.tool.isLineOrArrow && stroke.points.length >= 2) {
         final rect = Rect.fromPoints(stroke.points.first, stroke.points.last).inflate(eraseRadius);
         if (rect.contains(point)) return true;
       }

@@ -189,6 +189,63 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1000));
   });
 
+  testWidgets(
+      'Line selection automatically activates with endpoint handles and allows dragging endpoints',
+      (WidgetTester tester) async {
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // 1. Draw a line from (100, 100) to (300, 100)
+    controller.setTool(DrawingTool.line);
+    controller.startStroke(const Offset(100, 100));
+    controller.updateStroke(const Offset(300, 100));
+    controller.endStroke();
+
+    // Immediately after drawing, the line is selected with line handles (NOT rectangular box)
+    expect(controller.isSingleLineOrArrowSelected, isTrue);
+    expect(controller.selectedLineStroke, isNotNull);
+    expect(controller.selectedLineStroke!.points[0], const Offset(100, 100));
+    expect(controller.selectedLineStroke!.points[1], const Offset(300, 100));
+
+    // 2. Drag start handle (lineStart at 100, 100) to (80, 120)
+    controller.startStroke(const Offset(100, 100));
+    expect(controller.activeResizeHandle, SelectionHandle.lineStart);
+    controller.updateStroke(const Offset(80, 120));
+    controller.endStroke();
+
+    expect(controller.selectedLineStroke!.points[0], const Offset(80, 120));
+    expect(controller.selectedLineStroke!.points[1], const Offset(300, 100));
+
+    // 3. Drag end handle (lineEnd at 300, 100) to (320, 150)
+    controller.startStroke(const Offset(300, 100));
+    expect(controller.activeResizeHandle, SelectionHandle.lineEnd);
+    controller.updateStroke(const Offset(320, 150));
+    controller.endStroke();
+
+    expect(controller.selectedLineStroke!.points[0], const Offset(80, 120));
+    expect(controller.selectedLineStroke!.points[1], const Offset(320, 150));
+
+    // 4. Drag line body (midpoint ~200, 135) by (+20, +30)
+    controller.startStroke(const Offset(200, 135));
+    expect(controller.activeResizeHandle, isNull);
+    controller.updateStroke(const Offset(220, 165));
+    controller.endStroke();
+
+    expect(controller.selectedLineStroke!.points[0], const Offset(100, 150));
+    expect(controller.selectedLineStroke!.points[1], const Offset(340, 180));
+
+    // 5. Convert line to arrow and angle
+    controller.updateSelectedLineTool(DrawingTool.arrow);
+    expect(controller.selectedLineStroke!.tool, DrawingTool.arrow);
+
+    controller.updateSelectedLineTool(DrawingTool.angle);
+    expect(controller.selectedLineStroke!.tool, DrawingTool.angle);
+    expect(controller.selectedLineStroke!.points.length, 3);
+
+    // Drain debounce save timer
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
+
   testWidgets('Lasso tool selects and moves strokes and shapes',
       (WidgetTester tester) async {
     final controller = PlannerController();

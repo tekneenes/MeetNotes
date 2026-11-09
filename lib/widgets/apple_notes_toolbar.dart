@@ -150,17 +150,33 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
                     width: currentWidth,
                     height: currentHeight,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.90),
+                      color: Colors.white.withValues(alpha: 0.95),
                       borderRadius: BorderRadius.circular(26),
                       border: Border.all(
-                        color: Colors.black,
-                        width: 1.5,
+                        color: Colors.black.withValues(alpha: 0.08),
+                        width: 1.0,
                       ),
                       boxShadow: [
+                        // Layer 1: Ambient soft elevation
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.12),
-                          blurRadius: 22,
-                          offset: const Offset(0, 6),
+                          color: const Color(0xFF0F172A).withValues(alpha: 0.12),
+                          blurRadius: 26,
+                          spreadRadius: 1,
+                          offset: const Offset(0, 8),
+                        ),
+                        // Layer 2: Contact shadow
+                        BoxShadow(
+                          color: const Color(0xFF0F172A).withValues(alpha: 0.08),
+                          blurRadius: 10,
+                          spreadRadius: 0,
+                          offset: const Offset(0, 3),
+                        ),
+                        // Layer 3: Subtle rim depth
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 3,
+                          spreadRadius: 0,
+                          offset: const Offset(0, 1),
                         ),
                       ],
                     ),
@@ -482,12 +498,13 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
     final isSelected = controller.selectedTool == tool;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 1.5),
+      padding: const EdgeInsets.symmetric(horizontal: 2.0, vertical: 2.0),
       child: Tooltip(
         message: tool == DrawingTool.text
             ? 'Tek Tıkla Metin Ekle (Şablonlar İçin Basılı Tutun)'
             : tool.label,
         child: InkResponse(
+          customBorder: const CircleBorder(),
           radius: 20,
           onTap: () {
             if (tool == DrawingTool.text) {
@@ -508,36 +525,20 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
-            transform: Matrix4.translationValues(0, isSelected ? -5 : 0, 0),
-            width: 35,
-            height: 44,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
+              shape: BoxShape.circle,
               color: isSelected
-                  ? const Color(0xFF007AFF).withValues(alpha: 0.12)
+                  ? const Color(0xFF007AFF).withValues(alpha: 0.15)
                   : Colors.transparent,
-              borderRadius: BorderRadius.circular(14),
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  tool.icon,
-                  size: 19,
-                  color: isSelected ? const Color(0xFF007AFF) : Colors.grey.shade700,
-                ),
-                const SizedBox(height: 2),
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  width: isSelected ? 4 : 0,
-                  height: isSelected ? 4 : 0,
-                  decoration: BoxDecoration(
-                    color: tool == DrawingTool.eraser
-                        ? const Color(0xFF007AFF)
-                        : controller.selectedColor,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ],
+            child: Center(
+              child: Icon(
+                tool.icon,
+                size: 20,
+                color: isSelected ? const Color(0xFF007AFF) : Colors.grey.shade700,
+              ),
             ),
           ),
         ),

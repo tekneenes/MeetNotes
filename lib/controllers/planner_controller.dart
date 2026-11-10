@@ -848,7 +848,12 @@ class PlannerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  CanvasPaperRegion? applyPaperStyleToSelection(PaperStyle style, {Rect? targetRect}) {
+  CanvasPaperRegion? applyPaperStyleToSelection(
+    PaperStyle style, {
+    Rect? targetRect,
+    PaperColorTheme? colorTheme,
+    Color? customBackgroundColor,
+  }) {
     Rect? bounds = targetRect ?? _activeAreaSelectionRect ?? selectionBounds ?? selectedPaperRegion?.rect;
     if (bounds == null || bounds.width < 10.0 || bounds.height < 10.0) {
       return null;
@@ -859,7 +864,11 @@ class PlannerController extends ChangeNotifier {
       for (final regId in _selectedPaperRegionIds) {
         final idx = _canvasPaperRegions.indexWhere((r) => r.id == regId);
         if (idx != -1) {
-          _canvasPaperRegions[idx] = _canvasPaperRegions[idx].copyWith(style: style);
+          _canvasPaperRegions[idx] = _canvasPaperRegions[idx].copyWith(
+            style: style,
+            colorTheme: colorTheme,
+            customBackgroundColor: customBackgroundColor,
+          );
           lastUpdated = _canvasPaperRegions[idx];
         }
       }
@@ -875,6 +884,8 @@ class PlannerController extends ChangeNotifier {
       spacing: _paperConfig.spacing,
       opacity: (_paperConfig.opacity * 1.2).clamp(0.12, 0.40),
       layerOrder: _nextTopLayerOrder(),
+      colorTheme: colorTheme ?? _paperConfig.colorTheme,
+      customBackgroundColor: customBackgroundColor,
     );
 
     _canvasPaperRegions.add(newRegion);
@@ -886,6 +897,47 @@ class PlannerController extends ChangeNotifier {
     _saveCurrentCanvasPaperRegions();
     notifyListeners();
     return newRegion;
+  }
+
+  void applyPaperColorThemeToSelection(PaperColorTheme theme) {
+    if (_selectedPaperRegionIds.isNotEmpty) {
+      for (final regId in _selectedPaperRegionIds) {
+        final idx = _canvasPaperRegions.indexWhere((r) => r.id == regId);
+        if (idx != -1) {
+          _canvasPaperRegions[idx] = _canvasPaperRegions[idx].copyWith(
+            colorTheme: theme,
+            clearCustomColor: true,
+          );
+        }
+      }
+      _saveCurrentCanvasPaperRegions();
+      notifyListeners();
+      return;
+    }
+
+    if (_activeAreaSelectionRect != null) {
+      applyPaperStyleToSelection(PaperStyle.grid, colorTheme: theme);
+    }
+  }
+
+  void applyPaperCustomColorToSelection(Color color) {
+    if (_selectedPaperRegionIds.isNotEmpty) {
+      for (final regId in _selectedPaperRegionIds) {
+        final idx = _canvasPaperRegions.indexWhere((r) => r.id == regId);
+        if (idx != -1) {
+          _canvasPaperRegions[idx] = _canvasPaperRegions[idx].copyWith(
+            customBackgroundColor: color,
+          );
+        }
+      }
+      _saveCurrentCanvasPaperRegions();
+      notifyListeners();
+      return;
+    }
+
+    if (_activeAreaSelectionRect != null) {
+      applyPaperStyleToSelection(PaperStyle.grid, customBackgroundColor: color);
+    }
   }
 
   void removeSelectedPaperRegion() {

@@ -1952,6 +1952,109 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         label: 'Boş',
         tooltip: 'Seçili Alanı Boş Yap',
       ),
+      _buildPillDivider(),
+      ...PaperColorTheme.values.map((theme) {
+        final currentTheme = controller.selectedPaperRegion?.colorTheme ??
+            controller.paperConfig.colorTheme;
+        final hasCustom = controller.selectedPaperRegion?.customBackgroundColor != null;
+        final isCurrent = !hasCustom && currentTheme == theme;
+        return Tooltip(
+          message: '${theme.label} Kağıt Rengi',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => controller.applyPaperColorThemeToSelection(theme),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 2.0),
+              padding: const EdgeInsets.all(2.5),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isCurrent
+                      ? const Color(0xFF38BDF8)
+                      : Colors.white.withValues(alpha: 0.25),
+                  width: isCurrent ? 2.0 : 1.0,
+                ),
+              ),
+              child: Container(
+                width: 14,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: theme.backgroundColor,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: theme.isDark
+                        ? Colors.white.withValues(alpha: 0.4)
+                        : Colors.black.withValues(alpha: 0.2),
+                    width: 0.8,
+                  ),
+                ),
+                child: isCurrent
+                    ? Center(
+                        child: Icon(
+                          Icons.check_rounded,
+                          size: 9,
+                          color: theme.isDark ? Colors.white : const Color(0xFF007AFF),
+                        ),
+                      )
+                    : null,
+              ),
+            ),
+          ),
+        );
+      }),
+      Builder(
+        builder: (btnContext) {
+          final hasCustom =
+              controller.selectedPaperRegion?.customBackgroundColor != null;
+          return Tooltip(
+            message: 'Özel Şablon Rengi',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () {
+                final renderBox = btnContext.findRenderObject() as RenderBox?;
+                final buttonRect = renderBox != null
+                    ? renderBox.localToGlobal(Offset.zero) & renderBox.size
+                    : Rect.fromCenter(
+                        center: Offset(MediaQuery.of(context).size.width / 2, 100),
+                        width: 30,
+                        height: 30,
+                      );
+                final initialColor = controller.selectedPaperRegion?.customBackgroundColor ??
+                    controller.selectedPaperRegion?.colorTheme?.backgroundColor ??
+                    controller.paperConfig.colorTheme.backgroundColor;
+                CompactColorPickerDialog.showAnchored(
+                  context: context,
+                  anchorRect: buttonRect,
+                  title: 'Şablon Rengi',
+                  initialColor: initialColor,
+                  allowOpacity: false,
+                  onColorChanged: (c) {
+                    controller.applyPaperCustomColorToSelection(c);
+                  },
+                );
+              },
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 2.0),
+                padding: const EdgeInsets.all(3.0),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: hasCustom
+                        ? const Color(0xFF38BDF8)
+                        : Colors.white.withValues(alpha: 0.25),
+                    width: hasCustom ? 1.8 : 1.0,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.palette_rounded,
+                  size: 13,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
       if (controller.selectedPaperRegionIds.isNotEmpty) ...[
         _buildPillDivider(),
         Tooltip(
@@ -3328,13 +3431,22 @@ class SinglePaperRegionPainter extends CustomPainter {
     canvas.save();
     canvas.clipRRect(rrect);
 
-    // 1. Opaque base paper fill to cleanly mask underlying strokes and layers
-    final baseFillPaint = Paint()..color = basePaperColor;
+    // 1. Dynamic region paper fill (custom color or region color theme, falling back to basePaperColor)
+    final effectivePaperColor = region.customBackgroundColor ??
+        region.colorTheme?.backgroundColor ??
+        basePaperColor;
+    final effectiveGridColor = region.customGridLineColor ??
+        region.colorTheme?.gridLineColor ??
+        (effectivePaperColor.computeLuminance() < 0.2
+            ? const Color(0xFF94A3B8)
+            : gridLineColor);
+
+    final baseFillPaint = Paint()..color = effectivePaperColor;
     canvas.drawRect(r, baseFillPaint);
 
     final step = region.spacing.clamp(16.0, 60.0);
     final regLinePaint = Paint()
-      ..color = gridLineColor.withValues(alpha: region.opacity)
+      ..color = effectiveGridColor.withValues(alpha: region.opacity)
       ..strokeWidth = 0.75 / scale.clamp(0.5, 2.0)
       ..style = PaintingStyle.stroke;
 

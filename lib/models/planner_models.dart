@@ -914,6 +914,9 @@ class CanvasPaperRegion {
   final bool isLocked;
   final int? layerOrder;
   final String? groupId;
+  final PaperColorTheme? colorTheme;
+  final Color? customBackgroundColor;
+  final Color? customGridLineColor;
 
   const CanvasPaperRegion({
     required this.id,
@@ -924,6 +927,9 @@ class CanvasPaperRegion {
     this.isLocked = false,
     this.layerOrder,
     this.groupId,
+    this.colorTheme,
+    this.customBackgroundColor,
+    this.customGridLineColor,
   });
 
   CanvasPaperRegion copyWith({
@@ -936,6 +942,10 @@ class CanvasPaperRegion {
     int? layerOrder,
     String? groupId,
     bool clearGroupId = false,
+    PaperColorTheme? colorTheme,
+    Color? customBackgroundColor,
+    Color? customGridLineColor,
+    bool clearCustomColor = false,
   }) {
     return CanvasPaperRegion(
       id: id ?? this.id,
@@ -946,6 +956,13 @@ class CanvasPaperRegion {
       isLocked: isLocked ?? this.isLocked,
       layerOrder: layerOrder ?? this.layerOrder,
       groupId: clearGroupId ? null : (groupId ?? this.groupId),
+      colorTheme: colorTheme ?? this.colorTheme,
+      customBackgroundColor: clearCustomColor
+          ? null
+          : (customBackgroundColor ?? this.customBackgroundColor),
+      customGridLineColor: clearCustomColor
+          ? null
+          : (customGridLineColor ?? this.customGridLineColor),
     );
   }
 
@@ -961,6 +978,11 @@ class CanvasPaperRegion {
     'isLocked': isLocked,
     if (layerOrder != null) 'layerOrder': layerOrder,
     if (groupId != null) 'groupId': groupId,
+    if (colorTheme != null) 'colorTheme': colorTheme!.name,
+    if (customBackgroundColor != null)
+      'customBackgroundColor': customBackgroundColor!.toARGB32(),
+    if (customGridLineColor != null)
+      'customGridLineColor': customGridLineColor!.toARGB32(),
   };
 
   factory CanvasPaperRegion.fromMap(Map<String, dynamic> map) {
@@ -973,6 +995,16 @@ class CanvasPaperRegion {
       (s) => s.name == styleName,
       orElse: () => PaperStyle.grid,
     );
+    final themeName = map['colorTheme'] as String?;
+    final colorTheme = themeName != null
+        ? PaperColorTheme.values.firstWhere(
+            (t) => t.name == themeName,
+            orElse: () => PaperColorTheme.white,
+          )
+        : null;
+    final customBgInt = map['customBackgroundColor'] as int?;
+    final customLineInt = map['customGridLineColor'] as int?;
+
     return CanvasPaperRegion(
       id: map['id'] as String? ?? '',
       rect: Rect.fromLTWH(x, y, w, h),
@@ -982,6 +1014,9 @@ class CanvasPaperRegion {
       isLocked: map['isLocked'] as bool? ?? false,
       layerOrder: (map['layerOrder'] as num?)?.toInt(),
       groupId: map['groupId'] as String?,
+      colorTheme: colorTheme,
+      customBackgroundColor: customBgInt != null ? Color(customBgInt) : null,
+      customGridLineColor: customLineInt != null ? Color(customLineInt) : null,
     );
   }
 

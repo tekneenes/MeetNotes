@@ -87,13 +87,22 @@ class PaperBackgroundPainter extends CustomPainter {
     canvas.save();
     canvas.clipRRect(rrect);
 
-    // Opaque base paper fill to cleanly mask underlying global pattern
-    final baseFillPaint = Paint()..color = basePaperColor;
+    // Dynamic region paper fill (custom color or region color theme, falling back to basePaperColor)
+    final effectivePaperColor = region.customBackgroundColor ??
+        region.colorTheme?.backgroundColor ??
+        basePaperColor;
+    final effectiveGridColor = region.customGridLineColor ??
+        region.colorTheme?.gridLineColor ??
+        (effectivePaperColor.computeLuminance() < 0.2
+            ? const Color(0xFF94A3B8)
+            : gridLineColor);
+
+    final baseFillPaint = Paint()..color = effectivePaperColor;
     canvas.drawRect(r, baseFillPaint);
 
     final step = region.spacing.clamp(14.0, 60.0);
     final regLinePaint = Paint()
-      ..color = gridLineColor.withValues(alpha: region.opacity)
+      ..color = effectiveGridColor.withValues(alpha: region.opacity)
       ..strokeWidth = 0.75 / scale.clamp(0.5, 2.0)
       ..style = PaintingStyle.stroke;
 
@@ -116,7 +125,7 @@ class PaperBackgroundPainter extends CustomPainter {
         break;
       case PaperStyle.dotted:
         final dotPaint = Paint()
-          ..color = gridLineColor.withValues(alpha: (region.opacity * 1.8).clamp(0.0, 1.0))
+          ..color = effectiveGridColor.withValues(alpha: (region.opacity * 1.8).clamp(0.0, 1.0))
           ..style = PaintingStyle.fill;
         const dotRadius = 1.1;
         for (double x = firstX; x <= r.right; x += step) {
@@ -133,7 +142,7 @@ class PaperBackgroundPainter extends CustomPainter {
 
     // Subtle region boundary border
     final borderPaint = Paint()
-      ..color = gridLineColor.withValues(alpha: 0.18)
+      ..color = effectiveGridColor.withValues(alpha: 0.22)
       ..strokeWidth = 1.0 / scale.clamp(0.5, 2.0)
       ..style = PaintingStyle.stroke;
     canvas.drawRRect(rrect, borderPaint);

@@ -2266,4 +2266,78 @@ void main() {
     // Drain debounce timer
     await tester.pump(const Duration(milliseconds: 1000));
   });
+
+  testWidgets('Template / Paper Region color themes and custom color test',
+      (WidgetTester tester) async {
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // 1. Create a paper region via area selection
+    controller.setShowTemplateSelectionOptions(true);
+    controller.setTool(DrawingTool.lasso);
+    controller.setLassoSelectionMode(LassoSelectionMode.rectangle);
+    controller.startStroke(const Offset(50, 50));
+    controller.updateStroke(const Offset(200, 200));
+    controller.endStroke();
+
+    final region = controller.applyPaperStyleToSelection(PaperStyle.grid);
+    expect(region, isNotNull);
+    expect(controller.selectedPaperRegionIds.length, 1);
+
+    // 2. Apply Pastel Yellow theme to the template
+    controller.applyPaperColorThemeToSelection(PaperColorTheme.yellow);
+    expect(
+      controller.canvasPaperRegions.first.colorTheme,
+      PaperColorTheme.yellow,
+    );
+
+    // 3. Apply Pastel Green theme to the template
+    controller.applyPaperColorThemeToSelection(PaperColorTheme.green);
+    expect(
+      controller.canvasPaperRegions.first.colorTheme,
+      PaperColorTheme.green,
+    );
+
+    // 4. Apply Siyah Kağıt (Dark) theme to the template
+    controller.applyPaperColorThemeToSelection(PaperColorTheme.black);
+    expect(
+      controller.canvasPaperRegions.first.colorTheme,
+      PaperColorTheme.black,
+    );
+
+    // 5. Apply a custom background color (e.g. Light Sky Blue)
+    const customColor = Color(0xFFBAE6FD);
+    controller.applyPaperCustomColorToSelection(customColor);
+    expect(
+      controller.canvasPaperRegions.first.customBackgroundColor,
+      customColor,
+    );
+
+    // 6. Test multi-template color theme application
+    // Add second region
+    controller.clearLassoSelection();
+    controller.setShowTemplateSelectionOptions(true);
+    controller.startStroke(const Offset(250, 50));
+    controller.updateStroke(const Offset(400, 200));
+    controller.endStroke();
+    controller.applyPaperStyleToSelection(PaperStyle.lined);
+    expect(controller.canvasPaperRegions.length, 2);
+
+    // Select both regions with rectangle lasso
+    controller.clearLassoSelection();
+    controller.startStroke(const Offset(40, 40));
+    controller.updateStroke(const Offset(410, 210));
+    controller.endStroke();
+    expect(controller.selectedPaperRegionIds.length, 2);
+
+    // Apply Cream / Fildişi to both selected templates at once!
+    controller.applyPaperColorThemeToSelection(PaperColorTheme.cream);
+    for (final reg in controller.canvasPaperRegions) {
+      expect(reg.colorTheme, PaperColorTheme.cream);
+      expect(reg.customBackgroundColor, isNull);
+    }
+
+    // Drain timer
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
 }

@@ -312,12 +312,17 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 children: [
                   // 1a. Realistic Paper Background Painter (Transforms directly on Canvas, fills 100% viewport)
                   Positioned.fill(
-                    child: CustomPaint(
-                      painter: PaperBackgroundPainter(
-                        config: controller.paperConfig,
-                        scale: _scale,
-                        panOffset: _panOffset,
-                        paperRegions: controller.canvasPaperRegions,
+                    child: ListenableBuilder(
+                      listenable: controller.canvasDragTick,
+                      builder: (context, _) => CustomPaint(
+                        painter: PaperBackgroundPainter(
+                          config: controller.paperConfig,
+                          scale: _scale,
+                          panOffset: _panOffset,
+                          paperRegions: controller.canvasPaperRegions,
+                          paperRegionsGetter: () => controller.canvasPaperRegions,
+                          repaint: controller.canvasDragTick,
+                        ),
                       ),
                     ),
                   ),

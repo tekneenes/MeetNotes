@@ -4,6 +4,7 @@ import '../models/planner_models.dart';
 class PaperBackgroundPainter extends CustomPainter {
   final PaperConfig config;
   final List<CanvasPaperRegion> paperRegions;
+  final List<CanvasPaperRegion> Function()? paperRegionsGetter;
   final double scale;
   final Offset panOffset;
   final Color basePaperColor;
@@ -12,10 +13,12 @@ class PaperBackgroundPainter extends CustomPainter {
   PaperBackgroundPainter({
     required this.config,
     this.paperRegions = const [],
+    this.paperRegionsGetter,
     this.scale = 1.0,
     this.panOffset = Offset.zero,
     this.basePaperColor = const Color(0xFFFBFBF9), // Warm, high-quality notebook paper
     this.gridLineColor = const Color(0xFF2B4D7E),   // Classic notebook ink blue/grey
+    super.repaint,
   });
 
   @override
@@ -64,7 +67,10 @@ class PaperBackgroundPainter extends CustomPainter {
     }
 
     // 4. Custom Paper Regions (Independent paper style areas)
-    for (final region in paperRegions) {
+    final effectiveRegions = paperRegionsGetter != null
+        ? paperRegionsGetter!()
+        : paperRegions;
+    for (final region in effectiveRegions) {
       _drawPaperRegion(canvas, region);
     }
 
@@ -211,6 +217,9 @@ class PaperBackgroundPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant PaperBackgroundPainter oldDelegate) {
+    if (paperRegionsGetter != null || oldDelegate.paperRegionsGetter != null) {
+      return true;
+    }
     return oldDelegate.config.style != config.style ||
         oldDelegate.config.spacing != config.spacing ||
         oldDelegate.config.opacity != config.opacity ||

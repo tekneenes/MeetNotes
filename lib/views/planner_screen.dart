@@ -1268,8 +1268,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                       _buildQuickItem(
                         icon: Icons.tune_rounded,
                         color: const Color(0xFF6366F1),
-                        title: 'Sayfa Düzeni',
-                        subtitle: 'Şablon (kareli, çizgili, boş), kılavuz aralığı ve defter ayarları',
+                        title: 'Sayfa Düzeni ve Ayarlar',
+                        subtitle: 'Kağıt renk teması (Krem, Siyah, Pastel), şablon, aralık ve defter ayarları',
                         onTap: () {
                           activeController.openQuickAccessPageSettings();
                         },
@@ -2735,6 +2735,133 @@ class _PlannerScreenState extends State<PlannerScreen>
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       children: [
+        // KAĞIT RENK TEMASI
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                'KAĞIT RENK TEMASI',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                config.colorTheme.label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF007AFF),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        // 5 Swatches Row
+        Row(
+          children: PaperColorTheme.values.map((theme) {
+            final isSelected = config.colorTheme == theme;
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2.0),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    hoverColor: const Color(0xFF007AFF).withValues(alpha: 0.06),
+                    mouseCursor: SystemMouseCursors.click,
+                    onTap: () {
+                      activeController.setPaperColorTheme(theme);
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? const Color(0xFFEFF6FF)
+                            : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected
+                              ? const Color(0xFF007AFF)
+                              : Colors.black.withValues(alpha: 0.08),
+                          width: isSelected ? 2.0 : 1.0,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: theme.backgroundColor,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: theme.isDark
+                                    ? Colors.white.withValues(alpha: 0.4)
+                                    : Colors.black.withValues(alpha: 0.15),
+                                width: 1.2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.06),
+                                  blurRadius: 3,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                            child: isSelected
+                                ? Icon(
+                                    Icons.check_rounded,
+                                    size: 16,
+                                    color: theme.isDark
+                                        ? Colors.white
+                                        : const Color(0xFF007AFF),
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            theme.shortLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight:
+                                  isSelected ? FontWeight.bold : FontWeight.w500,
+                              color: isSelected
+                                  ? const Color(0xFF007AFF)
+                                  : const Color(0xFF475569),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+
+        const SizedBox(height: 14),
+        const Divider(),
+        const SizedBox(height: 6),
+
         // ŞABLON SEÇİMİ
         Text(
           'ŞABLON SEÇİMİ',

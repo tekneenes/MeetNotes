@@ -16,10 +16,11 @@ class PaperBackgroundPainter extends CustomPainter {
     this.paperRegionsGetter,
     this.scale = 1.0,
     this.panOffset = Offset.zero,
-    this.basePaperColor = const Color(0xFFFBFBF9), // Warm, high-quality notebook paper
-    this.gridLineColor = const Color(0xFF2B4D7E),   // Classic notebook ink blue/grey
+    Color? basePaperColor,
+    Color? gridLineColor,
     super.repaint,
-  });
+  })  : basePaperColor = basePaperColor ?? config.colorTheme.backgroundColor,
+        gridLineColor = gridLineColor ?? config.colorTheme.gridLineColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -194,12 +195,15 @@ class PaperBackgroundPainter extends CustomPainter {
   void _drawSpineFold(Canvas canvas, Size size, double startY, double endY) {
     final midX = size.width / 2;
     final height = endY - startY;
+    final isDark = basePaperColor.computeLuminance() < 0.2;
+    final shadowColor = isDark ? Colors.white : Colors.black;
+
     final gradient = LinearGradient(
       colors: [
         Colors.transparent,
-        Colors.black.withValues(alpha: 0.04),
-        Colors.black.withValues(alpha: 0.09),
-        Colors.black.withValues(alpha: 0.04),
+        shadowColor.withValues(alpha: isDark ? 0.04 : 0.04),
+        shadowColor.withValues(alpha: isDark ? 0.09 : 0.09),
+        shadowColor.withValues(alpha: isDark ? 0.04 : 0.04),
         Colors.transparent,
       ],
       stops: const [0.0, 0.35, 0.5, 0.65, 1.0],
@@ -210,7 +214,7 @@ class PaperBackgroundPainter extends CustomPainter {
     canvas.drawRect(spineRect, spinePaint);
 
     final foldLinePaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.10)
+      ..color = shadowColor.withValues(alpha: isDark ? 0.12 : 0.10)
       ..strokeWidth = 0.5;
     canvas.drawLine(Offset(midX, startY), Offset(midX, endY), foldLinePaint);
   }

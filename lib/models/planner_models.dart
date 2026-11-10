@@ -13,17 +13,41 @@ enum PaperStyle {
   const PaperStyle(this.label, this.icon);
 }
 
+enum PaperColorTheme {
+  white('Standart Beyaz', 'Beyaz', Color(0xFFFFFFFF), Color(0xFF2B4D7E)),
+  cream('Krem / Fildişi', 'Krem', Color(0xFFF9F5EB), Color(0xFF7C6F59)),
+  black('Siyah Kağıt', 'Siyah', Color(0xFF1E2022), Color(0xFF94A3B8)),
+  yellow('Pastel Sarı', 'Sarı', Color(0xFFFFFBEB), Color(0xFF92400E)),
+  green('Pastel Yeşil', 'Yeşil', Color(0xFFF0FDF4), Color(0xFF047857));
+
+  final String label;
+  final String shortLabel;
+  final Color backgroundColor;
+  final Color gridLineColor;
+
+  const PaperColorTheme(
+    this.label,
+    this.shortLabel,
+    this.backgroundColor,
+    this.gridLineColor,
+  );
+
+  bool get isDark => backgroundColor.computeLuminance() < 0.2;
+}
+
 class PaperConfig {
   final PaperStyle style;
   final double spacing;
   final double opacity;
   final bool showSpineFold;
+  final PaperColorTheme colorTheme;
 
   const PaperConfig({
     this.style = PaperStyle.grid,
     this.spacing = 32.0,
     this.opacity = 0.22,
     this.showSpineFold = true,
+    this.colorTheme = PaperColorTheme.white,
   });
 
   PaperConfig copyWith({
@@ -31,12 +55,14 @@ class PaperConfig {
     double? spacing,
     double? opacity,
     bool? showSpineFold,
+    PaperColorTheme? colorTheme,
   }) {
     return PaperConfig(
       style: style ?? this.style,
       spacing: spacing ?? this.spacing,
       opacity: opacity ?? this.opacity,
       showSpineFold: showSpineFold ?? this.showSpineFold,
+      colorTheme: colorTheme ?? this.colorTheme,
     );
   }
 
@@ -46,6 +72,7 @@ class PaperConfig {
       'spacing': spacing,
       'opacity': opacity,
       'showSpineFold': showSpineFold,
+      'colorTheme': colorTheme.name,
     };
   }
 
@@ -58,6 +85,10 @@ class PaperConfig {
       spacing: (map['spacing'] as num?)?.toDouble() ?? 32.0,
       opacity: (map['opacity'] as num?)?.toDouble() ?? 0.22,
       showSpineFold: map['showSpineFold'] as bool? ?? true,
+      colorTheme: PaperColorTheme.values.firstWhere(
+        (e) => e.name == map['colorTheme'],
+        orElse: () => PaperColorTheme.white,
+      ),
     );
   }
 }

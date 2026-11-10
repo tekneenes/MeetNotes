@@ -13,6 +13,7 @@ import 'package:meet_notes/widgets/compact_lasso_picker_dialog.dart';
 import 'package:meet_notes/widgets/compact_shapes_picker.dart';
 import 'package:meet_notes/widgets/apple_notes_toolbar.dart';
 import 'package:meet_notes/widgets/drawing_workspace.dart';
+import 'package:meet_notes/widgets/paper_settings_dialog.dart';
 import 'package:meet_notes/services/shape_recognition_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -2193,6 +2194,76 @@ void main() {
     expect(controller.hasLassoSelection, isFalse);
 
     // Drain timer
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
+
+  testWidgets('Paper Color Themes in Quick Access and Painter test',
+      (WidgetTester tester) async {
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // 1. Initial default paper color theme is white
+    expect(controller.paperConfig.colorTheme, PaperColorTheme.white);
+    expect(controller.paperConfig.colorTheme.backgroundColor, const Color(0xFFFFFFFF));
+
+    // 2. Switching to Cream / Fildişi
+    controller.setPaperColorTheme(PaperColorTheme.cream);
+    expect(controller.paperConfig.colorTheme, PaperColorTheme.cream);
+    expect(controller.paperConfig.colorTheme.backgroundColor, const Color(0xFFF9F5EB));
+
+    // 3. Switching to Siyah Kağıt
+    controller.setPaperColorTheme(PaperColorTheme.black);
+    expect(controller.paperConfig.colorTheme, PaperColorTheme.black);
+    expect(controller.paperConfig.colorTheme.isDark, isTrue);
+
+    // 4. Switching to Pastel Sarı
+    controller.setPaperColorTheme(PaperColorTheme.yellow);
+    expect(controller.paperConfig.colorTheme, PaperColorTheme.yellow);
+    expect(controller.paperConfig.colorTheme.backgroundColor, const Color(0xFFFFFBEB));
+
+    // 5. Switching to Pastel Yeşil
+    controller.setPaperColorTheme(PaperColorTheme.green);
+    expect(controller.paperConfig.colorTheme, PaperColorTheme.green);
+    expect(controller.paperConfig.colorTheme.backgroundColor, const Color(0xFFF0FDF4));
+
+    // 6. Test serialization toMap & fromMap
+    final map = controller.paperConfig.toMap();
+    expect(map['colorTheme'], 'green');
+    final restoredConfig = PaperConfig.fromMap(map);
+    expect(restoredConfig.colorTheme, PaperColorTheme.green);
+
+    // 7. Test UI rendering in Quick Access Page Settings
+    controller.openQuickAccessPageSettings();
+    expect(controller.isQuickAccessPageSettingsPage, isTrue);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PaperSettingsDialog(controller: controller),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Verify all 5 color labels exist in UI
+    expect(find.text('KAĞIT RENK TEMASI'), findsOneWidget);
+    expect(find.text('Beyaz'), findsOneWidget);
+    expect(find.text('Krem'), findsOneWidget);
+    expect(find.text('Siyah'), findsOneWidget);
+    expect(find.text('Sarı'), findsOneWidget);
+    expect(find.text('Yeşil'), findsOneWidget);
+
+    // Tap on Siyah
+    await tester.tap(find.text('Siyah'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(controller.paperConfig.colorTheme, PaperColorTheme.black);
+
+    // Tap on Krem
+    await tester.tap(find.text('Krem'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(controller.paperConfig.colorTheme, PaperColorTheme.cream);
+
+    // Drain debounce timer
     await tester.pump(const Duration(milliseconds: 1000));
   });
 }

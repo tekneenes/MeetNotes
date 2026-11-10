@@ -1581,6 +1581,10 @@ class PlannerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setPaperColorTheme(PaperColorTheme theme) {
+    updatePaperConfig(_paperConfig.copyWith(colorTheme: theme));
+  }
+
   // Collects all snap candidate points from lines and geometric shapes:
   // - Line endpoints & curve apex
   // - Shape corners (vertices) - başlangıç ve bitiş kısımları

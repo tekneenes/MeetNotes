@@ -82,6 +82,10 @@ class PlannerController extends ChangeNotifier {
   List<CanvasTextItem> _canvasTexts = [];
   List<CanvasImageItem> _canvasImages = [];
   List<CanvasFileItem> _canvasFiles = [];
+  List<CanvasPaperRegion> _canvasPaperRegions = [];
+  String? _selectedPaperRegionId;
+  Rect? _activeAreaSelectionRect;
+  PaperStyle? _pendingLassoPaperStyle;
   String? _selectedTextId;
   String? _editingTextId;
   String? _selectedFileId;
@@ -132,7 +136,23 @@ class PlannerController extends ChangeNotifier {
   bool get hasLassoSelection =>
       _selectedStrokeIndices.isNotEmpty ||
       _selectedTextIds.isNotEmpty ||
-      _selectedImageIds.isNotEmpty;
+      _selectedImageIds.isNotEmpty ||
+      _selectedPaperRegionId != null ||
+      _activeAreaSelectionRect != null;
+  bool get isAreaOnlySelection =>
+      _selectedStrokeIndices.isEmpty &&
+      _selectedTextIds.isEmpty &&
+      _selectedImageIds.isEmpty &&
+      (_selectedPaperRegionId != null || _activeAreaSelectionRect != null);
+  List<CanvasPaperRegion> get canvasPaperRegions => List.unmodifiable(_canvasPaperRegions);
+  String? get selectedPaperRegionId => _selectedPaperRegionId;
+  Rect? get activeAreaSelectionRect => _activeAreaSelectionRect;
+  PaperStyle? get pendingLassoPaperStyle => _pendingLassoPaperStyle;
+  CanvasPaperRegion? get selectedPaperRegion {
+    if (_selectedPaperRegionId == null) return null;
+    final idx = _canvasPaperRegions.indexWhere((r) => r.id == _selectedPaperRegionId);
+    return idx != -1 ? _canvasPaperRegions[idx] : null;
+  }
   bool isTextLassoSelected(String id) => _selectedTextIds.contains(id);
   bool isImageLassoSelected(String id) => _selectedImageIds.contains(id);
   bool get isDraggingSelection =>
@@ -618,6 +638,61 @@ class PlannerController extends ChangeNotifier {
     await _storage.saveCanvasFiles(_currentWeekStart, _currentPageIndex, _canvasFiles, prefix: _storagePrefix);
   }
 
+  Future<void> _saveCurrentCanvasPaperRegions() async {
+    await _storage.saveCanvasPaperRegions(_currentWeekStart, _currentPageIndex, _canvasPaperRegions, prefix: _storagePrefix);
+  }
+
+  void setPendingLassoPaperStyle(PaperStyle? style) {
+    _pendingLassoPaperStyle = style;
+    if (style != null) {
+      _lassoSelectionMode = LassoSelectionMode.rectangle;
+      _selectedTool = DrawingTool.lasso;
+    }
+    notifyListeners();
+  }
+
+  CanvasPaperRegion? applyPaperStyleToSelection(PaperStyle style, {Rect? targetRect}) {
+    Rect? bounds = targetRect ?? _activeAreaSelectionRect ?? selectionBounds ?? selectedPaperRegion?.rect;
+    if (bounds == null || bounds.width < 10.0 || bounds.height < 10.0) {
+      return null;
+    }
+
+    if (_selectedPaperRegionId != null) {
+      final idx = _canvasPaperRegions.indexWhere((r) => r.id == _selectedPaperRegionId);
+      if (idx != -1) {
+        _canvasPaperRegions[idx] = _canvasPaperRegions[idx].copyWith(style: style);
+        _saveCurrentCanvasPaperRegions();
+        notifyListeners();
+        return _canvasPaperRegions[idx];
+      }
+    }
+
+    final newRegion = CanvasPaperRegion(
+      id: const Uuid().v4(),
+      rect: bounds,
+      style: style,
+      spacing: _paperConfig.spacing,
+      opacity: (_paperConfig.opacity * 1.2).clamp(0.12, 0.40),
+    );
+
+    _canvasPaperRegions.add(newRegion);
+    _selectedPaperRegionId = newRegion.id;
+    _activeAreaSelectionRect = null;
+    _saveCurrentCanvasPaperRegions();
+    notifyListeners();
+    return newRegion;
+  }
+
+  void removeSelectedPaperRegion() {
+    if (_selectedPaperRegionId != null) {
+      _canvasPaperRegions.removeWhere((r) => r.id == _selectedPaperRegionId);
+      _selectedPaperRegionId = null;
+      _activeAreaSelectionRect = null;
+      _saveCurrentCanvasPaperRegions();
+      notifyListeners();
+    }
+  }
+
   // --- Varlıklar (Saved Reusable Single/Group Elements) ---
 
   Future<SavedCanvasAsset?> saveSelectionAsAsset({
@@ -944,6 +1019,31 @@ class PlannerController extends ChangeNotifier {
       }
     }
 
+    if (_selectedPaperRegionId != null) {
+      final region = selectedPaperRegion;
+      if (region != null) {
+        found = true;
+        final r = region.rect;
+        for (final c in [r.topLeft, r.topRight, r.bottomRight, r.bottomLeft]) {
+          if (c.dx < minX) minX = c.dx;
+          if (c.dy < minY) minY = c.dy;
+          if (c.dx > maxX) maxX = c.dx;
+          if (c.dy > maxY) maxY = c.dy;
+        }
+      }
+    }
+
+    if (_activeAreaSelectionRect != null) {
+      found = true;
+      final r = _activeAreaSelectionRect!;
+      for (final c in [r.topLeft, r.topRight, r.bottomRight, r.bottomLeft]) {
+        if (c.dx < minX) minX = c.dx;
+        if (c.dy < minY) minY = c.dy;
+        if (c.dx > maxX) maxX = c.dx;
+        if (c.dy > maxY) maxY = c.dy;
+      }
+    }
+
     if (!found) return null;
 
     if (_selectionRotationAngle == 0.0) {
@@ -967,10 +1067,13 @@ class PlannerController extends ChangeNotifier {
   Rect? get selectionBounds {
     final raw = _computeRawSelectionBounds();
     if (raw == null) return null;
-    // When only text items / images are selected (no drawing strokes), the
+    // When only text items / images / paper regions are selected (no drawing strokes), the
     // selection box hugs the exact outer edges without inflation padding.
     if (_selectedStrokeIndices.isEmpty &&
-        (_selectedTextIds.isNotEmpty || _selectedImageIds.isNotEmpty)) {
+        (_selectedTextIds.isNotEmpty ||
+            _selectedImageIds.isNotEmpty ||
+            _selectedPaperRegionId != null ||
+            _activeAreaSelectionRect != null)) {
       return raw;
     }
     return raw.inflate(8.0);
@@ -1064,6 +1167,7 @@ class PlannerController extends ChangeNotifier {
     _canvasTexts = await _storage.loadCanvasTexts(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
     _canvasImages = await _storage.loadCanvasImages(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
     _canvasFiles = await _storage.loadCanvasFiles(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
+    _canvasPaperRegions = await _storage.loadCanvasPaperRegions(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
     _normalizeUnifiedLayerOrders();
     _savedAssets = await _storage.loadSavedAssets();
 
@@ -1156,6 +1260,9 @@ class PlannerController extends ChangeNotifier {
     _canvasTexts = [];
     _canvasImages = [];
     _canvasFiles = [];
+    _canvasPaperRegions = [];
+    _selectedPaperRegionId = null;
+    _activeAreaSelectionRect = null;
     _selectedImageIds.clear();
     _undoStack.clear();
     _redoStack.clear();
@@ -1164,6 +1271,7 @@ class PlannerController extends ChangeNotifier {
     _saveCurrentCanvasTexts();
     _saveCurrentCanvasImages();
     _saveCurrentCanvasFiles();
+    _saveCurrentCanvasPaperRegions();
     notifyListeners();
   }
 
@@ -1172,6 +1280,9 @@ class PlannerController extends ChangeNotifier {
     _canvasTexts = await _storage.loadCanvasTexts(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
     _canvasImages = await _storage.loadCanvasImages(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
     _canvasFiles = await _storage.loadCanvasFiles(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
+    _canvasPaperRegions = await _storage.loadCanvasPaperRegions(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
+    _selectedPaperRegionId = null;
+    _activeAreaSelectionRect = null;
     _selectedImageIds.clear();
     _normalizeUnifiedLayerOrders();
     notifyListeners();
@@ -1673,10 +1784,35 @@ class PlannerController extends ChangeNotifier {
         return;
       }
 
+      int? hitPaperRegionIdx;
+      for (int i = _canvasPaperRegions.length - 1; i >= 0; i--) {
+        if (_canvasPaperRegions[i].rect.contains(point)) {
+          hitPaperRegionIdx = i;
+          break;
+        }
+      }
+
+      if (hitPaperRegionIdx != null) {
+        _selectedTextIds.clear();
+        _selectedImageIds.clear();
+        _selectedStrokeIndices.clear();
+        _selectedPaperRegionId = _canvasPaperRegions[hitPaperRegionIdx].id;
+        _activeAreaSelectionRect = null;
+        _selectionRotationAngle = 0.0;
+        _isDraggingSelection = true;
+        _lastLassoDragPoint = point;
+        _activeResizeHandle = null;
+        _lassoPoints = [];
+        notifyListeners();
+        return;
+      }
+
       // 4. Otherwise, start drawing a lasso loop in empty space
       _selectedStrokeIndices.clear();
       _selectedTextIds.clear();
       _selectedImageIds.clear();
+      _selectedPaperRegionId = null;
+      _activeAreaSelectionRect = null;
       _selectionRotationAngle = 0.0;
       _isDraggingSelection = false;
       _activeResizeHandle = null;
@@ -1793,6 +1929,16 @@ class PlannerController extends ChangeNotifier {
             _canvasImages[idx] = img.copyWith(position: img.position + delta);
           }
         }
+        if (_selectedPaperRegionId != null) {
+          final idx = _canvasPaperRegions.indexWhere((r) => r.id == _selectedPaperRegionId);
+          if (idx != -1) {
+            final reg = _canvasPaperRegions[idx];
+            _canvasPaperRegions[idx] = reg.copyWith(rect: reg.rect.shift(delta));
+          }
+        }
+        if (_activeAreaSelectionRect != null) {
+          _activeAreaSelectionRect = _activeAreaSelectionRect!.shift(delta);
+        }
       } else {
         if (_lassoSelectionMode == LassoSelectionMode.rectangle && _lassoStartPoint != null) {
           final rect = Rect.fromPoints(_lassoStartPoint!, point);
@@ -1884,12 +2030,14 @@ class PlannerController extends ChangeNotifier {
         _saveCurrentStrokes();
         _saveCurrentCanvasTexts();
         if (hadImages) _saveCurrentCanvasImages();
+        if (_selectedPaperRegionId != null) _saveCurrentCanvasPaperRegions();
       } else if (_isDraggingSelection) {
         _isDraggingSelection = false;
         _lastLassoDragPoint = null;
         _saveCurrentStrokes();
         _saveCurrentCanvasTexts();
         if (_selectedImageIds.isNotEmpty) _saveCurrentCanvasImages();
+        if (_selectedPaperRegionId != null) _saveCurrentCanvasPaperRegions();
       } else if (_lassoPoints.length >= 3) {
         if (_lassoSelectionMode == LassoSelectionMode.rectangle && _lassoStartPoint != null) {
           final pEnd = _lassoPoints.length > 2 ? _lassoPoints[2] : _lassoStartPoint!;
@@ -1898,8 +2046,18 @@ class PlannerController extends ChangeNotifier {
             _selectedStrokeIndices.clear();
             _selectedTextIds.clear();
             _selectedImageIds.clear();
+            _selectedPaperRegionId = null;
+            _activeAreaSelectionRect = null;
           } else {
             _selectStrokesInsideLasso();
+            if (!hasLassoSelection && rect.width >= 15.0 && rect.height >= 15.0) {
+              if (_pendingLassoPaperStyle != null) {
+                applyPaperStyleToSelection(_pendingLassoPaperStyle!, targetRect: rect);
+                _pendingLassoPaperStyle = null;
+              } else {
+                _activeAreaSelectionRect = rect;
+              }
+            }
           }
         } else {
           _selectStrokesInsideLasso();
@@ -2273,6 +2431,18 @@ class PlannerController extends ChangeNotifier {
         width: newWidth,
         height: newHeight,
       );
+    }
+
+    if (_selectedPaperRegionId != null) {
+      final idx = _canvasPaperRegions.indexWhere((r) => r.id == _selectedPaperRegionId);
+      if (idx != -1) {
+        _canvasPaperRegions[idx] = _canvasPaperRegions[idx].copyWith(
+          rect: Rect.fromLTWH(newLeft, newTop, newW, newH),
+        );
+      }
+    }
+    if (_activeAreaSelectionRect != null) {
+      _activeAreaSelectionRect = Rect.fromLTWH(newLeft, newTop, newW, newH);
     }
   }
 

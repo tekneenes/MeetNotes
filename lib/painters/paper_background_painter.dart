@@ -3,6 +3,7 @@ import '../models/planner_models.dart';
 
 class PaperBackgroundPainter extends CustomPainter {
   final PaperConfig config;
+  final List<CanvasPaperRegion> paperRegions;
   final double scale;
   final Offset panOffset;
   final Color basePaperColor;
@@ -10,6 +11,7 @@ class PaperBackgroundPainter extends CustomPainter {
 
   PaperBackgroundPainter({
     required this.config,
+    this.paperRegions = const [],
     this.scale = 1.0,
     this.panOffset = Offset.zero,
     this.basePaperColor = const Color(0xFFFBFBF9), // Warm, high-quality notebook paper
@@ -61,7 +63,73 @@ class PaperBackgroundPainter extends CustomPainter {
       _drawSpineFold(canvas, size, startY, endY);
     }
 
+    // 4. Custom Paper Regions (Independent paper style areas)
+    for (final region in paperRegions) {
+      _drawPaperRegion(canvas, region);
+    }
+
     canvas.restore();
+  }
+
+  void _drawPaperRegion(Canvas canvas, CanvasPaperRegion region) {
+    final r = region.rect;
+    if (r.width <= 0 || r.height <= 0) return;
+
+    final rrect = RRect.fromRectAndRadius(r, const Radius.circular(8));
+
+    canvas.save();
+    canvas.clipRRect(rrect);
+
+    // Opaque base paper fill to cleanly mask underlying global pattern
+    final baseFillPaint = Paint()..color = basePaperColor;
+    canvas.drawRect(r, baseFillPaint);
+
+    final step = region.spacing.clamp(14.0, 60.0);
+    final regLinePaint = Paint()
+      ..color = gridLineColor.withValues(alpha: region.opacity)
+      ..strokeWidth = 0.75 / scale.clamp(0.5, 2.0)
+      ..style = PaintingStyle.stroke;
+
+    final double firstX = (r.left / step).ceilToDouble() * step;
+    final double firstY = (r.top / step).ceilToDouble() * step;
+
+    switch (region.style) {
+      case PaperStyle.grid:
+        for (double x = firstX; x <= r.right; x += step) {
+          canvas.drawLine(Offset(x, r.top), Offset(x, r.bottom), regLinePaint);
+        }
+        for (double y = firstY; y <= r.bottom; y += step) {
+          canvas.drawLine(Offset(r.left, y), Offset(r.right, y), regLinePaint);
+        }
+        break;
+      case PaperStyle.lined:
+        for (double y = firstY; y <= r.bottom; y += step) {
+          canvas.drawLine(Offset(r.left, y), Offset(r.right, y), regLinePaint);
+        }
+        break;
+      case PaperStyle.dotted:
+        final dotPaint = Paint()
+          ..color = gridLineColor.withValues(alpha: (region.opacity * 1.8).clamp(0.0, 1.0))
+          ..style = PaintingStyle.fill;
+        const dotRadius = 1.1;
+        for (double x = firstX; x <= r.right; x += step) {
+          for (double y = firstY; y <= r.bottom; y += step) {
+            canvas.drawCircle(Offset(x, y), dotRadius, dotPaint);
+          }
+        }
+        break;
+      case PaperStyle.blank:
+        break;
+    }
+
+    canvas.restore();
+
+    // Subtle region boundary border
+    final borderPaint = Paint()
+      ..color = gridLineColor.withValues(alpha: 0.18)
+      ..strokeWidth = 1.0 / scale.clamp(0.5, 2.0)
+      ..style = PaintingStyle.stroke;
+    canvas.drawRRect(rrect, borderPaint);
   }
 
   void _drawGrid(
@@ -150,6 +218,7 @@ class PaperBackgroundPainter extends CustomPainter {
         oldDelegate.scale != scale ||
         oldDelegate.panOffset != panOffset ||
         oldDelegate.basePaperColor != basePaperColor ||
-        oldDelegate.gridLineColor != gridLineColor;
+        oldDelegate.gridLineColor != gridLineColor ||
+        oldDelegate.paperRegions != paperRegions;
   }
 }

@@ -27,8 +27,8 @@ class CompactLassoPickerDialog extends StatelessWidget {
     final screenSize = mediaQuery.size;
     final viewInsets = mediaQuery.viewInsets;
 
-    const popoverWidth = 280.0;
-    const popoverHeight = 186.0;
+    const popoverWidth = 295.0;
+    const popoverHeight = 315.0;
 
     double left;
     double top;
@@ -131,16 +131,19 @@ class CompactLassoPickerDialog extends StatelessWidget {
       listenable: controller,
       builder: (context, _) {
         final currentMode = controller.lassoSelectionMode;
+        final selectedRegion = controller.selectedPaperRegion;
+        final hasSelection = controller.hasLassoSelection;
 
         return ClipRRect(
           borderRadius: BorderRadius.circular(20),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
-              width: 280,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              width: 295,
+              constraints: const BoxConstraints(maxHeight: 380),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.94),
+                color: Colors.white.withValues(alpha: 0.95),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: Colors.black.withValues(alpha: 0.08),
@@ -160,152 +163,349 @@ class CompactLassoPickerDialog extends StatelessWidget {
                   ),
                 ],
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 1. Header: Live Mode Icon & Title & Active Badge
-                  Row(
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF007AFF).withValues(alpha: 0.12),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          currentMode.icon,
-                          size: 18,
-                          color: const Color(0xFF007AFF),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      const Expanded(
-                        child: Text(
-                          'Kement Seçimi',
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1E293B),
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 1. Header: Live Mode Icon & Title & Active Badge
+                    Row(
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF007AFF).withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
                           ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF007AFF).withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          currentMode.label,
-                          style: const TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF007AFF),
+                          child: Icon(
+                            currentMode.icon,
+                            size: 17,
+                            color: const Color(0xFF007AFF),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  // 2. Options List
-                  ...LassoSelectionMode.values.map((mode) {
-                    final isSelected = currentMode == mode;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8.0),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () {
-                            HapticFeedback.selectionClick();
-                            controller.setLassoSelectionMode(mode);
-                            controller.setTool(DrawingTool.lasso);
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 150),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? const Color(0xFFEFF6FF)
-                                  : const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isSelected
-                                    ? const Color(0xFF007AFF)
-                                    : Colors.black.withValues(alpha: 0.07),
-                                width: isSelected ? 1.5 : 1.0,
-                              ),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Kement ve Alan Seçimi',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1E293B),
                             ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 28,
-                                  height: 28,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF007AFF).withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            currentMode.label,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF007AFF),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // 2. Selection Mode Section
+                    Row(
+                      children: [
+                        Text(
+                          'SEÇİM TİPİ',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.6,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+
+                    Row(
+                      children: LassoSelectionMode.values.map((mode) {
+                        final isSelected = currentMode == mode;
+                        return Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              right: mode == LassoSelectionMode.rectangle ? 4.0 : 0.0,
+                              left: mode == LassoSelectionMode.freeform ? 4.0 : 0.0,
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(10),
+                                onTap: () {
+                                  HapticFeedback.selectionClick();
+                                  controller.setLassoSelectionMode(mode);
+                                  controller.setTool(DrawingTool.lasso);
+                                },
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 150),
+                                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
                                   decoration: BoxDecoration(
                                     color: isSelected
-                                        ? const Color(0xFF007AFF).withValues(alpha: 0.15)
-                                        : Colors.black.withValues(alpha: 0.05),
-                                    borderRadius: BorderRadius.circular(8),
+                                        ? const Color(0xFFEFF6FF)
+                                        : const Color(0xFFF8FAFC),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? const Color(0xFF007AFF)
+                                          : Colors.black.withValues(alpha: 0.07),
+                                      width: isSelected ? 1.5 : 1.0,
+                                    ),
                                   ),
-                                  child: Icon(
-                                    mode.icon,
-                                    size: 16,
-                                    color: isSelected
-                                        ? const Color(0xFF007AFF)
-                                        : const Color(0xFF475569),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
+                                      Icon(
+                                        mode.icon,
+                                        size: 18,
+                                        color: isSelected
+                                            ? const Color(0xFF007AFF)
+                                            : const Color(0xFF475569),
+                                      ),
+                                      const SizedBox(height: 4),
                                       Text(
                                         mode.label,
                                         style: TextStyle(
-                                          fontSize: 12,
+                                          fontSize: 11,
                                           fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
                                           color: isSelected
                                               ? const Color(0xFF007AFF)
                                               : const Color(0xFF1E293B),
                                         ),
                                       ),
-                                      const SizedBox(height: 1),
-                                      Text(
-                                        mode.description,
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: isSelected
-                                              ? const Color(0xFF007AFF).withValues(alpha: 0.8)
-                                              : Colors.grey.shade500,
-                                        ),
-                                      ),
                                     ],
                                   ),
                                 ),
-                                if (isSelected)
-                                  const Icon(
-                                    Icons.check_circle_rounded,
-                                    size: 18,
-                                    color: Color(0xFF007AFF),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+
+                    const SizedBox(height: 12),
+                    const Divider(height: 1),
+                    const SizedBox(height: 10),
+
+                    // 3. Independent Paper Template Section
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'SEÇİLEN ALANI ŞABLON YAP',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.6,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
+                        if (hasSelection)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'Alan Seçili',
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF059669),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      hasSelection
+                          ? 'Seçili alana sayfa düzeninden bağımsız şablon uygulayın:'
+                          : 'Kare seçimle tuvalde bir alan çizip bu şablonları uygulayabilirsiniz:',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // 4 Template Options: Kareli, Çizgili, Noktalı, Boş
+                    GridView.count(
+                      crossAxisCount: 2,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 6,
+                      crossAxisSpacing: 6,
+                      childAspectRatio: 2.1,
+                      children: [
+                        _buildPaperOptionCard(
+                          context: context,
+                          label: 'Kareli Yap',
+                          icon: Icons.grid_4x4_rounded,
+                          style: PaperStyle.grid,
+                          isSelected: selectedRegion?.style == PaperStyle.grid,
+                          hasSelection: hasSelection,
+                        ),
+                        _buildPaperOptionCard(
+                          context: context,
+                          label: 'Çizgili Yap',
+                          icon: Icons.table_rows_rounded,
+                          style: PaperStyle.lined,
+                          isSelected: selectedRegion?.style == PaperStyle.lined,
+                          hasSelection: hasSelection,
+                        ),
+                        _buildPaperOptionCard(
+                          context: context,
+                          label: 'Noktalı Yap',
+                          icon: Icons.blur_on_rounded,
+                          style: PaperStyle.dotted,
+                          isSelected: selectedRegion?.style == PaperStyle.dotted,
+                          hasSelection: hasSelection,
+                        ),
+                        _buildPaperOptionCard(
+                          context: context,
+                          label: 'Boş Yap',
+                          icon: Icons.crop_square_rounded,
+                          style: PaperStyle.blank,
+                          isSelected: selectedRegion?.style == PaperStyle.blank,
+                          hasSelection: hasSelection,
+                        ),
+                      ],
+                    ),
+
+                    if (selectedRegion != null) ...[
+                      const SizedBox(height: 8),
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            controller.removeSelectedPaperRegion();
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEE2E2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.layers_clear_rounded, size: 14, color: Color(0xFFDC2626)),
+                                SizedBox(width: 5),
+                                Text(
+                                  'Özel Şablonu Kaldır',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFFDC2626),
                                   ),
+                                ),
                               ],
                             ),
                           ),
                         ),
                       ),
-                    );
-                  }),
-                ],
+                    ],
+                  ],
+                ),
               ),
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildPaperOptionCard({
+    required BuildContext context,
+    required String label,
+    required IconData icon,
+    required PaperStyle style,
+    required bool isSelected,
+    required bool hasSelection,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(9),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          if (hasSelection) {
+            controller.applyPaperStyleToSelection(style);
+          } else {
+            controller.setPendingLassoPaperStyle(style);
+            controller.setLassoSelectionMode(LassoSelectionMode.rectangle);
+            controller.setTool(DrawingTool.lasso);
+            Navigator.of(context).pop();
+          }
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(
+              color: isSelected ? const Color(0xFF007AFF) : Colors.black.withValues(alpha: 0.07),
+              width: isSelected ? 1.5 : 1.0,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? const Color(0xFF007AFF).withValues(alpha: 0.15)
+                      : Colors.black.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Icon(
+                  icon,
+                  size: 14,
+                  color: isSelected ? const Color(0xFF007AFF) : const Color(0xFF334155),
+                ),
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                    color: isSelected ? const Color(0xFF007AFF) : const Color(0xFF1E293B),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (isSelected)
+                const Icon(
+                  Icons.check_circle_rounded,
+                  size: 14,
+                  color: Color(0xFF007AFF),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

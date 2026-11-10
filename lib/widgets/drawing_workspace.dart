@@ -317,6 +317,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                         config: controller.paperConfig,
                         scale: _scale,
                         panOffset: _panOffset,
+                        paperRegions: controller.canvasPaperRegions,
                       ),
                     ),
                   ),
@@ -1035,11 +1036,13 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                     mainAxisSize: MainAxisSize.min,
                     children: isLocked
                         ? _buildLockedPillItems(controller, textItem)
-                        : (controller.isSingleLineOrArrowSelected
-                            ? _buildLineSelectionItems(controller)
-                            : (textItem != null
-                                ? _buildUnifiedTextAndLassoItems(controller, textItem)
-                                : _buildStrokeLassoItems(controller))),
+                        : (controller.isAreaOnlySelection
+                            ? _buildAreaSelectionItems(controller)
+                            : (controller.isSingleLineOrArrowSelected
+                                ? _buildLineSelectionItems(controller)
+                                : (textItem != null
+                                    ? _buildUnifiedTextAndLassoItems(controller, textItem)
+                                    : _buildStrokeLassoItems(controller)))),
                   ),
                 ),
               ),
@@ -1626,6 +1629,10 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       ),
       _buildPillDivider(),
 
+      // 12b. Paper Pattern / Template Submenu
+      _buildPaperPatternSubmenu(controller),
+      _buildPillDivider(),
+
       // 13. Delete (Trash Icon Only)
       Tooltip(
         message: 'Seçimi Sil',
@@ -1649,6 +1656,224 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
 
       // 14. More Options Popup (En sağ tarafta)
       _buildUnifiedMoreOptionsMenu(controller, item),
+    ];
+  }
+
+  Widget _buildPaperPatternSubmenu(PlannerController controller) {
+    return PopupMenuButton<PaperStyle>(
+      tooltip: 'Seçili Alanı Şablon Yap (Kareli / Çizgili / Noktalı / Boş)',
+      offset: const Offset(0, 38),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      elevation: 10,
+      padding: EdgeInsets.zero,
+      onSelected: (style) {
+        controller.applyPaperStyleToSelection(style);
+      },
+      itemBuilder: (ctx) => [
+        const PopupMenuItem<PaperStyle>(
+          value: PaperStyle.grid,
+          height: 36,
+          child: Row(
+            children: [
+              Icon(Icons.grid_on_rounded, size: 16, color: Color(0xFF007AFF)),
+              SizedBox(width: 10),
+              Text('Kareli Yap', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+        const PopupMenuItem<PaperStyle>(
+          value: PaperStyle.lined,
+          height: 36,
+          child: Row(
+            children: [
+              Icon(Icons.view_headline_rounded, size: 16, color: Color(0xFF007AFF)),
+              SizedBox(width: 10),
+              Text('Çizgili Yap', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+        const PopupMenuItem<PaperStyle>(
+          value: PaperStyle.dotted,
+          height: 36,
+          child: Row(
+            children: [
+              Icon(Icons.grain_rounded, size: 16, color: Color(0xFF007AFF)),
+              SizedBox(width: 10),
+              Text('Noktalı Yap', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+        const PopupMenuItem<PaperStyle>(
+          value: PaperStyle.blank,
+          height: 36,
+          child: Row(
+            children: [
+              Icon(Icons.crop_square_rounded, size: 16, color: Color(0xFF007AFF)),
+              SizedBox(width: 10),
+              Text('Boş Yap', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      ],
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.dashboard_customize_rounded, size: 16, color: Color(0xFF38BDF8)),
+            SizedBox(width: 4),
+            Text(
+              'Şablon Yap',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF38BDF8),
+              ),
+            ),
+            Icon(Icons.arrow_drop_down_rounded, size: 14, color: Color(0xFF38BDF8)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildAreaSelectionItems(PlannerController controller) {
+    Widget buildTemplateBtn({
+      required PaperStyle style,
+      required IconData icon,
+      required String label,
+      required String tooltip,
+    }) {
+      final isCurrent = controller.selectedPaperRegion?.style == style;
+      return Tooltip(
+        message: tooltip,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => controller.applyPaperStyleToSelection(style),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: isCurrent
+                  ? const Color(0xFF007AFF).withValues(alpha: 0.35)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 15,
+                  color: isCurrent ? const Color(0xFF38BDF8) : Colors.white,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w600,
+                    color: isCurrent ? const Color(0xFF38BDF8) : Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return [
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              controller.selectedPaperRegionId != null
+                  ? Icons.dashboard_customize_rounded
+                  : Icons.crop_square_rounded,
+              size: 14,
+              color: const Color(0xFF38BDF8),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              controller.selectedPaperRegionId != null
+                  ? 'Şablon Alanı'
+                  : 'Kare Alan',
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF38BDF8),
+              ),
+            ),
+          ],
+        ),
+      ),
+      _buildPillDivider(),
+      buildTemplateBtn(
+        style: PaperStyle.grid,
+        icon: Icons.grid_on_rounded,
+        label: 'Kareli',
+        tooltip: 'Seçili Alanı Kareli Yap',
+      ),
+      buildTemplateBtn(
+        style: PaperStyle.lined,
+        icon: Icons.view_headline_rounded,
+        label: 'Çizgili',
+        tooltip: 'Seçili Alanı Çizgili Yap',
+      ),
+      buildTemplateBtn(
+        style: PaperStyle.dotted,
+        icon: Icons.grain_rounded,
+        label: 'Noktalı',
+        tooltip: 'Seçili Alanı Noktalı Yap',
+      ),
+      buildTemplateBtn(
+        style: PaperStyle.blank,
+        icon: Icons.crop_square_rounded,
+        label: 'Boş',
+        tooltip: 'Seçili Alanı Boş Yap',
+      ),
+      if (controller.selectedPaperRegionId != null) ...[
+        _buildPillDivider(),
+        Tooltip(
+          message: 'Özel Şablonu Kaldır (Normal Sayfa Düzenine Dön)',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: controller.removeSelectedPaperRegion,
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.delete_outline_rounded, size: 15, color: Color(0xFFFF453A)),
+                  SizedBox(width: 4),
+                  Text(
+                    'Şablonu Kaldır',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFFF453A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+      _buildPillDivider(),
+      Tooltip(
+        message: 'Seçimi Kapat',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: controller.clearLassoSelection,
+          child: const Padding(
+            padding: EdgeInsets.all(4),
+            child: Icon(Icons.close_rounded, size: 15, color: Colors.white70),
+          ),
+        ),
+      ),
     ];
   }
 
@@ -1854,6 +2079,8 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           ),
         ),
       ],
+      _buildPillDivider(),
+      _buildPaperPatternSubmenu(controller),
       _buildPillDivider(),
       Tooltip(
         message: 'Yatay Aynala (Sağa / Sola Çevir)',

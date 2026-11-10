@@ -766,6 +766,74 @@ class CanvasFileItem {
   }
 }
 
+class CanvasPaperRegion {
+  final String id;
+  final Rect rect;
+  final PaperStyle style;
+  final double spacing;
+  final double opacity;
+  final bool isLocked;
+
+  const CanvasPaperRegion({
+    required this.id,
+    required this.rect,
+    required this.style,
+    this.spacing = 24.0,
+    this.opacity = 0.16,
+    this.isLocked = false,
+  });
+
+  CanvasPaperRegion copyWith({
+    String? id,
+    Rect? rect,
+    PaperStyle? style,
+    double? spacing,
+    double? opacity,
+    bool? isLocked,
+  }) {
+    return CanvasPaperRegion(
+      id: id ?? this.id,
+      rect: rect ?? this.rect,
+      style: style ?? this.style,
+      spacing: spacing ?? this.spacing,
+      opacity: opacity ?? this.opacity,
+      isLocked: isLocked ?? this.isLocked,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'x': rect.left,
+    'y': rect.top,
+    'w': rect.width,
+    'h': rect.height,
+    'style': style.name,
+    'spacing': spacing,
+    'opacity': opacity,
+    'isLocked': isLocked,
+  };
+
+  factory CanvasPaperRegion.fromMap(Map<String, dynamic> map) {
+    final x = (map['x'] as num?)?.toDouble() ?? 50.0;
+    final y = (map['y'] as num?)?.toDouble() ?? 50.0;
+    final w = (map['w'] as num?)?.toDouble() ?? 250.0;
+    final h = (map['h'] as num?)?.toDouble() ?? 200.0;
+    final styleName = map['style'] as String? ?? 'grid';
+    final style = PaperStyle.values.firstWhere(
+      (s) => s.name == styleName,
+      orElse: () => PaperStyle.grid,
+    );
+    return CanvasPaperRegion(
+      id: map['id'] as String? ?? '',
+      rect: Rect.fromLTWH(x, y, w, h),
+      style: style,
+      spacing: (map['spacing'] as num?)?.toDouble() ?? 24.0,
+      opacity: (map['opacity'] as num?)?.toDouble() ?? 0.16,
+      isLocked: map['isLocked'] as bool? ?? false,
+    );
+  }
+}
+
 class SavedCanvasAsset {
   final String id;
   final String title;

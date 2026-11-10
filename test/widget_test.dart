@@ -1196,9 +1196,13 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify dialog contents
-    expect(find.text('Kement Seçimi'), findsOneWidget);
+    expect(find.text('Kement ve Alan Seçimi'), findsOneWidget);
     expect(find.text('Kare Seçim'), findsWidgets);
     expect(find.text('Serbest Kement'), findsOneWidget);
+    expect(find.text('Kareli Yap'), findsOneWidget);
+    expect(find.text('Çizgili Yap'), findsOneWidget);
+    expect(find.text('Noktalı Yap'), findsOneWidget);
+    expect(find.text('Boş Yap'), findsOneWidget);
 
     // Switch to Serbest Kement by tapping option
     await tester.tap(find.text('Serbest Kement'));
@@ -1235,6 +1239,56 @@ void main() {
     controller.startStroke(const Offset(10, 10));
     controller.endStroke();
     expect(controller.hasLassoSelection, isFalse);
+
+    // Drain debounce save timer
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
+
+  testWidgets('Custom Paper Region / Seçilen Alanı Kareli, Çizgili, Noktalı, Boş Yap test', (WidgetTester tester) async {
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // 1. Select an empty area with Rectangle Lasso to create an active area selection
+    controller.setTool(DrawingTool.lasso);
+    controller.setLassoSelectionMode(LassoSelectionMode.rectangle);
+    controller.startStroke(const Offset(100, 100));
+    controller.updateStroke(const Offset(300, 250));
+    controller.endStroke();
+
+    expect(controller.hasLassoSelection, isTrue);
+    expect(controller.isAreaOnlySelection, isTrue);
+    expect(controller.activeAreaSelectionRect, isNotNull);
+
+    // 2. Apply Kareli Yap (grid) to the selected area
+    controller.applyPaperStyleToSelection(PaperStyle.grid);
+    expect(controller.canvasPaperRegions.length, 1);
+    expect(controller.canvasPaperRegions.first.style, PaperStyle.grid);
+    expect(controller.selectedPaperRegionId, controller.canvasPaperRegions.first.id);
+
+    // 3. Switch style to Çizgili Yap (lined)
+    controller.applyPaperStyleToSelection(PaperStyle.lined);
+    expect(controller.canvasPaperRegions.first.style, PaperStyle.lined);
+
+    // 4. Switch style to Noktalı Yap (dotted)
+    controller.applyPaperStyleToSelection(PaperStyle.dotted);
+    expect(controller.canvasPaperRegions.first.style, PaperStyle.dotted);
+
+    // 5. Switch style to Boş Yap (blank)
+    controller.applyPaperStyleToSelection(PaperStyle.blank);
+    expect(controller.canvasPaperRegions.first.style, PaperStyle.blank);
+
+    // 6. Drag to move the custom paper region
+    final initialRect = controller.canvasPaperRegions.first.rect;
+    controller.startStroke(const Offset(150, 150)); // click inside the selected region
+    controller.updateStroke(const Offset(170, 180));
+    controller.endStroke();
+    final movedRect = controller.canvasPaperRegions.first.rect;
+    expect(movedRect.left, greaterThan(initialRect.left));
+
+    // 7. Remove the custom paper region
+    controller.removeSelectedPaperRegion();
+    expect(controller.canvasPaperRegions.isEmpty, isTrue);
+    expect(controller.selectedPaperRegionId, isNull);
 
     // Drain debounce save timer
     await tester.pump(const Duration(milliseconds: 1000));

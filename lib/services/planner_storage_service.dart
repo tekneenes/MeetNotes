@@ -202,6 +202,27 @@ class PlannerStorageService {
     await prefs.setString(key, raw);
   }
 
+  // --- Canvas Paper Regions (Custom Paper Pattern Areas) ---
+  Future<List<CanvasPaperRegion>> loadCanvasPaperRegions(DateTime weekStart, int pageIndex, {String prefix = ''}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'meet_notes_paper_regions_$prefix${_formatWeekKey(weekStart)}_p$pageIndex';
+    final raw = prefs.getString(key);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list.map((e) => CanvasPaperRegion.fromMap(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveCanvasPaperRegions(DateTime weekStart, int pageIndex, List<CanvasPaperRegion> regions, {String prefix = ''}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'meet_notes_paper_regions_$prefix${_formatWeekKey(weekStart)}_p$pageIndex';
+    final raw = jsonEncode(regions.map((r) => r.toMap()).toList());
+    await prefs.setString(key, raw);
+  }
+
   // --- Saved Canvas Assets (Reusable Single/Group Elements) ---
   Future<List<SavedCanvasAsset>> loadSavedAssets() async {
     final prefs = await SharedPreferences.getInstance();

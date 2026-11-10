@@ -1067,10 +1067,11 @@ class _PlannerScreenState extends State<PlannerScreen>
                                         Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            Tooltip(
-                                              message: isLocked
+                                            Semantics(
+                                              label: isLocked
                                                   ? 'Kilidi Aç'
                                                   : 'Kilitle',
+                                              button: true,
                                               child: InkWell(
                                                 borderRadius: BorderRadius.circular(6),
                                                 onTap: () {
@@ -1108,8 +1109,9 @@ class _PlannerScreenState extends State<PlannerScreen>
                                               ),
                                             ),
                                             const SizedBox(width: 4),
-                                            Tooltip(
-                                              message: 'Üste Çıkar',
+                                            Semantics(
+                                              label: 'Üste Çıkar',
+                                              button: true,
                                               child: InkWell(
                                                 borderRadius: BorderRadius.circular(6),
                                                 onTap: canMoveUp
@@ -1140,8 +1142,9 @@ class _PlannerScreenState extends State<PlannerScreen>
                                               ),
                                             ),
                                             const SizedBox(width: 4),
-                                            Tooltip(
-                                              message: 'Alta İndir',
+                                            Semantics(
+                                              label: 'Alta İndir',
+                                              button: true,
                                               child: InkWell(
                                                 borderRadius: BorderRadius.circular(6),
                                                 onTap: canMoveDown

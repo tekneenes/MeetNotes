@@ -1905,7 +1905,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              controller.selectedPaperRegionId != null
+              controller.selectedPaperRegionIds.isNotEmpty
                   ? Icons.dashboard_customize_rounded
                   : Icons.crop_square_rounded,
               size: 14,
@@ -1913,9 +1913,11 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
             ),
             const SizedBox(width: 4),
             Text(
-              controller.selectedPaperRegionId != null
-                  ? 'Şablon Alanı'
-                  : 'Kare Alan',
+              controller.selectedPaperRegionIds.length > 1
+                  ? '${controller.selectedPaperRegionIds.length} Şablon Alanı'
+                  : (controller.selectedPaperRegionIds.isNotEmpty
+                      ? 'Şablon Alanı'
+                      : 'Kare Alan'),
               style: const TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w700,
@@ -1950,14 +1952,18 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         label: 'Boş',
         tooltip: 'Seçili Alanı Boş Yap',
       ),
-      if (controller.selectedPaperRegionId != null) ...[
+      if (controller.selectedPaperRegionIds.isNotEmpty) ...[
         _buildPillDivider(),
         Tooltip(
           message: isLocked ? 'Kilidi Aç' : 'Şablon Alanını Kilitle',
           child: InkWell(
             borderRadius: BorderRadius.circular(10),
             onTap: () {
-              controller.togglePaperRegionLock(controller.selectedPaperRegionId!);
+              if (isLocked) {
+                controller.unlockSelectedStrokes();
+              } else {
+                controller.lockSelectedStrokes();
+              }
             },
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),

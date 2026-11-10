@@ -2069,4 +2069,130 @@ void main() {
     // Drain timer
     await tester.pump(const Duration(milliseconds: 1000));
   });
+
+  testWidgets(
+      'Multi-selection, dragging, styling, grouping and deleting for multiple paper regions/templates test',
+      (WidgetTester tester) async {
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // 1. Create 4 adjacent paper regions / templates (like in the user screenshot)
+    controller.setShowTemplateSelectionOptions(true);
+    controller.setTool(DrawingTool.lasso);
+    controller.setLassoSelectionMode(LassoSelectionMode.rectangle);
+
+    // Region 1: Grid (50, 100) -> (150, 200)
+    controller.startStroke(const Offset(50, 100));
+    controller.updateStroke(const Offset(150, 200));
+    controller.endStroke();
+    final r1 = controller.applyPaperStyleToSelection(PaperStyle.grid);
+    expect(r1, isNotNull);
+
+    // Region 2: Lined (160, 100) -> (260, 200)
+    controller.clearLassoSelection();
+    controller.setShowTemplateSelectionOptions(true);
+    controller.startStroke(const Offset(160, 100));
+    controller.updateStroke(const Offset(260, 200));
+    controller.endStroke();
+    final r2 = controller.applyPaperStyleToSelection(PaperStyle.lined);
+    expect(r2, isNotNull);
+
+    // Region 3: Dotted (270, 100) -> (370, 200)
+    controller.clearLassoSelection();
+    controller.setShowTemplateSelectionOptions(true);
+    controller.startStroke(const Offset(270, 100));
+    controller.updateStroke(const Offset(370, 200));
+    controller.endStroke();
+    final r3 = controller.applyPaperStyleToSelection(PaperStyle.dotted);
+    expect(r3, isNotNull);
+
+    // Region 4: Blank (380, 100) -> (480, 200)
+    controller.clearLassoSelection();
+    controller.setShowTemplateSelectionOptions(true);
+    controller.startStroke(const Offset(380, 100));
+    controller.updateStroke(const Offset(480, 200));
+    controller.endStroke();
+    final r4 = controller.applyPaperStyleToSelection(PaperStyle.blank);
+    expect(r4, isNotNull);
+
+    expect(controller.canvasPaperRegions.length, 4);
+
+    // 2. Clear selection and draw a rectangle lasso enclosing all 4 templates
+    controller.clearLassoSelection();
+    expect(controller.selectedPaperRegionIds.isEmpty, isTrue);
+
+    controller.setShowTemplateSelectionOptions(false);
+    controller.setTool(DrawingTool.lasso);
+    controller.setLassoSelectionMode(LassoSelectionMode.rectangle);
+    controller.startStroke(const Offset(40, 90));
+    controller.updateStroke(const Offset(490, 210));
+    controller.endStroke();
+
+    // 3. Verify ALL 4 paper regions are selected simultaneously!
+    expect(controller.selectedPaperRegionIds.length, 4);
+    expect(
+      controller.selectedPaperRegionIds.containsAll([r1!.id, r2!.id, r3!.id, r4!.id]),
+      isTrue,
+    );
+    expect(controller.hasLassoSelection, isTrue);
+    expect(controller.selectedLayerCount, 4);
+
+    // Bounds should envelope all 4
+    final bounds = controller.selectionBounds;
+    expect(bounds, isNotNull);
+    expect(bounds!.left, closeTo(50, 1.0));
+    expect(bounds.right, closeTo(480, 1.0));
+
+    // 4. Drag the multi-template selection by (50, 30)
+    final initialBoundsCenter = bounds.center;
+    controller.startStroke(initialBoundsCenter);
+    controller.updateStroke(initialBoundsCenter + const Offset(50, 30));
+    controller.endStroke();
+
+    // Verify all 4 paper regions moved by (50, 30)
+    final movedR1 = controller.canvasPaperRegions.firstWhere((r) => r.id == r1.id);
+    final movedR4 = controller.canvasPaperRegions.firstWhere((r) => r.id == r4.id);
+    expect(movedR1.rect.left, closeTo(100, 1.0));
+    expect(movedR1.rect.top, closeTo(130, 1.0));
+    expect(movedR4.rect.left, closeTo(430, 1.0));
+    expect(movedR4.rect.top, closeTo(130, 1.0));
+
+    // 5. Apply style (e.g. dotted) to all selected regions at once
+    controller.applyPaperStyleToSelection(PaperStyle.dotted);
+    for (final reg in controller.canvasPaperRegions) {
+      expect(reg.style, PaperStyle.dotted);
+    }
+
+    // 6. Group all 4 templates together
+    controller.groupSelectedItems();
+    expect(controller.hasGroupedItemInSelection, isTrue);
+    final sharedGroupId = controller.canvasPaperRegions.first.groupId;
+    expect(sharedGroupId, isNotNull);
+    for (final reg in controller.canvasPaperRegions) {
+      expect(reg.groupId, sharedGroupId);
+    }
+
+    // 7. Lock selection -> all 4 templates locked
+    controller.lockSelectedStrokes();
+    for (final reg in controller.canvasPaperRegions) {
+      expect(reg.isLocked, isTrue);
+    }
+    expect(controller.isSelectionLocked, isTrue);
+
+    // 8. Unlock selection -> all 4 templates unlocked
+    controller.unlockSelectedStrokes();
+    for (final reg in controller.canvasPaperRegions) {
+      expect(reg.isLocked, isFalse);
+    }
+    expect(controller.isSelectionLocked, isFalse);
+
+    // 9. Delete selection -> removes all 4 templates
+    controller.deleteSelectedStrokes();
+    expect(controller.canvasPaperRegions.isEmpty, isTrue);
+    expect(controller.selectedPaperRegionIds.isEmpty, isTrue);
+    expect(controller.hasLassoSelection, isFalse);
+
+    // Drain timer
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
 }

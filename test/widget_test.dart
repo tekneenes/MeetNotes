@@ -1610,6 +1610,52 @@ void main() {
     // The underlying stroke should be erased, and the scribble stroke itself not saved as ink!
     expect(controller.strokes.isEmpty, isTrue);
 
+    // 5. Test Precision Slicing on 2-point straight lines & Active Eraser Ring
+    controller.clearCanvas();
+    controller.setTool(DrawingTool.line);
+    controller.startStroke(const Offset(100, 300));
+    controller.updateStroke(const Offset(500, 300));
+    controller.endStroke();
+    expect(controller.strokes.length, 1);
+
+    controller.setTool(DrawingTool.eraser);
+    controller.setEraserType(EraserType.pixel);
+    controller.setEraserSize(20.0);
+    expect(controller.effectiveEraserRadius, 10.0);
+
+    // Touch at center (300, 300)
+    controller.startStroke(const Offset(300, 300));
+    expect(controller.activeEraserPoint, const Offset(300, 300));
+    controller.endStroke();
+    expect(controller.activeEraserPoint, isNull);
+
+    // Previously, 2-point lines would completely vanish!
+    // Now with precision intersection, it cleanly splits into 2 lines with a 20 pt gap!
+    expect(controller.strokes.length, 2);
+    expect(controller.strokes[0].points.last.dx, closeTo(290.0, 0.5));
+    expect(controller.strokes[1].points.first.dx, closeTo(310.0, 0.5));
+
+    // 6. Test Swept Capsule Erasing (No tunneling on fast swipes)
+    controller.clearCanvas();
+    controller.setTool(DrawingTool.pen);
+    // Draw 3 vertical lines
+    for (double x in [150.0, 200.0, 250.0]) {
+      controller.startStroke(Offset(x, 100));
+      controller.updateStroke(Offset(x, 400));
+      controller.endStroke();
+    }
+    expect(controller.strokes.length, 3);
+
+    // Fast swipe from (100, 250) to (300, 250) in a single leap across all 3 lines
+    controller.setTool(DrawingTool.eraser);
+    controller.setEraserType(EraserType.pixel);
+    controller.startStroke(const Offset(100, 250));
+    controller.updateStroke(const Offset(300, 250));
+    controller.endStroke();
+
+    // All 3 vertical lines must have been cleanly intersected and split (3 * 2 = 6 segments)
+    expect(controller.strokes.length, 6);
+
     await tester.pump(const Duration(milliseconds: 1000));
   });
 

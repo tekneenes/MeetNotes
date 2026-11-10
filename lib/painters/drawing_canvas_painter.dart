@@ -11,6 +11,9 @@ class ActiveStrokePainter extends CustomPainter {
   final DrawingStroke? Function() activeStrokeGetter;
   final Offset? Function()? activeSnapPointGetter;
   final List<Offset> Function()? nearbySnapAnchorsGetter;
+  final Offset? Function()? activeEraserPointGetter;
+  final double eraserRadius;
+  final bool isDark;
   final double scale;
   final Offset panOffset;
 
@@ -18,6 +21,9 @@ class ActiveStrokePainter extends CustomPainter {
     required this.activeStrokeGetter,
     this.activeSnapPointGetter,
     this.nearbySnapAnchorsGetter,
+    this.activeEraserPointGetter,
+    this.eraserRadius = 0.0,
+    this.isDark = false,
     required Listenable repaint,
     required this.scale,
     required this.panOffset,
@@ -28,13 +34,17 @@ class ActiveStrokePainter extends CustomPainter {
     final stroke = activeStrokeGetter();
     final snapPoint = activeSnapPointGetter?.call();
     final nearbyAnchors = nearbySnapAnchorsGetter?.call() ?? const [];
-    if (stroke == null && snapPoint == null && nearbyAnchors.isEmpty) return;
+    final eraserPoint = activeEraserPointGetter?.call();
+    if (stroke == null && snapPoint == null && nearbyAnchors.isEmpty && eraserPoint == null) return;
     DrawingCanvasPainter(
       strokes: const [],
       strokeIndicesToRender: const [],
       activeStroke: stroke,
       activeSnapPoint: snapPoint,
       nearbySnapAnchors: nearbyAnchors,
+      activeEraserPoint: eraserPoint,
+      eraserRadius: eraserRadius,
+      isDark: isDark,
       scale: scale,
       panOffset: panOffset,
     ).paint(canvas, size);
@@ -60,6 +70,9 @@ class DrawingCanvasPainter extends CustomPainter {
   final Offset? activeSnapPoint;
   final List<Offset> nearbySnapAnchors;
   final List<SmartAlignmentGuide> smartGuides;
+  final Offset? activeEraserPoint;
+  final double eraserRadius;
+  final bool isDark;
   final bool isRotatingSelection;
   final bool isSelectionLocked;
   final double? selectionBorderRadius;
@@ -80,6 +93,9 @@ class DrawingCanvasPainter extends CustomPainter {
     this.activeSnapPoint,
     this.nearbySnapAnchors = const [],
     this.smartGuides = const [],
+    this.activeEraserPoint,
+    this.eraserRadius = 0.0,
+    this.isDark = false,
     this.isRotatingSelection = false,
     this.isSelectionLocked = false,
     this.selectionBorderRadius,
@@ -113,6 +129,9 @@ class DrawingCanvasPainter extends CustomPainter {
       }
     }
     if (renderOverlay) {
+      if (activeEraserPoint != null && eraserRadius > 0) {
+        _drawEraserIndicator(canvas, activeEraserPoint!, eraserRadius);
+      }
       if (activeStroke != null) {
         _drawStroke(canvas, activeStroke!);
       }
@@ -768,6 +787,33 @@ class DrawingCanvasPainter extends CustomPainter {
     canvas.drawCircle(snapPt, snapRadius, fillPaint);
     canvas.drawCircle(snapPt, snapRadius, ringPaint);
     canvas.drawCircle(snapPt, 2.5 / scale, centerDotPaint);
+  }
+
+  void _drawEraserIndicator(Canvas canvas, Offset center, double radius) {
+    // Semi-transparent inner contact disk
+    final fillPaint = Paint()
+      ..color = (isDark ? Colors.white : const Color(0xFF0F172A)).withValues(alpha: 0.08)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(center, radius, fillPaint);
+
+    // High contrast dual-ring boundary (subtle dark outer stroke, sky-blue inner ring)
+    final outerRing = Paint()
+      ..color = Colors.black.withValues(alpha: 0.35)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0 / scale;
+    canvas.drawCircle(center, radius, outerRing);
+
+    final innerRing = Paint()
+      ..color = const Color(0xFF38BDF8)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2 / scale;
+    canvas.drawCircle(center, radius, innerRing);
+
+    // Center precision dot
+    final dotPaint = Paint()
+      ..color = const Color(0xFF38BDF8)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(center, 1.5 / scale, dotPaint);
   }
 
   void _drawDashedPath(

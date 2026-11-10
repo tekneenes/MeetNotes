@@ -107,6 +107,8 @@ class PlannerController extends ChangeNotifier {
   EraserType _eraserType = EraserType.object;
   bool _enableScribbleToErase = true;
   double _eraserSize = 22.0;
+  Offset? _lastEraserPoint;
+  Offset? _activeEraserPoint;
   bool _enableDrawAndHold = true;
   Timer? _drawAndHoldTimer;
   Offset? _holdAnchorPoint;
@@ -214,6 +216,8 @@ class PlannerController extends ChangeNotifier {
   }
 
   double get eraserSize => _eraserSize;
+  Offset? get activeEraserPoint => _activeEraserPoint;
+  double get effectiveEraserRadius => math.max(2.5, _eraserSize / 2.0);
 
   void setEraserSize(double size) {
     final clamped = size.clamp(4.0, 80.0);
@@ -2513,7 +2517,10 @@ class PlannerController extends ChangeNotifier {
     if (_selectedTool == DrawingTool.eraser) {
       _undoStack.add(List.from(_strokes));
       _redoStack.clear();
-      _eraseNear(point);
+      _lastEraserPoint = point;
+      _activeEraserPoint = point;
+      _eraseSegment(point, point);
+      activeStrokeTick.value++;
       return;
     }
 
@@ -2849,7 +2856,11 @@ class PlannerController extends ChangeNotifier {
 
   void updateStroke(Offset point) {
     if (_selectedTool == DrawingTool.eraser) {
-      _eraseNear(point);
+      final from = _lastEraserPoint ?? point;
+      _lastEraserPoint = point;
+      _activeEraserPoint = point;
+      _eraseSegment(from, point);
+      activeStrokeTick.value++;
       return;
     }
 
@@ -3037,7 +3048,11 @@ class PlannerController extends ChangeNotifier {
     _holdAnchorPoint = null;
 
     if (_selectedTool == DrawingTool.eraser) {
+      _lastEraserPoint = null;
+      _activeEraserPoint = null;
+      activeStrokeTick.value++;
       _saveCurrentStrokes();
+      notifyListeners();
       return;
     }
 
@@ -3198,6 +3213,9 @@ class PlannerController extends ChangeNotifier {
   }
 
   void cancelActiveStroke() {
+    _lastEraserPoint = null;
+    _activeEraserPoint = null;
+    activeStrokeTick.value++;
     _drawAndHoldTimer?.cancel();
     _drawAndHoldTimer = null;
     _isDrawAndHoldActive = false;
@@ -5718,111 +5736,89 @@ class PlannerController extends ChangeNotifier {
     _triggerDrawAndHold();
   }
 
-  void _eraseNear(Offset point) {
-    final eraseRadius = _eraserSize * 1.2;
+  @visibleForTesting
+  void eraseNearForTesting(Offset point) {
+    _eraseSegment(point, point);
+  }
+
+  void _eraseSegment(Offset pFrom, Offset pTo) {
+    final eraseRadius = effectiveEraserRadius;
     final initialCount = _strokes.length;
     bool anyChanged = false;
 
-    if (_eraserType == EraserType.object) {
-      _strokes.removeWhere((stroke) {
-        if (stroke.isLocked) return false;
-        if (stroke.tool.isShape && !stroke.tool.isLineOrArrow && stroke.points.length >= 2) {
-          final rect = Rect.fromPoints(stroke.points.first, stroke.points.last).inflate(eraseRadius);
-          if (rect.contains(point)) return true;
-        }
-        for (final p in stroke.points) {
-          if ((p - point).distance <= eraseRadius) {
-            return true;
-          }
-        }
-        for (int i = 0; i < stroke.points.length - 1; i++) {
-          if (_distanceToSegment(point, stroke.points[i], stroke.points[i + 1]) <= eraseRadius) {
-            return true;
-          }
-        }
-        return false;
-      });
-      anyChanged = _strokes.length != initialCount;
-    } else {
-      // Pixel / Segment Eraser:
-      final List<DrawingStroke> updatedStrokes = [];
+    // Subdivide motion into small steps for continuous coverage without tunneling / skipping
+    final dist = (pTo - pFrom).distance;
+    final stepDist = (eraseRadius * 0.5).clamp(3.0, 10.0);
+    final numSteps = dist == 0.0 ? 1 : (dist / stepDist).ceil().clamp(1, 40);
 
-      for (final stroke in _strokes) {
-        if (stroke.isLocked) {
-          updatedStrokes.add(stroke);
-          continue;
-        }
+    for (int step = 0; step <= numSteps; step++) {
+      final center = (numSteps == 0 || dist == 0.0)
+          ? pTo
+          : Offset.lerp(pFrom, pTo, step / numSteps)!;
 
-        // Closed geometric shape: if touched, remove whole shape
-        if (stroke.tool.isShape && !stroke.tool.isLineOrArrow && stroke.points.length >= 2) {
-          final rect = Rect.fromPoints(stroke.points.first, stroke.points.last).inflate(eraseRadius);
-          if (rect.contains(point)) {
-            anyChanged = true;
-            continue;
-          } else {
+      if (_eraserType == EraserType.object) {
+        _strokes.removeWhere((stroke) {
+          if (stroke.isLocked) return false;
+          if (stroke.tool.isShape && !stroke.tool.isLineOrArrow && stroke.points.length >= 2) {
+            final rect = Rect.fromPoints(stroke.points.first, stroke.points.last).inflate(eraseRadius);
+            if (rect.contains(center)) return true;
+          }
+          for (final p in stroke.points) {
+            if ((p - center).distance <= eraseRadius) {
+              return true;
+            }
+          }
+          for (int i = 0; i < stroke.points.length - 1; i++) {
+            if (_distanceToSegment(center, stroke.points[i], stroke.points[i + 1]) <= eraseRadius) {
+              return true;
+            }
+          }
+          return false;
+        });
+        if (_strokes.length != initialCount) {
+          anyChanged = true;
+        }
+      } else {
+        // Pixel / Precision Vector Slicing:
+        final List<DrawingStroke> updatedStrokes = [];
+        bool stepChanged = false;
+
+        for (final stroke in _strokes) {
+          if (stroke.isLocked) {
             updatedStrokes.add(stroke);
             continue;
           }
-        }
 
-        // Check if stroke touches eraser circle
-        bool touches = false;
-        for (final p in stroke.points) {
-          if ((p - point).distance <= eraseRadius) {
-            touches = true;
-            break;
-          }
-        }
-        if (!touches) {
-          for (int i = 0; i < stroke.points.length - 1; i++) {
-            if (_distanceToSegment(point, stroke.points[i], stroke.points[i + 1]) <= eraseRadius) {
-              touches = true;
-              break;
+          // Closed geometric shape: if touched, remove whole shape
+          if (stroke.tool.isShape && !stroke.tool.isLineOrArrow && stroke.points.length >= 2) {
+            final rect = Rect.fromPoints(stroke.points.first, stroke.points.last).inflate(eraseRadius);
+            if (rect.contains(center)) {
+              anyChanged = true;
+              stepChanged = true;
+              continue;
+            } else {
+              updatedStrokes.add(stroke);
+              continue;
             }
           }
-        }
 
-        if (!touches) {
-          updatedStrokes.add(stroke);
-          continue;
-        }
-
-        anyChanged = true;
-
-        // Split stroke points into segments outside eraseRadius
-        final List<List<Offset>> segments = [];
-        List<Offset> current = [];
-
-        for (int i = 0; i < stroke.points.length; i++) {
-          final p = stroke.points[i];
-          final dist = (p - point).distance;
-          if (dist > eraseRadius) {
-            if (current.isNotEmpty &&
-                _distanceToSegment(point, current.last, p) <= eraseRadius) {
-              if (current.length >= 2) {
-                segments.add(List.from(current));
-              }
-              current.clear();
+          if (stroke.points.isNotEmpty) {
+            final sliced = _sliceStrokeWithCircle(stroke, center, eraseRadius);
+            if (sliced.length != 1 ||
+                sliced.first.points.length != stroke.points.length ||
+                (sliced.first.points.isNotEmpty &&
+                    stroke.points.isNotEmpty &&
+                    sliced.first.points.first != stroke.points.first)) {
+              anyChanged = true;
+              stepChanged = true;
             }
-            current.add(p);
-          } else {
-            if (current.length >= 2) {
-              segments.add(List.from(current));
-            }
-            current.clear();
+            updatedStrokes.addAll(sliced);
           }
         }
-        if (current.length >= 2) {
-          segments.add(current);
-        }
 
-        for (final seg in segments) {
-          updatedStrokes.add(stroke.copyWith(points: seg));
+        if (stepChanged) {
+          _strokes = updatedStrokes;
         }
-      }
-
-      if (anyChanged) {
-        _strokes = updatedStrokes;
       }
     }
 
@@ -5831,6 +5827,148 @@ class PlannerController extends ChangeNotifier {
       _saveCurrentCanvasTexts();
       notifyListeners();
     }
+  }
+
+  List<DrawingStroke> _sliceStrokeWithCircle(
+    DrawingStroke stroke,
+    Offset center,
+    double radius,
+  ) {
+    final pts = stroke.points;
+    if (pts.isEmpty) return const [];
+    if (pts.length == 1) {
+      if ((pts.first - center).distance <= radius) {
+        return const [];
+      }
+      return [stroke];
+    }
+
+    // Quick AABB check to avoid processing non-intersecting strokes
+    double minX = pts[0].dx, maxX = pts[0].dx;
+    double minY = pts[0].dy, maxY = pts[0].dy;
+    for (int i = 1; i < pts.length; i++) {
+      final p = pts[i];
+      if (p.dx < minX) minX = p.dx;
+      if (p.dx > maxX) maxX = p.dx;
+      if (p.dy < minY) minY = p.dy;
+      if (p.dy > maxY) maxY = p.dy;
+    }
+    final bounds = Rect.fromLTRB(minX, minY, maxX, maxY).inflate(radius + 1.0);
+    if (!bounds.contains(center)) {
+      return [stroke];
+    }
+
+    final List<List<Offset>> resultSegments = [];
+    List<Offset> current = [];
+
+    void addPoint(Offset p) {
+      if (current.isNotEmpty && (current.last - p).distance < 0.25) {
+        return;
+      }
+      current.add(p);
+    }
+
+    void finishCurrentSegment() {
+      if (current.length >= 2) {
+        double totalLen = 0.0;
+        for (int k = 0; k < current.length - 1; k++) {
+          totalLen += (current[k + 1] - current[k]).distance;
+        }
+        if (totalLen >= 1.0) {
+          resultSegments.add(List.from(current));
+        }
+      }
+      current.clear();
+    }
+
+    for (int i = 0; i < pts.length - 1; i++) {
+      final pA = pts[i];
+      final pB = pts[i + 1];
+      final v = pB - pA;
+      final lenSq = v.dx * v.dx + v.dy * v.dy;
+      final distA = (pA - center).distance;
+      final distB = (pB - center).distance;
+      final inA = distA <= radius;
+      final inB = distB <= radius;
+
+      if (lenSq == 0.0) {
+        if (!inA) addPoint(pA);
+        continue;
+      }
+
+      final u = pA - center;
+      final a = lenSq;
+      final b = 2.0 * (u.dx * v.dx + u.dy * v.dy);
+      final c = u.dx * u.dx + u.dy * u.dy - radius * radius;
+      final disc = b * b - 4.0 * a * c;
+
+      if (disc < 0.0) {
+        if (!inA && !inB) {
+          addPoint(pA);
+          addPoint(pB);
+        }
+      } else {
+        final sqrtD = math.sqrt(disc);
+        final t1 = (-b - sqrtD) / (2.0 * a);
+        final t2 = (-b + sqrtD) / (2.0 * a);
+
+        if (!inA && !inB) {
+          if (t1 > 0.0 && t2 < 1.0) {
+            final pEnter = pA + v * t1;
+            final pExit = pA + v * t2;
+            addPoint(pA);
+            addPoint(pEnter);
+            finishCurrentSegment();
+            addPoint(pExit);
+            addPoint(pB);
+          } else {
+            addPoint(pA);
+            addPoint(pB);
+          }
+        } else if (!inA && inB) {
+          final tEnter = t1.clamp(0.0, 1.0);
+          final pEnter = pA + v * tEnter;
+          addPoint(pA);
+          addPoint(pEnter);
+          finishCurrentSegment();
+        } else if (inA && !inB) {
+          final tExit = t2.clamp(0.0, 1.0);
+          final pExit = pA + v * tExit;
+          addPoint(pExit);
+          addPoint(pB);
+        } else {
+          finishCurrentSegment();
+        }
+      }
+    }
+
+    finishCurrentSegment();
+
+    if (resultSegments.isEmpty) {
+      return const [];
+    }
+
+    // Convert surviving segments into strokes, preserving tool type and styling
+    final List<DrawingStroke> childStrokes = [];
+    for (int sIdx = 0; sIdx < resultSegments.length; sIdx++) {
+      final seg = resultSegments[sIdx];
+      DrawingTool targetTool = stroke.tool;
+      if (stroke.tool == DrawingTool.arrow) {
+        // Only the segment containing the original end keeps the arrow head
+        targetTool = (sIdx == resultSegments.length - 1 && (seg.last - pts.last).distance < 1.0)
+            ? DrawingTool.arrow
+            : DrawingTool.line;
+      } else if (stroke.tool == DrawingTool.angle || stroke.tool == DrawingTool.curve) {
+        targetTool = DrawingTool.pen;
+      }
+
+      childStrokes.add(stroke.copyWith(
+        points: seg,
+        tool: targetTool,
+      ));
+    }
+
+    return childStrokes;
   }
 
   // Undo / Redo / Clear

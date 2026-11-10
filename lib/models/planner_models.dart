@@ -170,6 +170,25 @@ enum LassoSelectionMode {
   const LassoSelectionMode(this.label, this.icon, this.description);
 }
 
+enum EraserType {
+  object(
+    'Nesne Silgisi',
+    Icons.auto_fix_normal_rounded,
+    'Tüm çizgiyi tek dokunuşla siler',
+  ),
+  pixel(
+    'Piksel Silgisi',
+    Icons.crop_free_rounded,
+    'Temas eden kısmı hassasça siler',
+  );
+
+  final String label;
+  final IconData icon;
+  final String description;
+
+  const EraserType(this.label, this.icon, this.description);
+}
+
 enum QuickAccessSubPage {
   main,
   layers,

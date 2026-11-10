@@ -15,7 +15,10 @@
 - **Geniş Kalem Yelpazesi:**
   - Tükenmez Kalem, Dolma Kalem, Monoline Kalem, Kurşun Kalem
   - Fosforlu Kalem (Marker), Sulu Boya (Watercolor), Pastel Boya (Crayon)
-  - Akıllı Vektör & Piksel Silgi (Eraser)
+  - **Gelişmiş Silgi Sistemi (`CompactEraserPickerDialog`):**
+    - **Nesne Silgisi (Object Eraser):** Temas edilen çizgiyi tek dokunuşla bütünüyle siler.
+    - **Piksel Silgisi (Pixel/Segment Eraser):** Çizgiyi hassasça bölerek yalnızca temas eden noktaları siler, geri kalan segmentleri korur.
+    - **Karalayarak Silme Jesti (Scribble to Erase):** Bir kelime veya çizimin üzeri zikzak karalandığında akıllı hareket motoru bunu tanır ve altındaki öğeyi anında siler (açılıp kapatılabilir anahtarla yönetilir).
 - **Akıllı Çizgi & Şekil Kütüphanesi:**
   - Düz Çizgi, Ok Çizgisi, 3 Noktalı Kavisli Çizgi (Bezier tutamaçları ile bükülebilir)
   - 3 Noktalı Dinamik Açı

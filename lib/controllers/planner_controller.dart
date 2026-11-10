@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import '../models/planner_models.dart';
 import '../services/pdf_service.dart';
@@ -87,6 +87,8 @@ class PlannerController extends ChangeNotifier {
   Rect? _activeAreaSelectionRect;
   PaperStyle? _pendingLassoPaperStyle;
   bool _showTemplateSelectionOptions = false;
+  EraserType _eraserType = EraserType.object;
+  bool _enableScribbleToErase = true;
   String? _selectedTextId;
   String? _editingTextId;
   String? _selectedFileId;
@@ -163,6 +165,27 @@ class PlannerController extends ChangeNotifier {
 
   void toggleTemplateSelectionOptions() {
     setShowTemplateSelectionOptions(!_showTemplateSelectionOptions);
+  }
+
+  EraserType get eraserType => _eraserType;
+  bool get enableScribbleToErase => _enableScribbleToErase;
+
+  void setEraserType(EraserType type) {
+    if (_eraserType != type) {
+      _eraserType = type;
+      notifyListeners();
+    }
+  }
+
+  void setEnableScribbleToErase(bool value) {
+    if (_enableScribbleToErase != value) {
+      _enableScribbleToErase = value;
+      notifyListeners();
+    }
+  }
+
+  void toggleScribbleToErase() {
+    setEnableScribbleToErase(!_enableScribbleToErase);
   }
   CanvasPaperRegion? get selectedPaperRegion {
     if (_selectedPaperRegionId == null) return null;
@@ -1664,6 +1687,8 @@ class PlannerController extends ChangeNotifier {
       stopEditingCanvasText(deselect: true);
     }
     if (_selectedTool == DrawingTool.eraser) {
+      _undoStack.add(List.from(_strokes));
+      _redoStack.clear();
       _eraseNear(point);
       return;
     }
@@ -2221,6 +2246,19 @@ class PlannerController extends ChangeNotifier {
     }
 
     if (_activeStroke != null) {
+      if (_enableScribbleToErase &&
+          !_selectedTool.isShape &&
+          (_strokes.isNotEmpty || _canvasTexts.isNotEmpty)) {
+        if (_checkAndApplyScribbleToErase(_activeStroke!)) {
+          _activeStroke = null;
+          _activeSnapPoint = null;
+          _nearbySnapAnchors = [];
+          activeStrokeTick.value++;
+          notifyListeners();
+          return;
+        }
+      }
+
       final strokeWithOrder = _activeStroke!.copyWith(
         layerOrder: _nextTopLayerOrder(),
       );
@@ -4363,27 +4401,224 @@ class PlannerController extends ChangeNotifier {
     return stroke.copyWith(points: poly);
   }
 
+  bool _checkAndApplyScribbleToErase(DrawingStroke stroke) {
+    if (stroke.points.length < 8) return false;
+
+    double minX = stroke.points.first.dx;
+    double maxX = stroke.points.first.dx;
+    double minY = stroke.points.first.dy;
+    double maxY = stroke.points.first.dy;
+
+    double totalDist = 0.0;
+    int xReversals = 0;
+    int yReversals = 0;
+    double? lastDx;
+    double? lastDy;
+
+    for (int i = 0; i < stroke.points.length; i++) {
+      final p = stroke.points[i];
+      if (p.dx < minX) minX = p.dx;
+      if (p.dx > maxX) maxX = p.dx;
+      if (p.dy < minY) minY = p.dy;
+      if (p.dy > maxY) maxY = p.dy;
+
+      if (i > 0) {
+        final prev = stroke.points[i - 1];
+        totalDist += (p - prev).distance;
+        final dx = p.dx - prev.dx;
+        final dy = p.dy - prev.dy;
+
+        if (dx.abs() > 3.0) {
+          if (lastDx != null && (dx * lastDx) < 0) {
+            xReversals++;
+          }
+          lastDx = dx;
+        }
+
+        if (dy.abs() > 3.0) {
+          if (lastDy != null && (dy * lastDy) < 0) {
+            yReversals++;
+          }
+          lastDy = dy;
+        }
+      }
+    }
+
+    final width = maxX - minX;
+    final height = maxY - minY;
+    if (width < 12.0 && height < 12.0) return false;
+    if (width > 450.0 || height > 450.0) return false;
+
+    final diag = math.sqrt(width * width + height * height);
+    final isDense = diag > 0 && (totalDist / diag) >= 1.6;
+    final isZigzag = (xReversals >= 3 && width >= 14.0) ||
+        (yReversals >= 3 && height >= 14.0) ||
+        (xReversals >= 2 && yReversals >= 2);
+
+    if (!isZigzag || !isDense) return false;
+
+    final scribbleRect = Rect.fromLTRB(minX, minY, maxX, maxY).inflate(12.0);
+
+    // Find intersecting strokes
+    final hitStrokes = <DrawingStroke>[];
+    for (final s in _strokes) {
+      if (s.isLocked) continue;
+      bool hit = false;
+      for (final pt in s.points) {
+        if (scribbleRect.contains(pt)) {
+          hit = true;
+          break;
+        }
+      }
+      if (!hit && s.points.length >= 2) {
+        for (int i = 0; i < s.points.length - 1; i++) {
+          if (scribbleRect.contains(s.points[i])) {
+            hit = true;
+            break;
+          }
+        }
+      }
+      if (hit) {
+        hitStrokes.add(s);
+      }
+    }
+
+    // Find intersecting texts
+    final hitTexts = <String>[];
+    for (final t in _canvasTexts) {
+      if (t.isLocked) continue;
+      final tRect = Rect.fromLTWH(t.position.dx, t.position.dy, t.width, t.computeHeight());
+      if (scribbleRect.overlaps(tRect)) {
+        hitTexts.add(t.id);
+      }
+    }
+
+    if (hitStrokes.isEmpty && hitTexts.isEmpty) return false;
+
+    // Erase hit items!
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+    _strokes.removeWhere((s) => hitStrokes.contains(s));
+    for (final textId in hitTexts) {
+      _canvasTexts.removeWhere((t) => t.id == textId);
+    }
+    _normalizeUnifiedLayerOrders();
+    _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
+    HapticFeedback.mediumImpact();
+    return true;
+  }
+
   void _eraseNear(Offset point) {
     final eraseRadius = _strokeWidth * 1.5;
     final initialCount = _strokes.length;
+    bool anyChanged = false;
 
-    _strokes.removeWhere((stroke) {
-      if (stroke.isLocked) return false;
-      if (stroke.tool.isShape && !stroke.tool.isLineOrArrow && stroke.points.length >= 2) {
-        final rect = Rect.fromPoints(stroke.points.first, stroke.points.last).inflate(eraseRadius);
-        if (rect.contains(point)) return true;
-      }
-      for (final p in stroke.points) {
-        if ((p - point).distance <= eraseRadius) {
-          return true;
+    if (_eraserType == EraserType.object) {
+      _strokes.removeWhere((stroke) {
+        if (stroke.isLocked) return false;
+        if (stroke.tool.isShape && !stroke.tool.isLineOrArrow && stroke.points.length >= 2) {
+          final rect = Rect.fromPoints(stroke.points.first, stroke.points.last).inflate(eraseRadius);
+          if (rect.contains(point)) return true;
+        }
+        for (final p in stroke.points) {
+          if ((p - point).distance <= eraseRadius) {
+            return true;
+          }
+        }
+        for (int i = 0; i < stroke.points.length - 1; i++) {
+          if (_distanceToSegment(point, stroke.points[i], stroke.points[i + 1]) <= eraseRadius) {
+            return true;
+          }
+        }
+        return false;
+      });
+      anyChanged = _strokes.length != initialCount;
+    } else {
+      // Pixel / Segment Eraser:
+      final List<DrawingStroke> updatedStrokes = [];
+
+      for (final stroke in _strokes) {
+        if (stroke.isLocked) {
+          updatedStrokes.add(stroke);
+          continue;
+        }
+
+        // Closed geometric shape: if touched, remove whole shape
+        if (stroke.tool.isShape && !stroke.tool.isLineOrArrow && stroke.points.length >= 2) {
+          final rect = Rect.fromPoints(stroke.points.first, stroke.points.last).inflate(eraseRadius);
+          if (rect.contains(point)) {
+            anyChanged = true;
+            continue;
+          } else {
+            updatedStrokes.add(stroke);
+            continue;
+          }
+        }
+
+        // Check if stroke touches eraser circle
+        bool touches = false;
+        for (final p in stroke.points) {
+          if ((p - point).distance <= eraseRadius) {
+            touches = true;
+            break;
+          }
+        }
+        if (!touches) {
+          for (int i = 0; i < stroke.points.length - 1; i++) {
+            if (_distanceToSegment(point, stroke.points[i], stroke.points[i + 1]) <= eraseRadius) {
+              touches = true;
+              break;
+            }
+          }
+        }
+
+        if (!touches) {
+          updatedStrokes.add(stroke);
+          continue;
+        }
+
+        anyChanged = true;
+
+        // Split stroke points into segments outside eraseRadius
+        final List<List<Offset>> segments = [];
+        List<Offset> current = [];
+
+        for (int i = 0; i < stroke.points.length; i++) {
+          final p = stroke.points[i];
+          final dist = (p - point).distance;
+          if (dist > eraseRadius) {
+            if (current.isNotEmpty &&
+                _distanceToSegment(point, current.last, p) <= eraseRadius) {
+              if (current.length >= 2) {
+                segments.add(List.from(current));
+              }
+              current.clear();
+            }
+            current.add(p);
+          } else {
+            if (current.length >= 2) {
+              segments.add(List.from(current));
+            }
+            current.clear();
+          }
+        }
+        if (current.length >= 2) {
+          segments.add(current);
+        }
+
+        for (final seg in segments) {
+          updatedStrokes.add(stroke.copyWith(points: seg));
         }
       }
-      return false;
-    });
 
-    if (_strokes.length != initialCount) {
+      if (anyChanged) {
+        _strokes = updatedStrokes;
+      }
+    }
+
+    if (anyChanged || _strokes.length != initialCount) {
       _normalizeUnifiedLayerOrders();
-      _undoStack.add(List.from(_strokes));
       _saveCurrentCanvasTexts();
       notifyListeners();
     }

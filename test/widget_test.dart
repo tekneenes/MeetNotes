@@ -1455,4 +1455,138 @@ void main() {
 
     await tester.pump(const Duration(milliseconds: 1000));
   });
+
+  testWidgets('CompactEraserPickerDialog, Pixel vs Object Eraser, and Scribble to Erase test', (WidgetTester tester) async {
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // 1. Test AppleNotesFloatingToolbar eraser interaction:
+    // First tap activates eraser; second tap opens dialog
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                bottom: 20,
+                left: 50,
+                child: AppleNotesFloatingToolbar(
+                  controller: controller,
+                  dockEdge: ToolbarDockEdge.bottom,
+                  onDragDelta: (_) {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(controller.selectedTool, DrawingTool.pen);
+    final eraserFinder = find.byTooltip('Silgi (${controller.eraserType.label})');
+
+    // First tap -> selects eraser, no dialog
+    await tester.tap(eraserFinder);
+    await tester.pumpAndSettle();
+    expect(controller.selectedTool, DrawingTool.eraser);
+    expect(find.text('Silgi Ayarları'), findsNothing);
+
+    // Second tap -> opens CompactEraserPickerDialog
+    await tester.tap(eraserFinder);
+    await tester.pumpAndSettle();
+    expect(find.text('Silgi Ayarları'), findsOneWidget);
+    expect(find.text('SİLME TİPİ'), findsOneWidget);
+    expect(find.text('Nesne Silgisi'), findsWidgets);
+    expect(find.text('Piksel Silgisi'), findsOneWidget);
+    expect(find.text('Karalayarak Silme'), findsOneWidget);
+
+    // Switch to Piksel Silgisi
+    await tester.tap(find.text('Piksel Silgisi'));
+    await tester.pumpAndSettle();
+    expect(controller.eraserType, EraserType.pixel);
+
+    // Switch back to Nesne Silgisi
+    await tester.tap(find.text('Nesne Silgisi').first);
+    await tester.pumpAndSettle();
+    expect(controller.eraserType, EraserType.object);
+
+    // Test toggle switch for Scribble to Erase
+    expect(controller.enableScribbleToErase, isTrue);
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    expect(controller.enableScribbleToErase, isFalse);
+
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    expect(controller.enableScribbleToErase, isTrue);
+
+    // Close dialog
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    expect(find.text('Silgi Ayarları'), findsNothing);
+
+    // 2. Test Object Eraser (deletes whole stroke)
+    controller.setTool(DrawingTool.pen);
+    controller.startStroke(const Offset(50, 50));
+    controller.updateStroke(const Offset(150, 50));
+    controller.endStroke();
+    expect(controller.strokes.length, 1);
+
+    controller.setTool(DrawingTool.eraser);
+    controller.setEraserType(EraserType.object);
+    controller.startStroke(const Offset(100, 50));
+    controller.endStroke();
+    expect(controller.strokes.isEmpty, isTrue);
+
+    // 3. Test Pixel Eraser (splits stroke into segments)
+    controller.setTool(DrawingTool.pen);
+    controller.startStroke(const Offset(100, 100));
+    controller.updateStroke(const Offset(120, 100));
+    controller.updateStroke(const Offset(140, 100));
+    controller.updateStroke(const Offset(160, 100));
+    controller.updateStroke(const Offset(180, 100));
+    controller.updateStroke(const Offset(200, 100));
+    controller.updateStroke(const Offset(220, 100));
+    controller.updateStroke(const Offset(240, 100));
+    controller.updateStroke(const Offset(260, 100));
+    controller.endStroke();
+    expect(controller.strokes.length, 1);
+
+    controller.setTool(DrawingTool.eraser);
+    controller.setEraserType(EraserType.pixel);
+    // Erase near middle at (180, 100)
+    controller.startStroke(const Offset(180, 100));
+    controller.endStroke();
+    // In pixel mode, the middle is cut and the remaining points form 2 segments!
+    expect(controller.strokes.length, 2);
+
+    // 4. Test Scribble to Erase (Kelimeyi/çizimi zikzak karalayınca silme)
+    controller.clearCanvas();
+    expect(controller.strokes.isEmpty, isTrue);
+
+    // Draw an existing stroke to be erased
+    controller.setTool(DrawingTool.pen);
+    controller.startStroke(const Offset(100, 200));
+    controller.updateStroke(const Offset(180, 200));
+    controller.endStroke();
+    expect(controller.strokes.length, 1);
+
+    // Draw a zigzag scribble over (100, 200)-(180, 200)
+    controller.setEnableScribbleToErase(true);
+    controller.startStroke(const Offset(90, 190));
+    controller.updateStroke(const Offset(190, 190));
+    controller.updateStroke(const Offset(90, 197));
+    controller.updateStroke(const Offset(190, 197));
+    controller.updateStroke(const Offset(90, 204));
+    controller.updateStroke(const Offset(190, 204));
+    controller.updateStroke(const Offset(90, 210));
+    controller.updateStroke(const Offset(190, 210));
+    controller.endStroke();
+
+    // The underlying stroke should be erased, and the scribble stroke itself not saved as ink!
+    expect(controller.strokes.isEmpty, isTrue);
+
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
 }

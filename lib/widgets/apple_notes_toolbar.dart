@@ -6,6 +6,7 @@ import 'compact_stroke_width_picker.dart';
 import 'compact_color_picker_dialog.dart';
 import 'compact_shapes_picker.dart';
 import 'compact_lasso_picker_dialog.dart';
+import 'compact_eraser_picker_dialog.dart';
 
 enum ToolbarDockEdge {
   bottom,
@@ -529,7 +530,9 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
                 ? 'Metin Aracı'
                 : tool == DrawingTool.lasso
                     ? 'Kement (${controller.lassoSelectionMode.label})'
-                    : tool.label,
+                    : tool == DrawingTool.eraser
+                        ? 'Silgi (${controller.eraserType.label})'
+                        : tool.label,
             child: InkResponse(
               customBorder: const CircleBorder(),
               radius: 20,
@@ -557,6 +560,23 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
                       );
                     }
                   }
+                } else if (tool == DrawingTool.eraser) {
+                  setState(() => _showTextPresetPopover = false);
+                  final isAlreadySelected = controller.selectedTool == DrawingTool.eraser;
+                  controller.setTool(DrawingTool.eraser);
+                  if (isAlreadySelected) {
+                    final box = itemContext.findRenderObject() as RenderBox?;
+                    if (box != null) {
+                      final anchorRect = box.localToGlobal(Offset.zero) & box.size;
+                      CompactEraserPickerDialog.showAnchored(
+                        context: context,
+                        anchorRect: anchorRect,
+                        dockEdge: widget.dockEdge,
+                        controller: controller,
+                        onClearCanvas: controller.clearCanvas,
+                      );
+                    }
+                  }
                 } else {
                   setState(() => _showTextPresetPopover = false);
                   controller.setTool(tool);
@@ -581,7 +601,22 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
                             );
                           }
                         }
-                      : null,
+                      : tool == DrawingTool.eraser
+                          ? () {
+                              controller.setTool(DrawingTool.eraser);
+                              final box = itemContext.findRenderObject() as RenderBox?;
+                              if (box != null) {
+                                final anchorRect = box.localToGlobal(Offset.zero) & box.size;
+                                CompactEraserPickerDialog.showAnchored(
+                                  context: context,
+                                  anchorRect: anchorRect,
+                                  dockEdge: widget.dockEdge,
+                                  controller: controller,
+                                  onClearCanvas: controller.clearCanvas,
+                                );
+                              }
+                            }
+                          : null,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
                 curve: Curves.easeOutCubic,

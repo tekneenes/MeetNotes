@@ -51,7 +51,6 @@ class PlannerController extends ChangeNotifier {
   final Set<String> _selectedTextIds = {};
   final Set<String> _selectedImageIds = {};
   bool _isDraggingSelection = false;
-  Offset? _lastLassoDragPoint;
   SelectionHandle? _activeResizeHandle;
   Offset? _activeSnapPoint;
   List<Offset> _nearbySnapAnchors = [];
@@ -71,6 +70,17 @@ class PlannerController extends ChangeNotifier {
   Map<int, DrawingStroke> _initialRotationStrokes = {};
   Map<String, CanvasTextItem> _initialRotationTexts = {};
   Map<String, CanvasImageItem> _initialRotationImages = {};
+
+  // Canva Tarzı Akıllı Kılavuz & Hizalama Motoru State
+  bool _enableSmartSnapping = true;
+  List<SmartAlignmentGuide> _activeSmartGuides = [];
+  Offset? _dragStartPoint;
+  Rect? _initialDragSelectionBounds;
+  final Map<int, List<Offset>> _initialDragStrokes = {};
+  final Map<String, Offset> _initialDragTexts = {};
+  final Map<String, Offset> _initialDragImages = {};
+  Rect? _initialDragPaperRegionRect;
+  Rect? _initialDragAreaSelectionRect;
 
   // Hızlı Erişim, Katman Sıralaması & Gruplama State
   bool _isQuickAccessOpen = false;
@@ -237,6 +247,14 @@ class PlannerController extends ChangeNotifier {
   SelectionHandle? get activeResizeHandle => _activeResizeHandle;
   Offset? get activeSnapPoint => _activeSnapPoint;
   List<Offset> get nearbySnapAnchors => List.unmodifiable(_nearbySnapAnchors);
+  bool get enableSmartSnapping => _enableSmartSnapping;
+  List<SmartAlignmentGuide> get activeSmartGuides => List.unmodifiable(_activeSmartGuides);
+  void setEnableSmartSnapping(bool value) {
+    if (_enableSmartSnapping != value) {
+      _enableSmartSnapping = value;
+      notifyListeners();
+    }
+  }
   bool get isRotatingSelection => _isRotatingSelection;
   double get selectionRotationAngle => _selectionRotationAngle;
   int get currentRotationDegrees => _currentRotationDegrees;
@@ -1736,6 +1754,362 @@ class PlannerController extends ChangeNotifier {
     return closestSnap ?? point;
   }
 
+  // Canva Tarzı Akıllı Kılavuz & Hizalama Motoru (Smart Snapping Guides)
+  void _startSelectionDrag(Offset point) {
+    _isDraggingSelection = true;
+    _dragStartPoint = point;
+    _activeResizeHandle = null;
+    _activeSmartGuides = [];
+
+    _initialDragSelectionBounds = _computeRawSelectionBounds();
+    _initialDragStrokes.clear();
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length) {
+        _initialDragStrokes[idx] = List<Offset>.from(_strokes[idx].points);
+      }
+    }
+    _initialDragTexts.clear();
+    for (final id in _selectedTextIds) {
+      final idx = _canvasTexts.indexWhere((t) => t.id == id);
+      if (idx != -1) {
+        _initialDragTexts[id] = _canvasTexts[idx].position;
+      }
+    }
+    _initialDragImages.clear();
+    for (final id in _selectedImageIds) {
+      final idx = _canvasImages.indexWhere((img) => img.id == id);
+      if (idx != -1) {
+        _initialDragImages[id] = _canvasImages[idx].position;
+      }
+    }
+    _initialDragPaperRegionRect = _selectedPaperRegionId != null
+        ? _canvasPaperRegions.firstWhere((r) => r.id == _selectedPaperRegionId).rect
+        : null;
+    _initialDragAreaSelectionRect = _activeAreaSelectionRect;
+  }
+
+  bool _isSelectionEligibleForSmartSnapping() {
+    if (_selectedTextIds.isNotEmpty ||
+        _selectedImageIds.isNotEmpty ||
+        _selectedPaperRegionId != null ||
+        _activeAreaSelectionRect != null) {
+      return true;
+    }
+
+    if (_selectedStrokeIndices.isEmpty) return false;
+
+    // Şekiller, düz çizgiler/oklar veya gruplanmış çizimler hizalanabilir
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length) {
+        final s = _strokes[idx];
+        if (s.tool.isShape || s.tool.isLineOrArrow || s.groupId != null) {
+          return true;
+        }
+      }
+    }
+
+    // Gruplanmamış rastgele serbest kalem/fosforlu çizimler hizalama yapmaz
+    return false;
+  }
+
+  List<Rect> _collectSmartSnappingTargets() {
+    final targets = <Rect>[];
+    final processedGroupIds = <String>{};
+
+    for (int i = 0; i < _strokes.length; i++) {
+      if (_selectedStrokeIndices.contains(i)) continue;
+      final s = _strokes[i];
+      if (s.points.isEmpty) continue;
+
+      if (s.groupId != null) {
+        if (processedGroupIds.contains(s.groupId)) continue;
+        processedGroupIds.add(s.groupId!);
+
+        double gMinX = double.infinity, gMinY = double.infinity;
+        double gMaxX = double.negativeInfinity, gMaxY = double.negativeInfinity;
+        bool gFound = false;
+
+        for (int j = 0; j < _strokes.length; j++) {
+          if (_selectedStrokeIndices.contains(j)) continue;
+          final gs = _strokes[j];
+          if (gs.groupId == s.groupId) {
+            for (final p in gs.points) {
+              gFound = true;
+              if (p.dx < gMinX) gMinX = p.dx;
+              if (p.dy < gMinY) gMinY = p.dy;
+              if (p.dx > gMaxX) gMaxX = p.dx;
+              if (p.dy > gMaxY) gMaxY = p.dy;
+            }
+          }
+        }
+        if (gFound) {
+          targets.add(Rect.fromLTRB(gMinX, gMinY, gMaxX, gMaxY));
+        }
+        continue;
+      }
+
+      if (s.tool.isShape || s.tool.isLineOrArrow) {
+        double sMinX = double.infinity, sMinY = double.infinity;
+        double sMaxX = double.negativeInfinity, sMaxY = double.negativeInfinity;
+        for (final p in s.points) {
+          if (p.dx < sMinX) sMinX = p.dx;
+          if (p.dy < sMinY) sMinY = p.dy;
+          if (p.dx > sMaxX) sMaxX = p.dx;
+          if (p.dy > sMaxY) sMaxY = p.dy;
+        }
+        if (sMinX.isFinite && sMinY.isFinite) {
+          targets.add(Rect.fromLTRB(sMinX, sMinY, sMaxX, sMaxY));
+        }
+      }
+    }
+
+    for (final text in _canvasTexts) {
+      if (_selectedTextIds.contains(text.id)) continue;
+      targets.add(Rect.fromLTWH(
+        text.position.dx,
+        text.position.dy,
+        text.width,
+        text.computeHeight(),
+      ));
+    }
+
+    for (final img in _canvasImages) {
+      if (_selectedImageIds.contains(img.id)) continue;
+      targets.add(Rect.fromLTWH(
+        img.position.dx,
+        img.position.dy,
+        img.width,
+        img.height,
+      ));
+    }
+
+    for (final reg in _canvasPaperRegions) {
+      if (reg.id == _selectedPaperRegionId) continue;
+      targets.add(reg.rect);
+    }
+
+    for (final file in _canvasFiles) {
+      targets.add(Rect.fromLTWH(
+        file.position.dx,
+        file.position.dy,
+        240.0,
+        80.0,
+      ));
+    }
+
+    return targets;
+  }
+
+  Offset _applySmartAlignmentGuides(Offset rawDelta) {
+    if (_initialDragSelectionBounds == null || !_isSelectionEligibleForSmartSnapping()) {
+      _activeSmartGuides = [];
+      return rawDelta;
+    }
+
+    final targets = _collectSmartSnappingTargets();
+    if (targets.isEmpty) {
+      _activeSmartGuides = [];
+      return rawDelta;
+    }
+
+    final proposedBounds = _initialDragSelectionBounds!.shift(rawDelta);
+    final snapThreshold = 8.0 / _zoomScale;
+
+    double? bestSnapDeltaX;
+    double minDiffX = snapThreshold + 0.001;
+    SmartAlignmentGuide? bestGuideX;
+
+    double? bestSnapDeltaY;
+    double minDiffY = snapThreshold + 0.001;
+    SmartAlignmentGuide? bestGuideY;
+
+    final mLeft = proposedBounds.left;
+    final mCenterX = proposedBounds.center.dx;
+    final mRight = proposedBounds.right;
+
+    final mTop = proposedBounds.top;
+    final mCenterY = proposedBounds.center.dy;
+    final mBottom = proposedBounds.bottom;
+
+    for (final target in targets) {
+      final tLeft = target.left;
+      final tCenterX = target.center.dx;
+      final tRight = target.right;
+
+      final tTop = target.top;
+      final tCenterY = target.center.dy;
+      final tBottom = target.bottom;
+
+      // 1. Center to Center X
+      final diffCenterX = (tCenterX - mCenterX).abs();
+      if (diffCenterX <= snapThreshold && diffCenterX < minDiffX) {
+        minDiffX = diffCenterX;
+        bestSnapDeltaX = tCenterX - mCenterX;
+        bestGuideX = SmartAlignmentGuide(
+          isVertical: true,
+          coordinate: tCenterX,
+          start: math.min(proposedBounds.top, target.top) - 24.0,
+          end: math.max(proposedBounds.bottom, target.bottom) + 24.0,
+          type: SmartGuideAlignmentType.center,
+        );
+      }
+
+      // 2. Left to Left
+      final diffLeftLeft = (tLeft - mLeft).abs();
+      if (diffLeftLeft <= snapThreshold && diffLeftLeft < minDiffX) {
+        minDiffX = diffLeftLeft;
+        bestSnapDeltaX = tLeft - mLeft;
+        bestGuideX = SmartAlignmentGuide(
+          isVertical: true,
+          coordinate: tLeft,
+          start: math.min(proposedBounds.top, target.top) - 24.0,
+          end: math.max(proposedBounds.bottom, target.bottom) + 24.0,
+          type: SmartGuideAlignmentType.edge,
+        );
+      }
+
+      // 3. Right to Right
+      final diffRightRight = (tRight - mRight).abs();
+      if (diffRightRight <= snapThreshold && diffRightRight < minDiffX) {
+        minDiffX = diffRightRight;
+        bestSnapDeltaX = tRight - mRight;
+        bestGuideX = SmartAlignmentGuide(
+          isVertical: true,
+          coordinate: tRight,
+          start: math.min(proposedBounds.top, target.top) - 24.0,
+          end: math.max(proposedBounds.bottom, target.bottom) + 24.0,
+          type: SmartGuideAlignmentType.edge,
+        );
+      }
+
+      // 4. Left to Right (Adjacent)
+      final diffLeftRight = (tRight - mLeft).abs();
+      if (diffLeftRight <= snapThreshold && diffLeftRight < minDiffX) {
+        minDiffX = diffLeftRight;
+        bestSnapDeltaX = tRight - mLeft;
+        bestGuideX = SmartAlignmentGuide(
+          isVertical: true,
+          coordinate: tRight,
+          start: math.min(proposedBounds.top, target.top) - 24.0,
+          end: math.max(proposedBounds.bottom, target.bottom) + 24.0,
+          type: SmartGuideAlignmentType.edge,
+        );
+      }
+
+      // 5. Right to Left (Adjacent)
+      final diffRightLeft = (tLeft - mRight).abs();
+      if (diffRightLeft <= snapThreshold && diffRightLeft < minDiffX) {
+        minDiffX = diffRightLeft;
+        bestSnapDeltaX = tLeft - mRight;
+        bestGuideX = SmartAlignmentGuide(
+          isVertical: true,
+          coordinate: tLeft,
+          start: math.min(proposedBounds.top, target.top) - 24.0,
+          end: math.max(proposedBounds.bottom, target.bottom) + 24.0,
+          type: SmartGuideAlignmentType.edge,
+        );
+      }
+
+      // --- Y Alignment ---
+      // 1. Center to Center Y
+      final diffCenterY = (tCenterY - mCenterY).abs();
+      if (diffCenterY <= snapThreshold && diffCenterY < minDiffY) {
+        minDiffY = diffCenterY;
+        bestSnapDeltaY = tCenterY - mCenterY;
+        bestGuideY = SmartAlignmentGuide(
+          isVertical: false,
+          coordinate: tCenterY,
+          start: math.min(proposedBounds.left, target.left) - 24.0,
+          end: math.max(proposedBounds.right, target.right) + 24.0,
+          type: SmartGuideAlignmentType.center,
+        );
+      }
+
+      // 2. Top to Top
+      final diffTopTop = (tTop - mTop).abs();
+      if (diffTopTop <= snapThreshold && diffTopTop < minDiffY) {
+        minDiffY = diffTopTop;
+        bestSnapDeltaY = tTop - mTop;
+        bestGuideY = SmartAlignmentGuide(
+          isVertical: false,
+          coordinate: tTop,
+          start: math.min(proposedBounds.left, target.left) - 24.0,
+          end: math.max(proposedBounds.right, target.right) + 24.0,
+          type: SmartGuideAlignmentType.edge,
+        );
+      }
+
+      // 3. Bottom to Bottom
+      final diffBottomBottom = (tBottom - mBottom).abs();
+      if (diffBottomBottom <= snapThreshold && diffBottomBottom < minDiffY) {
+        minDiffY = diffBottomBottom;
+        bestSnapDeltaY = tBottom - mBottom;
+        bestGuideY = SmartAlignmentGuide(
+          isVertical: false,
+          coordinate: tBottom,
+          start: math.min(proposedBounds.left, target.left) - 24.0,
+          end: math.max(proposedBounds.right, target.right) + 24.0,
+          type: SmartGuideAlignmentType.edge,
+        );
+      }
+
+      // 4. Top to Bottom (Adjacent)
+      final diffTopBottom = (tBottom - mTop).abs();
+      if (diffTopBottom <= snapThreshold && diffTopBottom < minDiffY) {
+        minDiffY = diffTopBottom;
+        bestSnapDeltaY = tBottom - mTop;
+        bestGuideY = SmartAlignmentGuide(
+          isVertical: false,
+          coordinate: tBottom,
+          start: math.min(proposedBounds.left, target.left) - 24.0,
+          end: math.max(proposedBounds.right, target.right) + 24.0,
+          type: SmartGuideAlignmentType.edge,
+        );
+      }
+
+      // 5. Bottom to Top (Adjacent)
+      final diffBottomTop = (tTop - mBottom).abs();
+      if (diffBottomTop <= snapThreshold && diffBottomTop < minDiffY) {
+        minDiffY = diffBottomTop;
+        bestSnapDeltaY = tTop - mBottom;
+        bestGuideY = SmartAlignmentGuide(
+          isVertical: false,
+          coordinate: tTop,
+          start: math.min(proposedBounds.left, target.left) - 24.0,
+          end: math.max(proposedBounds.right, target.right) + 24.0,
+          type: SmartGuideAlignmentType.edge,
+        );
+      }
+    }
+
+    final finalSnappedX = rawDelta.dx + (bestSnapDeltaX ?? 0.0);
+    final finalSnappedY = rawDelta.dy + (bestSnapDeltaY ?? 0.0);
+    final finalBounds = _initialDragSelectionBounds!.shift(Offset(finalSnappedX, finalSnappedY));
+
+    final guides = <SmartAlignmentGuide>[];
+    if (bestGuideX != null) {
+      guides.add(SmartAlignmentGuide(
+        isVertical: true,
+        coordinate: bestGuideX.coordinate,
+        start: math.min(finalBounds.top - 24.0, bestGuideX.start),
+        end: math.max(finalBounds.bottom + 24.0, bestGuideX.end),
+        type: bestGuideX.type,
+      ));
+    }
+    if (bestGuideY != null) {
+      guides.add(SmartAlignmentGuide(
+        isVertical: false,
+        coordinate: bestGuideY.coordinate,
+        start: math.min(finalBounds.left - 24.0, bestGuideY.start),
+        end: math.max(finalBounds.right + 24.0, bestGuideY.end),
+        type: bestGuideY.type,
+      ));
+    }
+    _activeSmartGuides = guides;
+
+    return Offset(finalSnappedX, finalSnappedY);
+  }
+
   // Drawing Gesture Handlers
   void startStroke(Offset point) {
     if (_selectedTextId != null || _editingTextId != null) {
@@ -1758,7 +2132,6 @@ class PlannerController extends ChangeNotifier {
           _redoStack.clear();
           _activeResizeHandle = lineHandle;
           _isDraggingSelection = false;
-          _lastLassoDragPoint = null;
           notifyListeners();
           return;
         }
@@ -1766,9 +2139,7 @@ class PlannerController extends ChangeNotifier {
         if (_isPointNearLineStroke(point, lineStroke)) {
           _undoStack.add(List.from(_strokes));
           _redoStack.clear();
-          _isDraggingSelection = true;
-          _lastLassoDragPoint = point;
-          _activeResizeHandle = null;
+          _startSelectionDrag(point);
           notifyListeners();
           return;
         }
@@ -1780,7 +2151,6 @@ class PlannerController extends ChangeNotifier {
       _selectedImageIds.clear();
       _activeResizeHandle = null;
       _isDraggingSelection = false;
-      _lastLassoDragPoint = null;
       notifyListeners();
     }
 
@@ -1843,7 +2213,6 @@ class PlannerController extends ChangeNotifier {
                   if (item.id == id) id: item,
             };
             _isDraggingSelection = false;
-            _lastLassoDragPoint = null;
             notifyListeners();
             return;
           }
@@ -1852,9 +2221,7 @@ class PlannerController extends ChangeNotifier {
           if (bounds.inflate(10.0).contains(localPoint)) {
             _undoStack.add(List.from(_strokes));
             _redoStack.clear();
-            _isDraggingSelection = true;
-            _lastLassoDragPoint = point;
-            _activeResizeHandle = null;
+            _startSelectionDrag(point);
             notifyListeners();
             return;
           }
@@ -1932,10 +2299,8 @@ class PlannerController extends ChangeNotifier {
         }
         if (isSelectionLocked) {
           _isDraggingSelection = false;
-          _lastLassoDragPoint = null;
         } else {
-          _isDraggingSelection = true;
-          _lastLassoDragPoint = point;
+          _startSelectionDrag(point);
         }
         _activeResizeHandle = null;
         _lassoPoints = [];
@@ -1959,12 +2324,10 @@ class PlannerController extends ChangeNotifier {
         _syncSelectionRotationFromStrokes();
         if (isSelectionLocked) {
           _isDraggingSelection = false;
-          _lastLassoDragPoint = null;
         } else {
           _undoStack.add(List.from(_strokes));
           _redoStack.clear();
-          _isDraggingSelection = true;
-          _lastLassoDragPoint = point;
+          _startSelectionDrag(point);
         }
         _activeResizeHandle = null;
         _lassoPoints = [];
@@ -1988,12 +2351,10 @@ class PlannerController extends ChangeNotifier {
         _syncSelectionRotationFromStrokes();
         if (isSelectionLocked) {
           _isDraggingSelection = false;
-          _lastLassoDragPoint = null;
         } else {
           _undoStack.add(List.from(_strokes));
           _redoStack.clear();
-          _isDraggingSelection = true;
-          _lastLassoDragPoint = point;
+          _startSelectionDrag(point);
         }
         _activeResizeHandle = null;
         _lassoPoints = [];
@@ -2014,12 +2375,10 @@ class PlannerController extends ChangeNotifier {
         if (isSelectionLocked) {
           // Locked stroke/group: select in place so user can unlock, do not drag!
           _isDraggingSelection = false;
-          _lastLassoDragPoint = null;
         } else {
           _undoStack.add(List.from(_strokes));
           _redoStack.clear();
-          _isDraggingSelection = true;
-          _lastLassoDragPoint = point;
+          _startSelectionDrag(point);
         }
         _activeResizeHandle = null;
         _lassoPoints = [];
@@ -2036,7 +2395,6 @@ class PlannerController extends ChangeNotifier {
       _selectionRotationAngle = 0.0;
       _isDraggingSelection = false;
       _activeResizeHandle = null;
-      _lastLassoDragPoint = null;
       _lassoStartPoint = point;
       if (_lassoSelectionMode == LassoSelectionMode.rectangle) {
         _lassoPoints = [point, point, point, point];
@@ -2116,14 +2474,16 @@ class PlannerController extends ChangeNotifier {
       return;
     }
 
-    if (isSingleLineOrArrowSelected && _isDraggingSelection && _lastLassoDragPoint != null) {
-      final delta = point - _lastLassoDragPoint!;
-      _lastLassoDragPoint = point;
+    if (isSingleLineOrArrowSelected && _isDraggingSelection && _dragStartPoint != null) {
+      final rawDelta = point - _dragStartPoint!;
+      final snappedDelta = _enableSmartSnapping ? _applySmartAlignmentGuides(rawDelta) : rawDelta;
       final idx = _selectedStrokeIndices.first;
-      final stroke = _strokes[idx];
-      final movedPoints = stroke.points.map((p) => p + delta).toList();
-      _strokes[idx] = stroke.copyWith(points: movedPoints);
-      canvasDragTick.value++;
+      if (_initialDragStrokes.containsKey(idx)) {
+        final initialPoints = _initialDragStrokes[idx]!;
+        final movedPoints = initialPoints.map((p) => p + snappedDelta).toList();
+        _strokes[idx] = _strokes[idx].copyWith(points: movedPoints);
+        canvasDragTick.value++;
+      }
       return;
     }
 
@@ -2135,39 +2495,41 @@ class PlannerController extends ChangeNotifier {
           _resizeStartPoint != null &&
           _initialResizeRawBounds != null) {
         _applyResizeToSelection(point);
-      } else if (_isDraggingSelection && _lastLassoDragPoint != null) {
-        final delta = point - _lastLassoDragPoint!;
-        _lastLassoDragPoint = point;
+      } else if (_isDraggingSelection && _dragStartPoint != null) {
+        final rawDelta = point - _dragStartPoint!;
+        final snappedDelta = _enableSmartSnapping ? _applySmartAlignmentGuides(rawDelta) : rawDelta;
+
         for (final idx in _selectedStrokeIndices) {
-          if (idx >= 0 && idx < _strokes.length) {
-            final s = _strokes[idx];
-            final movedPoints = s.points.map((p) => p + delta).toList();
-            _strokes[idx] = s.copyWith(points: movedPoints);
+          if (idx >= 0 && idx < _strokes.length && _initialDragStrokes.containsKey(idx)) {
+            final initialPoints = _initialDragStrokes[idx]!;
+            final movedPoints = initialPoints.map((p) => p + snappedDelta).toList();
+            _strokes[idx] = _strokes[idx].copyWith(points: movedPoints);
           }
         }
         for (final textId in _selectedTextIds) {
           final idx = _canvasTexts.indexWhere((t) => t.id == textId);
-          if (idx != -1) {
-            final t = _canvasTexts[idx];
-            _canvasTexts[idx] = t.copyWith(position: t.position + delta);
+          if (idx != -1 && _initialDragTexts.containsKey(textId)) {
+            final initialPos = _initialDragTexts[textId]!;
+            _canvasTexts[idx] = _canvasTexts[idx].copyWith(position: initialPos + snappedDelta);
           }
         }
         for (final imageId in _selectedImageIds) {
           final idx = _canvasImages.indexWhere((img) => img.id == imageId);
-          if (idx != -1) {
-            final img = _canvasImages[idx];
-            _canvasImages[idx] = img.copyWith(position: img.position + delta);
+          if (idx != -1 && _initialDragImages.containsKey(imageId)) {
+            final initialPos = _initialDragImages[imageId]!;
+            _canvasImages[idx] = _canvasImages[idx].copyWith(position: initialPos + snappedDelta);
           }
         }
-        if (_selectedPaperRegionId != null) {
+        if (_selectedPaperRegionId != null && _initialDragPaperRegionRect != null) {
           final idx = _canvasPaperRegions.indexWhere((r) => r.id == _selectedPaperRegionId);
           if (idx != -1) {
-            final reg = _canvasPaperRegions[idx];
-            _canvasPaperRegions[idx] = reg.copyWith(rect: reg.rect.shift(delta));
+            _canvasPaperRegions[idx] = _canvasPaperRegions[idx].copyWith(
+              rect: _initialDragPaperRegionRect!.shift(snappedDelta),
+            );
           }
         }
-        if (_activeAreaSelectionRect != null) {
-          _activeAreaSelectionRect = _activeAreaSelectionRect!.shift(delta);
+        if (_initialDragAreaSelectionRect != null) {
+          _activeAreaSelectionRect = _initialDragAreaSelectionRect!.shift(snappedDelta);
         }
       } else {
         if (_lassoSelectionMode == LassoSelectionMode.rectangle && _lassoStartPoint != null) {
@@ -2257,8 +2619,11 @@ class PlannerController extends ChangeNotifier {
       _activeResizeHandle = null;
       _activeSnapPoint = null;
       _nearbySnapAnchors = [];
+      _activeSmartGuides = [];
       _isDraggingSelection = false;
-      _lastLassoDragPoint = null;
+      _dragStartPoint = null;
+      _initialDragSelectionBounds = null;
+      _initialDragStrokes.clear();
       _saveCurrentStrokes();
       notifyListeners();
       return;
@@ -2283,7 +2648,14 @@ class PlannerController extends ChangeNotifier {
         if (_selectedPaperRegionId != null) _saveCurrentCanvasPaperRegions();
       } else if (_isDraggingSelection) {
         _isDraggingSelection = false;
-        _lastLassoDragPoint = null;
+        _dragStartPoint = null;
+        _activeSmartGuides = [];
+        _initialDragSelectionBounds = null;
+        _initialDragStrokes.clear();
+        _initialDragTexts.clear();
+        _initialDragImages.clear();
+        _initialDragPaperRegionRect = null;
+        _initialDragAreaSelectionRect = null;
         _saveCurrentStrokes();
         _saveCurrentCanvasTexts();
         if (_selectedImageIds.isNotEmpty) _saveCurrentCanvasImages();
@@ -2410,19 +2782,26 @@ class PlannerController extends ChangeNotifier {
       _lassoPoints = [];
       _activeSnapPoint = null;
       _nearbySnapAnchors = [];
+      _activeSmartGuides = [];
       if (_isDraggingSelection || _activeResizeHandle != null || _isRotatingSelection) {
         _isDraggingSelection = false;
+        _dragStartPoint = null;
         _activeResizeHandle = null;
         _resizeStartPoint = null;
         _initialResizeRawBounds = null;
         _initialResizeStrokes.clear();
+        _initialDragSelectionBounds = null;
+        _initialDragStrokes.clear();
+        _initialDragTexts.clear();
+        _initialDragImages.clear();
+        _initialDragPaperRegionRect = null;
+        _initialDragAreaSelectionRect = null;
         _isRotatingSelection = false;
         _rotationCenter = null;
         _initialRotationAngle = null;
         _rotationAnchorBounds = null;
         _initialRotationStrokes.clear();
         _selectionRotationAngle = _baseSelectionRotationAngle;
-        _lastLassoDragPoint = null;
         if (_undoStack.isNotEmpty) {
           _strokes = _undoStack.removeLast();
         }

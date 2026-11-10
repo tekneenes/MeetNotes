@@ -205,6 +205,27 @@ enum QuickAccessSubPage {
   pageSettings,
 }
 
+enum SmartGuideAlignmentType {
+  edge,
+  center,
+}
+
+class SmartAlignmentGuide {
+  final bool isVertical; // true = vertical guideline (x is fixed), false = horizontal guideline (y is fixed)
+  final double coordinate;
+  final double start;
+  final double end;
+  final SmartGuideAlignmentType type;
+
+  const SmartAlignmentGuide({
+    required this.isVertical,
+    required this.coordinate,
+    required this.start,
+    required this.end,
+    this.type = SmartGuideAlignmentType.edge,
+  });
+}
+
 class PdfPageDragData {
   final String fileId;
   final String fileName;

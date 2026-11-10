@@ -59,6 +59,7 @@ class DrawingCanvasPainter extends CustomPainter {
   final DrawingStroke? selectedLineStroke;
   final Offset? activeSnapPoint;
   final List<Offset> nearbySnapAnchors;
+  final List<SmartAlignmentGuide> smartGuides;
   final bool isRotatingSelection;
   final bool isSelectionLocked;
   final double? selectionBorderRadius;
@@ -78,6 +79,7 @@ class DrawingCanvasPainter extends CustomPainter {
     this.selectedLineStroke,
     this.activeSnapPoint,
     this.nearbySnapAnchors = const [],
+    this.smartGuides = const [],
     this.isRotatingSelection = false,
     this.isSelectionLocked = false,
     this.selectionBorderRadius,
@@ -127,6 +129,9 @@ class DrawingCanvasPainter extends CustomPainter {
       }
       if (activeSnapPoint != null) {
         _drawSnapIndicator(canvas, activeSnapPoint!);
+      }
+      if (smartGuides.isNotEmpty) {
+        _drawSmartAlignmentGuides(canvas, smartGuides);
       }
     }
 
@@ -780,6 +785,64 @@ class DrawingCanvasPainter extends CustomPainter {
         canvas.drawPath(segment, paint);
         distance += dashLength + gapLength;
       }
+    }
+  }
+
+  void _drawSmartAlignmentGuides(Canvas canvas, List<SmartAlignmentGuide> guides) {
+    const canvaEdgeGuideColor = Color(0xFFFF007A); // Canva Hot Magenta (#FF007A)
+    const canvaCenterGuideColor = Color(0xFF8B3DFF); // Canva Vibrant Purple (#8B3DFF)
+
+    final guidePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.25 / scale.clamp(0.5, 2.5);
+
+    final dotFillPaint = Paint()..style = PaintingStyle.fill;
+    final dotRingPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0 / scale.clamp(0.5, 2.5)
+      ..color = Colors.white;
+
+    for (final guide in guides) {
+      final isCenter = guide.type == SmartGuideAlignmentType.center;
+      final color = isCenter ? canvaCenterGuideColor : canvaEdgeGuideColor;
+      guidePaint.color = color;
+      dotFillPaint.color = color;
+
+      final path = Path();
+      Offset p1;
+      Offset p2;
+
+      if (guide.isVertical) {
+        final x = guide.coordinate;
+        final y1 = math.min(guide.start, guide.end);
+        final y2 = math.max(guide.start, guide.end);
+        p1 = Offset(x, y1);
+        p2 = Offset(x, y2);
+      } else {
+        final y = guide.coordinate;
+        final x1 = math.min(guide.start, guide.end);
+        final x2 = math.max(guide.start, guide.end);
+        p1 = Offset(x1, y);
+        p2 = Offset(x2, y);
+      }
+
+      path.moveTo(p1.dx, p1.dy);
+      path.lineTo(p2.dx, p2.dy);
+
+      _drawDashedPath(
+        canvas,
+        path,
+        guidePaint,
+        6.0 / scale.clamp(0.5, 2.5),
+        4.0 / scale.clamp(0.5, 2.5),
+      );
+
+      // Subtle Canva anchor dots at line ends
+      final r = 3.5 / scale.clamp(0.5, 2.5);
+      canvas.drawCircle(p1, r, dotFillPaint);
+      canvas.drawCircle(p1, r, dotRingPaint);
+      canvas.drawCircle(p2, r, dotFillPaint);
+      canvas.drawCircle(p2, r, dotRingPaint);
     }
   }
 

@@ -348,9 +348,11 @@ void main() {
     expect(controller.selectionBounds, isNotNull);
 
     // 3. Drag the selected sticky note by (+30, +40)
+    controller.setEnableSmartSnapping(false);
     controller.startStroke(controller.selectionBounds!.center);
     controller.updateStroke(controller.selectionBounds!.center + const Offset(30, 40));
     controller.endStroke();
+    controller.setEnableSmartSnapping(true);
 
     final movedSticky = controller.canvasTexts.firstWhere((t) => t.id == stickyId);
     expect(movedSticky.position.dx, closeTo(230, 1.0));
@@ -1837,6 +1839,116 @@ void main() {
     await g1.up();
     await g2.up();
     await tester.pumpAndSettle();
+
+    // Drain timer
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
+
+  testWidgets('Canva Smart Alignment Guides and Snapping Engine test', (WidgetTester tester) async {
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // 1. Add two geometric shapes: Rectangle A and Rectangle B
+    // Rectangle A: (100, 100) -> (200, 200), center is (150, 150)
+    controller.setTool(DrawingTool.rectangle);
+    controller.startStroke(const Offset(100, 100));
+    controller.updateStroke(const Offset(200, 200));
+    controller.endStroke();
+
+    // Rectangle B: (400, 103) -> (500, 203), center is (450, 153)
+    controller.startStroke(const Offset(400, 103));
+    controller.updateStroke(const Offset(500, 203));
+    controller.endStroke();
+
+    expect(controller.strokes.length, 2);
+
+    // 2. Select Rectangle B with lasso and drag it slightly
+    controller.selectStrokeFromLayerPanel(1);
+    expect(controller.hasLassoSelection, isTrue);
+    expect(controller.selectedStrokeIndices, contains(1));
+
+    // Drag Rectangle B by (0, -1) -> proposed center Y becomes 152, within 8px of 150
+    final dragStart = controller.selectionBounds!.center;
+    controller.startStroke(dragStart);
+    controller.updateStroke(dragStart + const Offset(0, -1));
+
+    // Smart alignment engine should snap center Y to 150.0 and emit a horizontal guideline!
+    expect(controller.activeSmartGuides.isNotEmpty, isTrue);
+    final centerGuide = controller.activeSmartGuides.firstWhere((g) => !g.isVertical);
+    expect(centerGuide.coordinate, closeTo(150.0, 0.01));
+    expect(centerGuide.type, SmartGuideAlignmentType.center);
+
+    // End drag -> guidelines clear, snapped position persists
+    controller.endStroke();
+    expect(controller.activeSmartGuides.isEmpty, isTrue);
+    final movedRectB = controller.strokes[1];
+    final centerBY = (movedRectB.points.first.dy + movedRectB.points.last.dy) / 2.0;
+    expect(centerBY, closeTo(150.0, 0.01));
+
+    // 3. Test that ordinary un-grouped freehand squiggly lines DO NOT snap (no guidelines)
+    controller.clearLassoSelection();
+    controller.setTool(DrawingTool.pen);
+    controller.startStroke(const Offset(10, 10));
+    controller.updateStroke(const Offset(50, 40));
+    controller.updateStroke(const Offset(90, 80));
+    controller.endStroke();
+    expect(controller.strokes.length, 3);
+
+    // Select the freehand squiggly stroke and drag near Rectangle A
+    controller.selectStrokeFromLayerPanel(2);
+    expect(controller.hasLassoSelection, isTrue);
+    expect(controller.selectedStrokeIndices, contains(2));
+
+    // Drag freehand stroke near Rectangle A's top (y=100)
+    final freehandCenter = controller.selectionBounds!.center;
+    controller.startStroke(freehandCenter);
+    controller.updateStroke(freehandCenter + const Offset(90, 89));
+
+    // Should NOT emit guidelines because plain squiggly stroke is not a structured shape!
+    expect(controller.activeSmartGuides.isEmpty, isTrue);
+    controller.endStroke();
+
+    // 4. Test that Grouped strokes DO snap
+    // Add another freehand stroke to form a multi-stroke group
+    controller.setTool(DrawingTool.pen);
+    controller.startStroke(const Offset(15, 15));
+    controller.updateStroke(const Offset(70, 75));
+    controller.endStroke();
+    expect(controller.strokes.length, 4);
+
+    // Group the two freehand strokes
+    controller.selectStrokeFromLayerPanel(2);
+    controller.selectStrokeFromLayerPanel(3, additive: true);
+    controller.groupSelectedItems();
+    expect(controller.strokes[2].groupId, isNotNull);
+
+    // Drag the grouped selection near Rectangle A's top (y=100)
+    final groupedCenter = controller.selectionBounds!.center;
+    controller.startStroke(groupedCenter);
+    controller.updateStroke(groupedCenter + const Offset(90, 89));
+    // Since it's grouped, it is now eligible and participates in smart snapping!
+    expect(controller.activeSmartGuides.isNotEmpty, isTrue);
+    controller.endStroke();
+
+    // 5. Test that Custom Paper Region / Template participates in alignment
+    controller.clearLassoSelection();
+    controller.applyPaperStyleToSelection(
+      PaperStyle.grid,
+      targetRect: const Rect.fromLTWH(600, 100, 200, 200),
+    );
+    expect(controller.canvasPaperRegions.length, 1);
+
+    // Select Rectangle A
+    controller.selectStrokeFromLayerPanel(0);
+    expect(controller.hasLassoSelection, isTrue);
+
+    // Drag towards template top Y (100.0)
+    final rectACenter = controller.selectionBounds!.center;
+    controller.startStroke(rectACenter);
+    controller.updateStroke(rectACenter + const Offset(400, 1)); // near y=100
+    expect(controller.activeSmartGuides.isNotEmpty, isTrue);
+    expect(controller.activeSmartGuides.any((g) => !g.isVertical && (g.coordinate - 100.0).abs() < 1.0), isTrue);
+    controller.endStroke();
 
     // Drain timer
     await tester.pump(const Duration(milliseconds: 1000));

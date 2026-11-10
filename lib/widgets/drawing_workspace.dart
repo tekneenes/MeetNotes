@@ -537,6 +537,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 activeResizeHandle: controller.activeResizeHandle,
                 activeSnapPoint: controller.activeSnapPoint,
                 nearbySnapAnchors: controller.nearbySnapAnchors,
+                smartGuides: controller.activeSmartGuides,
                 isRotatingSelection: controller.isRotatingSelection,
                 isSelectionLocked: controller.isSelectionLocked,
                 scale: _scale,

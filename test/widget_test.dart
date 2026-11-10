@@ -1630,10 +1630,11 @@ void main() {
     expect(controller.activeEraserPoint, isNull);
 
     // Previously, 2-point lines would completely vanish!
-    // Now with precision intersection, it cleanly splits into 2 lines with a 20 pt gap!
+    // Now with precision intersection and stroke ink radius tangent offset, it cleanly splits into 2 lines!
     expect(controller.strokes.length, 2);
-    expect(controller.strokes[0].points.last.dx, closeTo(290.0, 0.5));
-    expect(controller.strokes[1].points.first.dx, closeTo(310.0, 0.5));
+    // Centerline ends at 300 - (10.0 + 2.5/2) = 288.75 so the 2.5pt round cap sits tangent at 290.0
+    expect(controller.strokes[0].points.last.dx, closeTo(288.75, 0.5));
+    expect(controller.strokes[1].points.first.dx, closeTo(311.25, 0.5));
 
     // 6. Test Swept Capsule Erasing (No tunneling on fast swipes)
     controller.clearCanvas();

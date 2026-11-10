@@ -5803,16 +5803,12 @@ class PlannerController extends ChangeNotifier {
           }
 
           if (stroke.points.isNotEmpty) {
-            final sliced = _sliceStrokeWithCircle(stroke, center, eraseRadius);
-            if (sliced.length != 1 ||
-                sliced.first.points.length != stroke.points.length ||
-                (sliced.first.points.isNotEmpty &&
-                    stroke.points.isNotEmpty &&
-                    sliced.first.points.first != stroke.points.first)) {
+            final sliceResult = _sliceStrokeWithCircle(stroke, center, eraseRadius);
+            if (sliceResult.changed) {
               anyChanged = true;
               stepChanged = true;
             }
-            updatedStrokes.addAll(sliced);
+            updatedStrokes.addAll(sliceResult.strokes);
           }
         }
 
@@ -5825,22 +5821,28 @@ class PlannerController extends ChangeNotifier {
     if (anyChanged || _strokes.length != initialCount) {
       _normalizeUnifiedLayerOrders();
       _saveCurrentCanvasTexts();
+      canvasDragTick.value++;
       notifyListeners();
     }
   }
 
-  List<DrawingStroke> _sliceStrokeWithCircle(
+  ({bool changed, List<DrawingStroke> strokes}) _sliceStrokeWithCircle(
     DrawingStroke stroke,
     Offset center,
     double radius,
   ) {
     final pts = stroke.points;
-    if (pts.isEmpty) return const [];
+    if (pts.isEmpty) return (changed: false, strokes: const []);
+    
+    // Include stroke ink thickness (round cap radius) so cut ends sit tangent to the eraser ring
+    final strokeInkRadius = math.max(0.0, stroke.strokeWidth / 2.0);
+    final cutRadius = radius + strokeInkRadius;
+
     if (pts.length == 1) {
-      if ((pts.first - center).distance <= radius) {
-        return const [];
+      if ((pts.first - center).distance <= cutRadius) {
+        return (changed: true, strokes: const []);
       }
-      return [stroke];
+      return (changed: false, strokes: [stroke]);
     }
 
     // Quick AABB check to avoid processing non-intersecting strokes
@@ -5853,11 +5855,12 @@ class PlannerController extends ChangeNotifier {
       if (p.dy < minY) minY = p.dy;
       if (p.dy > maxY) maxY = p.dy;
     }
-    final bounds = Rect.fromLTRB(minX, minY, maxX, maxY).inflate(radius + 1.0);
+    final bounds = Rect.fromLTRB(minX, minY, maxX, maxY).inflate(cutRadius + 1.0);
     if (!bounds.contains(center)) {
-      return [stroke];
+      return (changed: false, strokes: [stroke]);
     }
 
+    bool wasModified = false;
     final List<List<Offset>> resultSegments = [];
     List<Offset> current = [];
 
@@ -5876,7 +5879,11 @@ class PlannerController extends ChangeNotifier {
         }
         if (totalLen >= 1.0) {
           resultSegments.add(List.from(current));
+        } else {
+          wasModified = true;
         }
+      } else if (current.isNotEmpty) {
+        wasModified = true;
       }
       current.clear();
     }
@@ -5888,24 +5895,31 @@ class PlannerController extends ChangeNotifier {
       final lenSq = v.dx * v.dx + v.dy * v.dy;
       final distA = (pA - center).distance;
       final distB = (pB - center).distance;
-      final inA = distA <= radius;
-      final inB = distB <= radius;
+      final inA = distA <= cutRadius;
+      final inB = distB <= cutRadius;
 
       if (lenSq == 0.0) {
-        if (!inA) addPoint(pA);
+        if (!inA) {
+          addPoint(pA);
+        } else {
+          wasModified = true;
+        }
         continue;
       }
 
       final u = pA - center;
       final a = lenSq;
       final b = 2.0 * (u.dx * v.dx + u.dy * v.dy);
-      final c = u.dx * u.dx + u.dy * u.dy - radius * radius;
+      final c = u.dx * u.dx + u.dy * u.dy - cutRadius * cutRadius;
       final disc = b * b - 4.0 * a * c;
 
       if (disc < 0.0) {
         if (!inA && !inB) {
           addPoint(pA);
           addPoint(pB);
+        } else {
+          wasModified = true;
+          finishCurrentSegment();
         }
       } else {
         final sqrtD = math.sqrt(disc);
@@ -5914,6 +5928,7 @@ class PlannerController extends ChangeNotifier {
 
         if (!inA && !inB) {
           if (t1 > 0.0 && t2 < 1.0) {
+            wasModified = true;
             final pEnter = pA + v * t1;
             final pExit = pA + v * t2;
             addPoint(pA);
@@ -5926,17 +5941,20 @@ class PlannerController extends ChangeNotifier {
             addPoint(pB);
           }
         } else if (!inA && inB) {
+          wasModified = true;
           final tEnter = t1.clamp(0.0, 1.0);
           final pEnter = pA + v * tEnter;
           addPoint(pA);
           addPoint(pEnter);
           finishCurrentSegment();
         } else if (inA && !inB) {
+          wasModified = true;
           final tExit = t2.clamp(0.0, 1.0);
           final pExit = pA + v * tExit;
           addPoint(pExit);
           addPoint(pB);
         } else {
+          wasModified = true;
           finishCurrentSegment();
         }
       }
@@ -5944,8 +5962,12 @@ class PlannerController extends ChangeNotifier {
 
     finishCurrentSegment();
 
+    if (!wasModified) {
+      return (changed: false, strokes: [stroke]);
+    }
+
     if (resultSegments.isEmpty) {
-      return const [];
+      return (changed: true, strokes: const []);
     }
 
     // Convert surviving segments into strokes, preserving tool type and styling
@@ -5968,7 +5990,7 @@ class PlannerController extends ChangeNotifier {
       ));
     }
 
-    return childStrokes;
+    return (changed: true, strokes: childStrokes);
   }
 
   // Undo / Redo / Clear

@@ -940,6 +940,67 @@ class PlannerController extends ChangeNotifier {
     }
   }
 
+  void applyPaperGridLineColorToSelection(Color color, {bool isClear = false}) {
+    if (_selectedPaperRegionIds.isNotEmpty) {
+      for (final regId in _selectedPaperRegionIds) {
+        final idx = _canvasPaperRegions.indexWhere((r) => r.id == regId);
+        if (idx != -1) {
+          _canvasPaperRegions[idx] = _canvasPaperRegions[idx].copyWith(
+            customGridLineColor: isClear ? null : color,
+            clearCustomGridColor: isClear,
+          );
+        }
+      }
+      _saveCurrentCanvasPaperRegions();
+      notifyListeners();
+    }
+  }
+
+  void applyPaperSpacingToSelection(double spacing) {
+    if (_selectedPaperRegionIds.isNotEmpty) {
+      for (final regId in _selectedPaperRegionIds) {
+        final idx = _canvasPaperRegions.indexWhere((r) => r.id == regId);
+        if (idx != -1) {
+          _canvasPaperRegions[idx] = _canvasPaperRegions[idx].copyWith(
+            spacing: spacing,
+          );
+        }
+      }
+      _saveCurrentCanvasPaperRegions();
+      notifyListeners();
+    }
+  }
+
+  void applyPaperStrokeWidthToSelection(double strokeWidth) {
+    if (_selectedPaperRegionIds.isNotEmpty) {
+      for (final regId in _selectedPaperRegionIds) {
+        final idx = _canvasPaperRegions.indexWhere((r) => r.id == regId);
+        if (idx != -1) {
+          _canvasPaperRegions[idx] = _canvasPaperRegions[idx].copyWith(
+            strokeWidth: strokeWidth,
+          );
+        }
+      }
+      _saveCurrentCanvasPaperRegions();
+      notifyListeners();
+    }
+  }
+
+  void applyPaperOpacityToSelection(double opacity) {
+    if (_selectedPaperRegionIds.isNotEmpty) {
+      for (final regId in _selectedPaperRegionIds) {
+        final idx = _canvasPaperRegions.indexWhere((r) => r.id == regId);
+        if (idx != -1) {
+          _canvasPaperRegions[idx] = _canvasPaperRegions[idx].copyWith(
+            opacity: opacity,
+          );
+        }
+      }
+      _saveCurrentCanvasPaperRegions();
+      notifyListeners();
+    }
+  }
+
   void removeSelectedPaperRegion() {
     if (_selectedPaperRegionIds.isNotEmpty) {
       _canvasPaperRegions.removeWhere((r) => _selectedPaperRegionIds.contains(r.id));

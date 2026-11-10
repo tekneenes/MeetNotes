@@ -9,6 +9,7 @@ import '../painters/drawing_canvas_painter.dart';
 import 'apple_notes_toolbar.dart';
 import 'compact_color_picker_dialog.dart';
 import 'compact_font_picker_dialog.dart';
+import 'compact_paper_region_style_dialog.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class DrawingWorkspace extends StatefulWidget {
@@ -1953,61 +1954,16 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         tooltip: 'Seçili Alanı Boş Yap',
       ),
       _buildPillDivider(),
-      ...PaperColorTheme.values.map((theme) {
-        final currentTheme = controller.selectedPaperRegion?.colorTheme ??
-            controller.paperConfig.colorTheme;
-        final hasCustom = controller.selectedPaperRegion?.customBackgroundColor != null;
-        final isCurrent = !hasCustom && currentTheme == theme;
-        return Tooltip(
-          message: '${theme.label} Kağıt Rengi',
-          child: InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: () => controller.applyPaperColorThemeToSelection(theme),
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 2.0),
-              padding: const EdgeInsets.all(2.5),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isCurrent
-                      ? const Color(0xFF38BDF8)
-                      : Colors.white.withValues(alpha: 0.25),
-                  width: isCurrent ? 2.0 : 1.0,
-                ),
-              ),
-              child: Container(
-                width: 14,
-                height: 14,
-                decoration: BoxDecoration(
-                  color: theme.backgroundColor,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: theme.isDark
-                        ? Colors.white.withValues(alpha: 0.4)
-                        : Colors.black.withValues(alpha: 0.2),
-                    width: 0.8,
-                  ),
-                ),
-                child: isCurrent
-                    ? Center(
-                        child: Icon(
-                          Icons.check_rounded,
-                          size: 9,
-                          color: theme.isDark ? Colors.white : const Color(0xFF007AFF),
-                        ),
-                      )
-                    : null,
-              ),
-            ),
-          ),
-        );
-      }),
       Builder(
         builder: (btnContext) {
-          final hasCustom =
-              controller.selectedPaperRegion?.customBackgroundColor != null;
+          final region = controller.selectedPaperRegion;
+          final currentTheme =
+              region?.colorTheme ?? controller.paperConfig.colorTheme;
+          final customBg = region?.customBackgroundColor;
+          final displayColor = customBg ?? currentTheme.backgroundColor;
+
           return Tooltip(
-            message: 'Özel Şablon Rengi',
+            message: 'Şablon Rengi & Çizgi Ayarları',
             child: InkWell(
               borderRadius: BorderRadius.circular(10),
               onTap: () {
@@ -2015,40 +1971,51 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 final buttonRect = renderBox != null
                     ? renderBox.localToGlobal(Offset.zero) & renderBox.size
                     : Rect.fromCenter(
-                        center: Offset(MediaQuery.of(context).size.width / 2, 100),
-                        width: 30,
+                        center:
+                            Offset(MediaQuery.of(context).size.width / 2, 100),
+                        width: 40,
                         height: 30,
                       );
-                final initialColor = controller.selectedPaperRegion?.customBackgroundColor ??
-                    controller.selectedPaperRegion?.colorTheme?.backgroundColor ??
-                    controller.paperConfig.colorTheme.backgroundColor;
-                CompactColorPickerDialog.showAnchored(
+                CompactPaperRegionStyleDialog.showAnchored(
                   context: context,
                   anchorRect: buttonRect,
-                  title: 'Şablon Rengi',
-                  initialColor: initialColor,
-                  allowOpacity: false,
-                  onColorChanged: (c) {
-                    controller.applyPaperCustomColorToSelection(c);
-                  },
+                  controller: controller,
                 );
               },
               child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 2.0),
-                padding: const EdgeInsets.all(3.0),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: hasCustom
-                        ? const Color(0xFF38BDF8)
-                        : Colors.white.withValues(alpha: 0.25),
-                    width: hasCustom ? 1.8 : 1.0,
+                    color: Colors.white.withValues(alpha: 0.18),
+                    width: 1.0,
                   ),
                 ),
-                child: const Icon(
-                  Icons.palette_rounded,
-                  size: 13,
-                  color: Colors.white,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: displayColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: displayColor.computeLuminance() > 0.6
+                              ? Colors.black.withValues(alpha: 0.25)
+                              : Colors.white.withValues(alpha: 0.40),
+                          width: 1.0,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    const Icon(
+                      Icons.tune_rounded,
+                      size: 14,
+                      color: Color(0xFF38BDF8),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -3447,7 +3414,7 @@ class SinglePaperRegionPainter extends CustomPainter {
     final step = region.spacing.clamp(16.0, 60.0);
     final regLinePaint = Paint()
       ..color = effectiveGridColor.withValues(alpha: region.opacity)
-      ..strokeWidth = 0.75 / scale.clamp(0.5, 2.0)
+      ..strokeWidth = region.strokeWidth / scale.clamp(0.5, 2.0)
       ..style = PaintingStyle.stroke;
 
     final double firstX = (r.left / step).ceilToDouble() * step;
@@ -3469,9 +3436,9 @@ class SinglePaperRegionPainter extends CustomPainter {
         break;
       case PaperStyle.dotted:
         final dotPaint = Paint()
-          ..color = gridLineColor.withValues(alpha: (region.opacity * 1.8).clamp(0.0, 1.0))
+          ..color = effectiveGridColor.withValues(alpha: (region.opacity * 1.8).clamp(0.0, 1.0))
           ..style = PaintingStyle.fill;
-        const dotRadius = 1.1;
+        final dotRadius = (region.strokeWidth * 1.4).clamp(0.8, 3.5);
         for (double x = firstX; x <= r.right; x += step) {
           for (double y = firstY; y <= r.bottom; y += step) {
             canvas.drawCircle(Offset(x, y), dotRadius, dotPaint);

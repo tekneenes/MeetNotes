@@ -14,6 +14,7 @@ import 'package:meet_notes/widgets/compact_shapes_picker.dart';
 import 'package:meet_notes/widgets/apple_notes_toolbar.dart';
 import 'package:meet_notes/widgets/drawing_workspace.dart';
 import 'package:meet_notes/widgets/paper_settings_dialog.dart';
+import 'package:meet_notes/widgets/compact_paper_region_style_dialog.dart';
 import 'package:meet_notes/services/shape_recognition_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -2336,6 +2337,50 @@ void main() {
       expect(reg.colorTheme, PaperColorTheme.cream);
       expect(reg.customBackgroundColor, isNull);
     }
+
+    // 7. Test CompactPaperRegionStyleDialog UI rendering for Grid template
+    controller.clearLassoSelection();
+    controller.selectUnifiedLayerFromPanel(controller.unifiedLayers.firstWhere((l) => l.isPaperRegion));
+    expect(controller.selectedPaperRegion?.style, PaperStyle.grid);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CompactPaperRegionStyleDialog(controller: controller),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Şablon Ayarları & Renk'), findsOneWidget);
+    expect(find.text('KAĞIT ZEMİN RENGİ'), findsOneWidget);
+    // Grid has lines, so line controls must be visible:
+    expect(find.text('ÇİZGİ / NOKTA RENGİ'), findsOneWidget);
+    expect(find.text('Kare / Çizgi Aralığı'), findsOneWidget);
+    expect(find.text('Çizgi Kalınlığı'), findsOneWidget);
+    expect(find.text('Çizgi Belirginliği'), findsOneWidget);
+
+    // 8. Test line spacing and stroke width adjustments
+    controller.applyPaperSpacingToSelection(36.0);
+    controller.applyPaperStrokeWidthToSelection(1.5);
+    controller.applyPaperOpacityToSelection(0.40);
+    controller.applyPaperGridLineColorToSelection(const Color(0xFF047857));
+
+    final updatedReg = controller.selectedPaperRegion!;
+    expect(updatedReg.spacing, 36.0);
+    expect(updatedReg.strokeWidth, 1.5);
+    expect(updatedReg.opacity, 0.40);
+    expect(updatedReg.customGridLineColor, const Color(0xFF047857));
+
+    // 9. Change template style to Blank (Boş) -> Line options must disappear!
+    controller.applyPaperStyleToSelection(PaperStyle.blank);
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(controller.selectedPaperRegion?.style, PaperStyle.blank);
+    expect(find.text('KAĞIT ZEMİN RENGİ'), findsOneWidget);
+    expect(find.text('ÇİZGİ / NOKTA RENGİ'), findsNothing);
+    expect(find.text('Kare / Çizgi Aralığı'), findsNothing);
+    expect(find.text('Çizgi Kalınlığı'), findsNothing);
 
     // Drain timer
     await tester.pump(const Duration(milliseconds: 1000));

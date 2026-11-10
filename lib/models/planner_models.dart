@@ -911,6 +911,7 @@ class CanvasPaperRegion {
   final PaperStyle style;
   final double spacing;
   final double opacity;
+  final double strokeWidth;
   final bool isLocked;
   final int? layerOrder;
   final String? groupId;
@@ -924,6 +925,7 @@ class CanvasPaperRegion {
     required this.style,
     this.spacing = 24.0,
     this.opacity = 0.16,
+    this.strokeWidth = 0.75,
     this.isLocked = false,
     this.layerOrder,
     this.groupId,
@@ -938,6 +940,7 @@ class CanvasPaperRegion {
     PaperStyle? style,
     double? spacing,
     double? opacity,
+    double? strokeWidth,
     bool? isLocked,
     int? layerOrder,
     String? groupId,
@@ -946,6 +949,7 @@ class CanvasPaperRegion {
     Color? customBackgroundColor,
     Color? customGridLineColor,
     bool clearCustomColor = false,
+    bool clearCustomGridColor = false,
   }) {
     return CanvasPaperRegion(
       id: id ?? this.id,
@@ -953,6 +957,7 @@ class CanvasPaperRegion {
       style: style ?? this.style,
       spacing: spacing ?? this.spacing,
       opacity: opacity ?? this.opacity,
+      strokeWidth: strokeWidth ?? this.strokeWidth,
       isLocked: isLocked ?? this.isLocked,
       layerOrder: layerOrder ?? this.layerOrder,
       groupId: clearGroupId ? null : (groupId ?? this.groupId),
@@ -960,7 +965,7 @@ class CanvasPaperRegion {
       customBackgroundColor: clearCustomColor
           ? null
           : (customBackgroundColor ?? this.customBackgroundColor),
-      customGridLineColor: clearCustomColor
+      customGridLineColor: clearCustomGridColor
           ? null
           : (customGridLineColor ?? this.customGridLineColor),
     );
@@ -975,6 +980,7 @@ class CanvasPaperRegion {
     'style': style.name,
     'spacing': spacing,
     'opacity': opacity,
+    'strokeWidth': strokeWidth,
     'isLocked': isLocked,
     if (layerOrder != null) 'layerOrder': layerOrder,
     if (groupId != null) 'groupId': groupId,
@@ -1004,6 +1010,7 @@ class CanvasPaperRegion {
         : null;
     final customBgInt = map['customBackgroundColor'] as int?;
     final customLineInt = map['customGridLineColor'] as int?;
+    final strokeWidth = (map['strokeWidth'] as num?)?.toDouble() ?? 0.75;
 
     return CanvasPaperRegion(
       id: map['id'] as String? ?? '',
@@ -1011,6 +1018,7 @@ class CanvasPaperRegion {
       style: style,
       spacing: (map['spacing'] as num?)?.toDouble() ?? 24.0,
       opacity: (map['opacity'] as num?)?.toDouble() ?? 0.16,
+      strokeWidth: strokeWidth,
       isLocked: map['isLocked'] as bool? ?? false,
       layerOrder: (map['layerOrder'] as num?)?.toInt(),
       groupId: map['groupId'] as String?,

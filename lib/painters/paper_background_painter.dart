@@ -103,7 +103,7 @@ class PaperBackgroundPainter extends CustomPainter {
     final step = region.spacing.clamp(14.0, 60.0);
     final regLinePaint = Paint()
       ..color = effectiveGridColor.withValues(alpha: region.opacity)
-      ..strokeWidth = 0.75 / scale.clamp(0.5, 2.0)
+      ..strokeWidth = region.strokeWidth / scale.clamp(0.5, 2.0)
       ..style = PaintingStyle.stroke;
 
     final double firstX = (r.left / step).ceilToDouble() * step;
@@ -127,7 +127,7 @@ class PaperBackgroundPainter extends CustomPainter {
         final dotPaint = Paint()
           ..color = effectiveGridColor.withValues(alpha: (region.opacity * 1.8).clamp(0.0, 1.0))
           ..style = PaintingStyle.fill;
-        const dotRadius = 1.1;
+        final dotRadius = (region.strokeWidth * 1.4).clamp(0.8, 3.5);
         for (double x = firstX; x <= r.right; x += step) {
           for (double y = firstY; y <= r.bottom; y += step) {
             canvas.drawCircle(Offset(x, y), dotRadius, dotPaint);

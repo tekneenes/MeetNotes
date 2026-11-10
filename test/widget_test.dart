@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -1781,6 +1782,63 @@ void main() {
     await tester.pumpAndSettle();
     expect(controller.enableDrawAndHold, isFalse);
 
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
+
+  testWidgets('DrawingWorkspace infinite downward panning and zoom stability test', (WidgetTester tester) async {
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 1000,
+            height: 800,
+            child: DrawingWorkspace(controller: controller),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 1. Verify two-finger trackpad / pointer scroll can scroll far down past the old 400px barrier
+    final workspaceFinder = find.byType(DrawingWorkspace);
+    expect(workspaceFinder, findsOneWidget);
+
+    // Scroll down 2000px using PointerScrollEvent signals
+    final gestureCenter = tester.getCenter(workspaceFinder);
+    for (int i = 0; i < 5; i++) {
+      final scrollEvent = PointerScrollEvent(
+        position: gestureCenter,
+        scrollDelta: const Offset(0, 400),
+      );
+      await tester.sendEventToBinding(scrollEvent);
+      await tester.pump();
+    }
+
+    // 2. Multi-touch 2-finger pinch-to-zoom test on touchscreen
+    final g1 = await tester.startGesture(const Offset(400, 400));
+    final g2 = await tester.startGesture(const Offset(600, 400)); // distance 200
+    await tester.pump();
+
+    // Spread fingers to distance 400 (2x zoom)
+    await g1.moveTo(const Offset(300, 400));
+    await g2.moveTo(const Offset(700, 400));
+    await tester.pump();
+
+    expect(controller.zoomScale, closeTo(2.0, 0.05));
+
+    // Pan with both fingers down
+    await g1.moveTo(const Offset(300, 600));
+    await g2.moveTo(const Offset(700, 600));
+    await tester.pump();
+
+    await g1.up();
+    await g2.up();
+    await tester.pumpAndSettle();
+
+    // Drain timer
     await tester.pump(const Duration(milliseconds: 1000));
   });
 }

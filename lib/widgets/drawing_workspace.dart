@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../controllers/planner_controller.dart';
 import '../models/planner_models.dart';
 import '../painters/paper_background_painter.dart';
@@ -180,26 +181,25 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     }
   }
 
-  void _handlePointerMove(PointerMoveEvent event) {
+  void _handlePointerMove(PointerMoveEvent event, Size viewportSize) {
     if (!_activePointers.containsKey(event.pointer)) return;
     _activePointers[event.pointer] = event.localPosition;
 
-    if (_isMultiTouchZooming || _activePointers.length >= 2) {
-      if (_activePointers.length >= 2) {
-        final pts = _activePointers.values.toList();
-        final currentMidpoint = (pts[0] + pts[1]) / 2.0;
-        final currentDistance = (pts[0] - pts[1]).distance;
-        final scaleFactor = _initialPinchDistance > 8.0
-            ? (currentDistance / _initialPinchDistance)
-            : 1.0;
+    if (_isMultiTouchZooming && _activePointers.length >= 2) {
+      final pts = _activePointers.values.toList();
+      final currentMidpoint = (pts[0] + pts[1]) / 2.0;
+      final currentDistance = (pts[0] - pts[1]).distance;
+      final scaleFactor = _initialPinchDistance > 8.0
+          ? (currentDistance / _initialPinchDistance)
+          : 1.0;
 
-        final newScale = (_baseScale * scaleFactor).clamp(0.5, 4.0);
-        setState(() {
-          _scale = newScale;
-          _panOffset = currentMidpoint - (_anchorCanvasPoint * _scale);
-        });
-        widget.controller.setZoomScale(_scale, notify: false);
-      }
+      final newScale = (_baseScale * scaleFactor).clamp(0.5, 4.0);
+      final rawPan = currentMidpoint - (_anchorCanvasPoint * newScale);
+      setState(() {
+        _scale = newScale;
+        _panOffset = _clampPanOffset(rawPan, newScale, viewportSize);
+      });
+      widget.controller.setZoomScale(_scale, notify: false);
     } else if (_activePointers.length == 1 && !_isMultiTouchZooming) {
       if (widget.controller.selectedTool != DrawingTool.text) {
         widget.controller.updateStroke(_toCanvas(event.localPosition));
@@ -245,16 +245,100 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     widget.controller.setZoomScale(_scale, notify: true);
   }
 
+  void _handlePointerSignal(PointerSignalEvent event, Size viewportSize) {
+    if (event is PointerScrollEvent) {
+      final isZoom = HardwareKeyboard.instance.isControlPressed ||
+          HardwareKeyboard.instance.isMetaPressed;
+      if (isZoom) {
+        // Zoom centered at cursor position
+        final zoomDelta = -event.scrollDelta.dy;
+        final zoomFactor = math.exp(zoomDelta * 0.002);
+        final newScale = (_scale * zoomFactor).clamp(0.5, 4.0);
+        final focal = event.localPosition;
+        final canvasFocal = _toCanvas(focal);
+        final rawPan = focal - (canvasFocal * newScale);
+        setState(() {
+          _scale = newScale;
+          _panOffset = _clampPanOffset(rawPan, newScale, viewportSize);
+        });
+        widget.controller.setZoomScale(_scale, notify: false);
+      } else {
+        // Natural trackpad or mouse wheel scroll pan
+        final rawPan = _panOffset - event.scrollDelta;
+        setState(() {
+          _panOffset = _clampPanOffset(rawPan, _scale, viewportSize);
+        });
+      }
+    }
+  }
+
+  Rect _computeContentBounds(Size viewportSize) {
+    final controller = widget.controller;
+    double minX = -2000.0;
+    double maxX = math.max(viewportSize.width + 2000.0, 4000.0);
+    double minY = -1500.0;
+    // Default notebook length: 30,000 pixels downwards (over 26 full pages of notes!)
+    double maxY = math.max(viewportSize.height * 6.0, 30000.0);
+
+    for (final stroke in controller.strokes) {
+      if (stroke.points.isEmpty) continue;
+      for (final p in stroke.points) {
+        if (p.dx < minX) minX = p.dx - 1000.0;
+        if (p.dx > maxX) maxX = p.dx + 1000.0;
+        if (p.dy < minY) minY = p.dy - 1000.0;
+        if (p.dy > maxY) maxY = p.dy + 10000.0;
+      }
+    }
+
+    for (final text in controller.canvasTexts) {
+      if (text.position.dx < minX) minX = text.position.dx - 1000.0;
+      if (text.position.dx + text.width > maxX) maxX = text.position.dx + text.width + 1000.0;
+      if (text.position.dy < minY) minY = text.position.dy - 1000.0;
+      final estimatedHeight = math.max(60.0, text.fontSize * 3.0);
+      if (text.position.dy + estimatedHeight > maxY) maxY = text.position.dy + estimatedHeight + 10000.0;
+    }
+
+    for (final img in controller.canvasImages) {
+      if (img.position.dx < minX) minX = img.position.dx - 1000.0;
+      if (img.position.dx + img.width > maxX) maxX = img.position.dx + img.width + 1000.0;
+      if (img.position.dy < minY) minY = img.position.dy - 1000.0;
+      if (img.position.dy + img.height > maxY) maxY = img.position.dy + img.height + 10000.0;
+    }
+
+    for (final file in controller.canvasFiles) {
+      if (file.position.dx < minX) minX = file.position.dx - 1000.0;
+      if (file.position.dx + 240.0 > maxX) maxX = file.position.dx + 240.0 + 1000.0;
+      if (file.position.dy < minY) minY = file.position.dy - 1000.0;
+      if (file.position.dy + 80.0 > maxY) maxY = file.position.dy + 80.0 + 10000.0;
+    }
+
+    for (final reg in controller.canvasPaperRegions) {
+      final r = reg.rect;
+      if (r.left < minX) minX = r.left - 1000.0;
+      if (r.right > maxX) maxX = r.right + 1000.0;
+      if (r.top < minY) minY = r.top - 1000.0;
+      if (r.bottom > maxY) maxY = r.bottom + 10000.0;
+    }
+
+    return Rect.fromLTRB(minX, minY, maxX, maxY);
+  }
+
   Offset _clampPanOffset(Offset pan, double scale, Size viewportSize) {
-    final w = viewportSize.width;
-    final h = viewportSize.height;
-    final minX = (w - w * scale < 0 ? w - w * scale : 0.0) - w * 0.5;
-    final maxX = (w - w * scale > 0 ? w - w * scale : 0.0) + w * 0.5;
-    final minY = (h - h * scale < 0 ? h - h * scale : 0.0) - h * 0.5;
-    final maxY = (h - h * scale > 0 ? h - h * scale : 0.0) + h * 0.5;
+    final bounds = _computeContentBounds(viewportSize);
+
+    final minX = viewportSize.width * 0.15 - bounds.right * scale;
+    final maxX = viewportSize.width * 0.85 - bounds.left * scale;
+    final minY = viewportSize.height * 0.15 - bounds.bottom * scale;
+    final maxY = viewportSize.height * 0.85 - bounds.top * scale;
+
+    final lowerX = math.min(minX, maxX);
+    final upperX = math.max(minX, maxX);
+    final lowerY = math.min(minY, maxY);
+    final upperY = math.max(minY, maxY);
+
     return Offset(
-      pan.dx.clamp(minX, maxX),
-      pan.dy.clamp(minY, maxY),
+      pan.dx.clamp(lowerX, upperX),
+      pan.dy.clamp(lowerY, upperY),
     );
   }
 
@@ -327,13 +411,15 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                     child: Listener(
                       behavior: HitTestBehavior.opaque,
                       onPointerDown: _handlePointerDown,
-                      onPointerMove: _handlePointerMove,
+                      onPointerMove: (event) => _handlePointerMove(event, viewportSize),
                       onPointerUp: _handlePointerUpOrCancel,
                       onPointerCancel: _handlePointerUpOrCancel,
                       onPointerPanZoomStart: _handleTrackpadPanZoomStart,
                       onPointerPanZoomUpdate: (event) =>
                           _handleTrackpadPanZoomUpdate(event, viewportSize),
                       onPointerPanZoomEnd: _handleTrackpadPanZoomEnd,
+                      onPointerSignal: (event) =>
+                          _handlePointerSignal(event, viewportSize),
                       child: const SizedBox.expand(),
                     ),
                   ),

@@ -1170,6 +1170,49 @@ void main() {
     // Default selection mode should be rectangle
     expect(controller.lassoSelectionMode, LassoSelectionMode.rectangle);
 
+    // 0. Test AppleNotesFloatingToolbar lasso interaction:
+    // First tap activates lasso without opening dialog; second tap opens dialog.
+    final toolbarController = PlannerController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                bottom: 20,
+                left: 50,
+                child: AppleNotesFloatingToolbar(
+                  controller: toolbarController,
+                  dockEdge: ToolbarDockEdge.bottom,
+                  onDragDelta: (_) {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(toolbarController.selectedTool, DrawingTool.pen);
+    final lassoFinder = find.byTooltip('Kement (${toolbarController.lassoSelectionMode.label})');
+
+    // First tap -> selects lasso, does NOT open dialog
+    await tester.tap(lassoFinder);
+    await tester.pumpAndSettle();
+    expect(toolbarController.selectedTool, DrawingTool.lasso);
+    expect(find.text('Kement ve Alan Seçimi'), findsNothing);
+
+    // Second tap -> already active, opens dialog
+    await tester.tap(lassoFinder);
+    await tester.pumpAndSettle();
+    expect(find.text('Kement ve Alan Seçimi'), findsOneWidget);
+
+    // Close dialog
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    expect(find.text('Kement ve Alan Seçimi'), findsNothing);
+
     // 1. Show anchored CompactLassoPickerDialog
     await tester.pumpWidget(
       MaterialApp(

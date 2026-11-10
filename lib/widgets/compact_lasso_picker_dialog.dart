@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -28,7 +29,8 @@ class CompactLassoPickerDialog extends StatelessWidget {
     final viewInsets = mediaQuery.viewInsets;
 
     const popoverWidth = 295.0;
-    const popoverHeight = 220.0;
+    const popoverHeight = 240.0;
+    const clearance = 22.0;
 
     double left;
     double top;
@@ -37,24 +39,28 @@ class CompactLassoPickerDialog extends StatelessWidget {
       case ToolbarDockEdge.bottom:
         left = (anchorRect.center.dx - popoverWidth / 2.0)
             .clamp(12.0, screenSize.width - popoverWidth - 12.0);
-        top = (anchorRect.top - popoverHeight - 10.0)
-            .clamp(12.0, screenSize.height - viewInsets.bottom - popoverHeight - 12.0);
+        final maxTop = anchorRect.top - popoverHeight - 16.0;
+        top = (anchorRect.top - popoverHeight - clearance)
+            .clamp(12.0, math.max(12.0, maxTop));
         break;
       case ToolbarDockEdge.top:
         left = (anchorRect.center.dx - popoverWidth / 2.0)
             .clamp(12.0, screenSize.width - popoverWidth - 12.0);
-        top = (anchorRect.bottom + 10.0)
-            .clamp(12.0, screenSize.height - viewInsets.bottom - popoverHeight - 12.0);
+        final minTop = anchorRect.bottom + 16.0;
+        top = (anchorRect.bottom + clearance)
+            .clamp(minTop, math.max(minTop, screenSize.height - viewInsets.bottom - popoverHeight - 12.0));
         break;
       case ToolbarDockEdge.left:
-        left = (anchorRect.right + 10.0)
-            .clamp(12.0, screenSize.width - popoverWidth - 12.0);
+        final minLeft = anchorRect.right + 16.0;
+        left = (anchorRect.right + clearance)
+            .clamp(minLeft, math.max(minLeft, screenSize.width - popoverWidth - 12.0));
         top = (anchorRect.center.dy - popoverHeight / 2.0)
             .clamp(12.0, screenSize.height - viewInsets.bottom - popoverHeight - 12.0);
         break;
       case ToolbarDockEdge.right:
-        left = (anchorRect.left - popoverWidth - 10.0)
-            .clamp(12.0, screenSize.width - popoverWidth - 12.0);
+        final maxLeft = anchorRect.left - popoverWidth - 16.0;
+        left = (anchorRect.left - popoverWidth - clearance)
+            .clamp(12.0, math.max(12.0, maxLeft));
         top = (anchorRect.center.dy - popoverHeight / 2.0)
             .clamp(12.0, screenSize.height - viewInsets.bottom - popoverHeight - 12.0);
         break;

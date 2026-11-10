@@ -543,16 +543,19 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
                   }
                 } else if (tool == DrawingTool.lasso) {
                   setState(() => _showTextPresetPopover = false);
+                  final isAlreadySelected = controller.selectedTool == DrawingTool.lasso;
                   controller.setTool(DrawingTool.lasso);
-                  final box = itemContext.findRenderObject() as RenderBox?;
-                  if (box != null) {
-                    final anchorRect = box.localToGlobal(Offset.zero) & box.size;
-                    CompactLassoPickerDialog.showAnchored(
-                      context: context,
-                      anchorRect: anchorRect,
-                      dockEdge: widget.dockEdge,
-                      controller: controller,
-                    );
+                  if (isAlreadySelected) {
+                    final box = itemContext.findRenderObject() as RenderBox?;
+                    if (box != null) {
+                      final anchorRect = box.localToGlobal(Offset.zero) & box.size;
+                      CompactLassoPickerDialog.showAnchored(
+                        context: context,
+                        anchorRect: anchorRect,
+                        dockEdge: widget.dockEdge,
+                        controller: controller,
+                      );
+                    }
                   }
                 } else {
                   setState(() => _showTextPresetPopover = false);

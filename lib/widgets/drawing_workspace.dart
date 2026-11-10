@@ -1649,8 +1649,10 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       _buildPillDivider(),
 
       // 12b. Paper Pattern / Template Submenu
-      _buildPaperPatternSubmenu(controller),
-      _buildPillDivider(),
+      if (controller.showTemplateSelectionOptions) ...[
+        _buildPaperPatternSubmenu(controller),
+        _buildPillDivider(),
+      ],
 
       // 13. Delete (Trash Icon Only)
       Tooltip(
@@ -2190,8 +2192,10 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         ),
       ],
       _buildPillDivider(),
-      _buildPaperPatternSubmenu(controller),
-      _buildPillDivider(),
+      if (controller.showTemplateSelectionOptions) ...[
+        _buildPaperPatternSubmenu(controller),
+        _buildPillDivider(),
+      ],
       Tooltip(
         message: 'Yatay Aynala (Sağa / Sola Çevir)',
         child: InkWell(

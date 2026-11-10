@@ -1199,10 +1199,13 @@ void main() {
     expect(find.text('Kement ve Alan Seçimi'), findsOneWidget);
     expect(find.text('Kare Seçim'), findsWidgets);
     expect(find.text('Serbest Kement'), findsOneWidget);
-    expect(find.text('Kareli Yap'), findsOneWidget);
-    expect(find.text('Çizgili Yap'), findsOneWidget);
-    expect(find.text('Noktalı Yap'), findsOneWidget);
-    expect(find.text('Boş Yap'), findsOneWidget);
+    expect(find.text('Şablon Seçeneklerini Göster'), findsOneWidget);
+
+    // Test toggle switch for Şablon Seçeneklerini Göster
+    expect(controller.showTemplateSelectionOptions, isFalse);
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    expect(controller.showTemplateSelectionOptions, isTrue);
 
     // Switch to Serbest Kement by tapping option
     await tester.tap(find.text('Serbest Kement'));
@@ -1248,9 +1251,21 @@ void main() {
     final controller = PlannerController();
     await tester.pump(const Duration(milliseconds: 100));
 
-    // 1. Select an empty area with Rectangle Lasso to create an active area selection
+    // 1a. When showTemplateSelectionOptions is false (default), selecting an empty area gives no reaction
+    expect(controller.showTemplateSelectionOptions, isFalse);
     controller.setTool(DrawingTool.lasso);
     controller.setLassoSelectionMode(LassoSelectionMode.rectangle);
+    controller.startStroke(const Offset(100, 100));
+    controller.updateStroke(const Offset(300, 250));
+    controller.endStroke();
+
+    expect(controller.hasLassoSelection, isFalse);
+    expect(controller.isAreaOnlySelection, isFalse);
+    expect(controller.activeAreaSelectionRect, isNull);
+
+    // 1b. When showTemplateSelectionOptions is toggled to true, selecting an empty area creates an active template area
+    controller.setShowTemplateSelectionOptions(true);
+    expect(controller.showTemplateSelectionOptions, isTrue);
     controller.startStroke(const Offset(100, 100));
     controller.updateStroke(const Offset(300, 250));
     controller.endStroke();
@@ -1306,6 +1321,7 @@ void main() {
     expect(controller.strokes.length, 1);
 
     // 2. Create a custom paper region
+    controller.setShowTemplateSelectionOptions(true);
     controller.setTool(DrawingTool.lasso);
     controller.setLassoSelectionMode(LassoSelectionMode.rectangle);
     controller.startStroke(const Offset(100, 100));
@@ -1348,6 +1364,7 @@ void main() {
     expect(controller.strokes.length, 1);
 
     // 2. Create a custom paper region
+    controller.setShowTemplateSelectionOptions(true);
     controller.setTool(DrawingTool.lasso);
     controller.setLassoSelectionMode(LassoSelectionMode.rectangle);
     controller.startStroke(const Offset(100, 100));

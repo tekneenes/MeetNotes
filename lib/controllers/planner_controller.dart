@@ -86,6 +86,7 @@ class PlannerController extends ChangeNotifier {
   String? _selectedPaperRegionId;
   Rect? _activeAreaSelectionRect;
   PaperStyle? _pendingLassoPaperStyle;
+  bool _showTemplateSelectionOptions = false;
   String? _selectedTextId;
   String? _editingTextId;
   String? _selectedFileId;
@@ -148,6 +149,21 @@ class PlannerController extends ChangeNotifier {
   String? get selectedPaperRegionId => _selectedPaperRegionId;
   Rect? get activeAreaSelectionRect => _activeAreaSelectionRect;
   PaperStyle? get pendingLassoPaperStyle => _pendingLassoPaperStyle;
+  bool get showTemplateSelectionOptions => _showTemplateSelectionOptions;
+
+  void setShowTemplateSelectionOptions(bool value) {
+    if (_showTemplateSelectionOptions != value) {
+      _showTemplateSelectionOptions = value;
+      if (!value && _activeAreaSelectionRect != null) {
+        _activeAreaSelectionRect = null;
+      }
+      notifyListeners();
+    }
+  }
+
+  void toggleTemplateSelectionOptions() {
+    setShowTemplateSelectionOptions(!_showTemplateSelectionOptions);
+  }
   CanvasPaperRegion? get selectedPaperRegion {
     if (_selectedPaperRegionId == null) return null;
     final idx = _canvasPaperRegions.indexWhere((r) => r.id == _selectedPaperRegionId);
@@ -2178,9 +2194,17 @@ class PlannerController extends ChangeNotifier {
               if (_pendingLassoPaperStyle != null) {
                 applyPaperStyleToSelection(_pendingLassoPaperStyle!, targetRect: rect);
                 _pendingLassoPaperStyle = null;
-              } else {
+              } else if (_showTemplateSelectionOptions) {
                 _activeAreaSelectionRect = rect;
+              } else {
+                _activeAreaSelectionRect = null;
+                _selectedStrokeIndices.clear();
+                _selectedTextIds.clear();
+                _selectedImageIds.clear();
+                _selectedPaperRegionId = null;
               }
+            } else if (!hasLassoSelection) {
+              _activeAreaSelectionRect = null;
             }
           }
         } else {

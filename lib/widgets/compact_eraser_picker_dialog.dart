@@ -32,8 +32,8 @@ class CompactEraserPickerDialog extends StatelessWidget {
     final viewInsets = mediaQuery.viewInsets;
 
     const popoverWidth = 295.0;
-    const popoverHeight = 240.0;
-    const clearance = 22.0;
+    const popoverHeight = 280.0;
+    const clearance = 24.0;
 
     double left;
     double top;
@@ -149,8 +149,8 @@ class CompactEraserPickerDialog extends StatelessWidget {
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
               width: 295,
-              constraints: const BoxConstraints(maxHeight: 320),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              constraints: const BoxConstraints(maxHeight: 380),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.95),
                 borderRadius: BorderRadius.circular(20),
@@ -182,15 +182,15 @@ class CompactEraserPickerDialog extends StatelessWidget {
                     Row(
                       children: [
                         Container(
-                          width: 30,
-                          height: 30,
+                          width: 28,
+                          height: 28,
                           decoration: BoxDecoration(
                             color: const Color(0xFF007AFF).withValues(alpha: 0.12),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
                             currentType.icon,
-                            size: 17,
+                            size: 16,
                             color: const Color(0xFF007AFF),
                           ),
                         ),
@@ -207,7 +207,7 @@ class CompactEraserPickerDialog extends StatelessWidget {
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                           decoration: BoxDecoration(
                             color: const Color(0xFF007AFF).withValues(alpha: 0.10),
                             borderRadius: BorderRadius.circular(8),
@@ -223,7 +223,7 @@ class CompactEraserPickerDialog extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
 
                     // 2. Selection Mode Section: Nesne Silgisi vs Piksel Silgisi
                     Row(
@@ -239,7 +239,7 @@ class CompactEraserPickerDialog extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 5),
 
                     Row(
                       children: EraserType.values.map((type) {
@@ -261,7 +261,7 @@ class CompactEraserPickerDialog extends StatelessWidget {
                                 },
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 150),
-                                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? const Color(0xFFEFF6FF)
@@ -279,12 +279,12 @@ class CompactEraserPickerDialog extends StatelessWidget {
                                     children: [
                                       Icon(
                                         type.icon,
-                                        size: 18,
+                                        size: 17,
                                         color: isSelected
                                             ? const Color(0xFF007AFF)
                                             : const Color(0xFF475569),
                                       ),
-                                      const SizedBox(height: 4),
+                                      const SizedBox(height: 3),
                                       Text(
                                         type.label,
                                         style: TextStyle(
@@ -305,13 +305,11 @@ class CompactEraserPickerDialog extends StatelessWidget {
                       }).toList(),
                     ),
 
-                    const SizedBox(height: 12),
-                    const Divider(height: 1),
-                    const SizedBox(height: 10),
+                    const Divider(height: 14),
 
                     // 3. Smart Scribble to Erase Toggle Switch
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(12),
@@ -325,8 +323,8 @@ class CompactEraserPickerDialog extends StatelessWidget {
                       child: Row(
                         children: [
                           Container(
-                            width: 32,
-                            height: 32,
+                            width: 28,
+                            height: 28,
                             decoration: BoxDecoration(
                               color: scribbleEnabled
                                   ? const Color(0xFF007AFF).withValues(alpha: 0.12)
@@ -335,13 +333,13 @@ class CompactEraserPickerDialog extends StatelessWidget {
                             ),
                             child: Icon(
                               Icons.gesture_rounded,
-                              size: 17,
+                              size: 16,
                               color: scribbleEnabled
                                   ? const Color(0xFF007AFF)
                                   : const Color(0xFF64748B),
                             ),
                           ),
-                          const SizedBox(width: 9),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -350,16 +348,16 @@ class CompactEraserPickerDialog extends StatelessWidget {
                                 const Text(
                                   'Karalayarak Silme',
                                   style: TextStyle(
-                                    fontSize: 11.5,
+                                    fontSize: 11,
                                     fontWeight: FontWeight.w600,
                                     color: Color(0xFF1E293B),
                                   ),
                                 ),
-                                const SizedBox(height: 1.5),
+                                const SizedBox(height: 1),
                                 Text(
                                   'Zikzak karalama hareketiyle anında siler',
                                   style: TextStyle(
-                                    fontSize: 9.5,
+                                    fontSize: 9,
                                     color: Colors.grey.shade500,
                                   ),
                                 ),
@@ -367,7 +365,7 @@ class CompactEraserPickerDialog extends StatelessWidget {
                             ),
                           ),
                           Transform.scale(
-                            scale: 0.8,
+                            scale: 0.78,
                             child: Switch.adaptive(
                               value: scribbleEnabled,
                               activeTrackColor: const Color(0xFF007AFF),
@@ -382,11 +380,127 @@ class CompactEraserPickerDialog extends StatelessWidget {
                       ),
                     ),
 
-                    const SizedBox(height: 10),
-                    const Divider(height: 1),
-                    const SizedBox(height: 8),
+                    const Divider(height: 14),
 
-                    // 4. Clear Canvas Action
+                    // 4. Eraser Thickness Slider & Steppers
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'SİLGİ KALINLIĞI',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.6,
+                                color: Colors.grey.shade500,
+                              ),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: (controller.eraserSize * 0.28).clamp(3.5, 12.0),
+                                  height: (controller.eraserSize * 0.28).clamp(3.5, 12.0),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFF007AFF),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 5),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF007AFF).withValues(alpha: 0.10),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    '${controller.eraserSize.round()} pt',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF007AFF),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            InkWell(
+                              borderRadius: BorderRadius.circular(6),
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                controller.setEraserSize(controller.eraserSize - 2.0);
+                              },
+                              child: Container(
+                                width: 26,
+                                height: 26,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: Colors.black.withValues(alpha: 0.05),
+                                  ),
+                                ),
+                                child: const Icon(Icons.remove, size: 14, color: Color(0xFF475569)),
+                              ),
+                            ),
+                            Expanded(
+                              child: SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 3.5,
+                                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 13),
+                                  activeTrackColor: const Color(0xFF007AFF),
+                                  inactiveTrackColor: Colors.black.withValues(alpha: 0.08),
+                                  thumbColor: const Color(0xFF007AFF),
+                                ),
+                                child: Slider(
+                                  value: controller.eraserSize.clamp(4.0, 80.0),
+                                  min: 4.0,
+                                  max: 80.0,
+                                  onChanged: (val) {
+                                    controller.setEraserSize(val);
+                                  },
+                                ),
+                              ),
+                            ),
+                            InkWell(
+                              borderRadius: BorderRadius.circular(6),
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                controller.setEraserSize(controller.eraserSize + 2.0);
+                              },
+                              child: Container(
+                                width: 26,
+                                height: 26,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: Colors.black.withValues(alpha: 0.05),
+                                  ),
+                                ),
+                                child: const Icon(Icons.add, size: 14, color: Color(0xFF475569)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+
+                    const Divider(height: 14),
+
+                    // 5. Clear Canvas Action
                     Material(
                       color: Colors.transparent,
                       child: InkWell(
@@ -400,7 +514,7 @@ class CompactEraserPickerDialog extends StatelessWidget {
                           }
                         },
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 6.5, horizontal: 8),
+                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
                           decoration: BoxDecoration(
                             color: const Color(0xFFFEE2E2).withValues(alpha: 0.7),
                             borderRadius: BorderRadius.circular(8),
@@ -434,3 +548,4 @@ class CompactEraserPickerDialog extends StatelessWidget {
     );
   }
 }
+

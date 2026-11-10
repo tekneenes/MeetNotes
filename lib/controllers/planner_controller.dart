@@ -89,6 +89,7 @@ class PlannerController extends ChangeNotifier {
   bool _showTemplateSelectionOptions = false;
   EraserType _eraserType = EraserType.object;
   bool _enableScribbleToErase = true;
+  double _eraserSize = 22.0;
   String? _selectedTextId;
   String? _editingTextId;
   String? _selectedFileId;
@@ -186,6 +187,19 @@ class PlannerController extends ChangeNotifier {
 
   void toggleScribbleToErase() {
     setEnableScribbleToErase(!_enableScribbleToErase);
+  }
+
+  double get eraserSize => _eraserSize;
+
+  void setEraserSize(double size) {
+    final clamped = size.clamp(4.0, 80.0);
+    if (_eraserSize != clamped) {
+      _eraserSize = clamped;
+      if (_selectedTool == DrawingTool.eraser) {
+        _strokeWidth = clamped;
+      }
+      notifyListeners();
+    }
   }
   CanvasPaperRegion? get selectedPaperRegion {
     if (_selectedPaperRegionId == null) return null;
@@ -1436,7 +1450,7 @@ class PlannerController extends ChangeNotifier {
   // Tools & Styling
   void setTool(DrawingTool tool) {
     _selectedTool = tool;
-    _strokeWidth = tool.defaultWidth;
+    _strokeWidth = tool == DrawingTool.eraser ? _eraserSize : tool.defaultWidth;
     if (tool != DrawingTool.lasso) {
       _selectedStrokeIndices.clear();
       _selectedTextIds.clear();
@@ -1486,6 +1500,9 @@ class PlannerController extends ChangeNotifier {
 
   void setStrokeWidth(double width) {
     _strokeWidth = width;
+    if (_selectedTool == DrawingTool.eraser) {
+      _eraserSize = width.clamp(4.0, 80.0);
+    }
     if (_selectedStrokeIndices.isNotEmpty && !isSelectionLocked) {
       _undoStack.add(List.from(_strokes));
       _redoStack.clear();
@@ -4510,7 +4527,7 @@ class PlannerController extends ChangeNotifier {
   }
 
   void _eraseNear(Offset point) {
-    final eraseRadius = _strokeWidth * 1.5;
+    final eraseRadius = _eraserSize * 1.2;
     final initialCount = _strokes.length;
     bool anyChanged = false;
 

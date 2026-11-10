@@ -1457,6 +1457,10 @@ void main() {
   });
 
   testWidgets('CompactEraserPickerDialog, Pixel vs Object Eraser, and Scribble to Erase test', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
     final controller = PlannerController();
     await tester.pump(const Duration(milliseconds: 100));
 
@@ -1500,6 +1504,17 @@ void main() {
     expect(find.text('Nesne Silgisi'), findsWidgets);
     expect(find.text('Piksel Silgisi'), findsOneWidget);
     expect(find.text('Karalayarak Silme'), findsOneWidget);
+    expect(find.text('SİLGİ KALINLIĞI'), findsOneWidget);
+
+    // Test thickness stepper
+    expect(controller.eraserSize, 22.0);
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+    expect(controller.eraserSize, 24.0);
+
+    await tester.tap(find.byIcon(Icons.remove));
+    await tester.pumpAndSettle();
+    expect(controller.eraserSize, 22.0);
 
     // Switch to Piksel Silgisi
     await tester.tap(find.text('Piksel Silgisi'));

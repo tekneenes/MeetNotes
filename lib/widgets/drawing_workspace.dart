@@ -312,17 +312,11 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 children: [
                   // 1a. Realistic Paper Background Painter (Transforms directly on Canvas, fills 100% viewport)
                   Positioned.fill(
-                    child: ListenableBuilder(
-                      listenable: controller.canvasDragTick,
-                      builder: (context, _) => CustomPaint(
-                        painter: PaperBackgroundPainter(
-                          config: controller.paperConfig,
-                          scale: _scale,
-                          panOffset: _panOffset,
-                          paperRegions: controller.canvasPaperRegions,
-                          paperRegionsGetter: () => controller.canvasPaperRegions,
-                          repaint: controller.canvasDragTick,
-                        ),
+                    child: CustomPaint(
+                      painter: PaperBackgroundPainter(
+                        config: controller.paperConfig,
+                        scale: _scale,
+                        panOffset: _panOffset,
                       ),
                     ),
                   ),
@@ -477,6 +471,9 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       } else if (entry.isImage && entry.imageItem != null) {
         flushStrokeBatch(renderOverlay: false);
         widgets.add(_buildCanvasImageWidget(entry.imageItem!));
+      } else if (entry.isPaperRegion && entry.paperRegion != null) {
+        flushStrokeBatch(renderOverlay: false);
+        widgets.add(_buildCanvasPaperRegionWidget(entry.paperRegion!));
       }
     }
 
@@ -514,6 +511,23 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     }
 
     return widgets;
+  }
+
+  Widget _buildCanvasPaperRegionWidget(CanvasPaperRegion region) {
+    return Positioned.fill(
+      key: ValueKey('canvas_paper_reg_${region.id}'),
+      child: IgnorePointer(
+        child: CustomPaint(
+          painter: SinglePaperRegionPainter(
+            region: region,
+            scale: _scale,
+            panOffset: _panOffset,
+            basePaperColor: const Color(0xFFFBFBF9),
+            gridLineColor: const Color(0xFF2B4D7E),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildCanvasImageWidget(CanvasImageItem item) {
@@ -1866,6 +1880,8 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
             ),
           ),
         ),
+        _buildPillDivider(),
+        _buildUnifiedMoreOptionsMenu(controller, null),
       ],
       _buildPillDivider(),
       Tooltip(
@@ -2207,18 +2223,30 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           case 'bring_front':
             controller.bringSelectionToFront();
             if (textItem != null) controller.bringTextToFront(textItem.id);
+            if (controller.selectedPaperRegionId != null) {
+              controller.bringPaperRegionToFront(controller.selectedPaperRegionId!);
+            }
             break;
           case 'move_up':
             controller.moveSelectionForward();
             if (textItem != null) controller.moveTextLayerUp(textItem.id);
+            if (controller.selectedPaperRegionId != null) {
+              controller.movePaperRegionLayerUp(controller.selectedPaperRegionId!);
+            }
             break;
           case 'move_down':
             controller.moveSelectionBackward();
             if (textItem != null) controller.moveTextLayerDown(textItem.id);
+            if (controller.selectedPaperRegionId != null) {
+              controller.movePaperRegionLayerDown(controller.selectedPaperRegionId!);
+            }
             break;
           case 'send_back':
             controller.sendSelectionToBack();
             if (textItem != null) controller.sendTextToBack(textItem.id);
+            if (controller.selectedPaperRegionId != null) {
+              controller.sendPaperRegionToBack(controller.selectedPaperRegionId!);
+            }
             break;
         }
       },
@@ -3077,4 +3105,96 @@ class _CenteredClampedPillLayoutDelegate extends SingleChildLayoutDelegate {
   @override
   bool shouldRelayout(covariant _CenteredClampedPillLayoutDelegate old) =>
       old.centerX != centerX || old.margin != margin;
+}
+
+class SinglePaperRegionPainter extends CustomPainter {
+  final CanvasPaperRegion region;
+  final double scale;
+  final Offset panOffset;
+  final Color basePaperColor;
+  final Color gridLineColor;
+
+  SinglePaperRegionPainter({
+    required this.region,
+    required this.scale,
+    required this.panOffset,
+    this.basePaperColor = const Color(0xFFFBFBF9),
+    this.gridLineColor = const Color(0xFF2B4D7E),
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = region.rect;
+    if (r.width <= 0 || r.height <= 0) return;
+
+    canvas.save();
+    canvas.translate(panOffset.dx, panOffset.dy);
+    canvas.scale(scale);
+
+    final rrect = RRect.fromRectAndRadius(r, const Radius.circular(8));
+    canvas.save();
+    canvas.clipRRect(rrect);
+
+    // 1. Opaque base paper fill to cleanly mask underlying strokes and layers
+    final baseFillPaint = Paint()..color = basePaperColor;
+    canvas.drawRect(r, baseFillPaint);
+
+    final step = region.spacing.clamp(16.0, 60.0);
+    final regLinePaint = Paint()
+      ..color = gridLineColor.withValues(alpha: region.opacity)
+      ..strokeWidth = 0.75 / scale.clamp(0.5, 2.0)
+      ..style = PaintingStyle.stroke;
+
+    final double firstX = (r.left / step).ceilToDouble() * step;
+    final double firstY = (r.top / step).ceilToDouble() * step;
+
+    switch (region.style) {
+      case PaperStyle.grid:
+        for (double x = firstX; x <= r.right; x += step) {
+          canvas.drawLine(Offset(x, r.top), Offset(x, r.bottom), regLinePaint);
+        }
+        for (double y = firstY; y <= r.bottom; y += step) {
+          canvas.drawLine(Offset(r.left, y), Offset(r.right, y), regLinePaint);
+        }
+        break;
+      case PaperStyle.lined:
+        for (double y = firstY; y <= r.bottom; y += step) {
+          canvas.drawLine(Offset(r.left, y), Offset(r.right, y), regLinePaint);
+        }
+        break;
+      case PaperStyle.dotted:
+        final dotPaint = Paint()
+          ..color = gridLineColor.withValues(alpha: (region.opacity * 1.8).clamp(0.0, 1.0))
+          ..style = PaintingStyle.fill;
+        const dotRadius = 1.1;
+        for (double x = firstX; x <= r.right; x += step) {
+          for (double y = firstY; y <= r.bottom; y += step) {
+            canvas.drawCircle(Offset(x, y), dotRadius, dotPaint);
+          }
+        }
+        break;
+      case PaperStyle.blank:
+        break;
+    }
+
+    canvas.restore();
+
+    // Subtle region boundary border
+    final borderPaint = Paint()
+      ..color = gridLineColor.withValues(alpha: 0.18)
+      ..strokeWidth = 1.0 / scale.clamp(0.5, 2.0)
+      ..style = PaintingStyle.stroke;
+    canvas.drawRRect(rrect, borderPaint);
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant SinglePaperRegionPainter oldDelegate) {
+    return oldDelegate.region != region ||
+        oldDelegate.scale != scale ||
+        oldDelegate.panOffset != panOffset ||
+        oldDelegate.basePaperColor != basePaperColor ||
+        oldDelegate.gridLineColor != gridLineColor;
+  }
 }

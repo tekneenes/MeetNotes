@@ -778,18 +778,23 @@ class _PlannerScreenState extends State<PlannerScreen>
                             final isLocked = layerEntry.isLocked;
                             final isText = layerEntry.isText;
                             final isImage = layerEntry.isImage;
+                            final isPaperRegion = layerEntry.isPaperRegion;
                             final label = isText
                                 ? (layerEntry.textItem!.text.trim().isEmpty
                                     ? 'Metin Kutusu'
                                     : layerEntry.textItem!.text.split('\n').first)
                                 : (isImage
                                     ? (layerEntry.imageItem!.name ?? 'PDF Sayfası / Görsel')
-                                    : layerEntry.stroke!.tool.label);
+                                    : (isPaperRegion
+                                        ? _getPaperRegionLabel(layerEntry.paperRegion!)
+                                        : layerEntry.stroke!.tool.label));
                             final dotColor = isText
                                 ? layerEntry.textItem!.color
                                 : (isImage
                                     ? const Color(0xFFEF4444)
-                                    : layerEntry.stroke!.color);
+                                    : (isPaperRegion
+                                        ? const Color(0xFF007AFF)
+                                        : layerEntry.stroke!.color));
 
                             Uint8List? layerImageBytes;
                             if (isImage) {
@@ -881,11 +886,19 @@ class _PlannerScreenState extends State<PlannerScreen>
                                                               color: Color(0xFFEF4444),
                                                             ),
                                                     )
-                                                  : CustomPaint(
-                                                      painter: _StrokeLayerMiniPreviewPainter(
-                                                        stroke: layerEntry.stroke!,
-                                                      ),
-                                                    )),
+                                                  : (isPaperRegion
+                                                      ? Center(
+                                                          child: Icon(
+                                                            _getPaperRegionIcon(layerEntry.paperRegion!.style),
+                                                            size: 18,
+                                                            color: const Color(0xFF007AFF),
+                                                          ),
+                                                        )
+                                                      : CustomPaint(
+                                                          painter: _StrokeLayerMiniPreviewPainter(
+                                                            stroke: layerEntry.stroke!,
+                                                          ),
+                                                        ))),
                                         ),
                                         const SizedBox(width: 8),
                                         Expanded(
@@ -1065,6 +1078,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                                                     activeController.toggleCanvasTextLock(layerEntry.textId!);
                                                   } else if (isImage) {
                                                     activeController.toggleCanvasImageLock(layerEntry.imageId!);
+                                                  } else if (isPaperRegion) {
+                                                    activeController.togglePaperRegionLock(layerEntry.paperRegionId!);
                                                   } else {
                                                     activeController.toggleStrokeLock(layerEntry.strokeIndex!);
                                                   }
@@ -1712,6 +1727,33 @@ class _PlannerScreenState extends State<PlannerScreen>
         ],
       ],
     );
+  }
+
+
+  String _getPaperRegionLabel(CanvasPaperRegion region) {
+    switch (region.style) {
+      case PaperStyle.grid:
+        return 'Şablon Alanı (Kareli)';
+      case PaperStyle.lined:
+        return 'Şablon Alanı (Çizgili)';
+      case PaperStyle.dotted:
+        return 'Şablon Alanı (Noktalı)';
+      case PaperStyle.blank:
+        return 'Şablon Alanı (Boş)';
+    }
+  }
+
+  IconData _getPaperRegionIcon(PaperStyle style) {
+    switch (style) {
+      case PaperStyle.grid:
+        return Icons.grid_on_rounded;
+      case PaperStyle.lined:
+        return Icons.view_headline_rounded;
+      case PaperStyle.dotted:
+        return Icons.grain_rounded;
+      case PaperStyle.blank:
+        return Icons.crop_square_rounded;
+    }
   }
 
   Widget _buildAssetsSubPage(

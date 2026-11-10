@@ -500,6 +500,7 @@ enum CanvasLayerType {
   stroke,
   text,
   image,
+  paperRegion,
 }
 
 class CanvasLayerEntry {
@@ -510,6 +511,8 @@ class CanvasLayerEntry {
   final CanvasTextItem? textItem;
   final String? imageId;
   final CanvasImageItem? imageItem;
+  final String? paperRegionId;
+  final CanvasPaperRegion? paperRegion;
   final int layerOrder;
 
   const CanvasLayerEntry.stroke({
@@ -520,7 +523,9 @@ class CanvasLayerEntry {
         textId = null,
         textItem = null,
         imageId = null,
-        imageItem = null;
+        imageItem = null,
+        paperRegionId = null,
+        paperRegion = null;
 
   const CanvasLayerEntry.text({
     required String this.textId,
@@ -530,7 +535,9 @@ class CanvasLayerEntry {
         strokeIndex = null,
         stroke = null,
         imageId = null,
-        imageItem = null;
+        imageItem = null,
+        paperRegionId = null,
+        paperRegion = null;
 
   const CanvasLayerEntry.image({
     required String this.imageId,
@@ -540,11 +547,26 @@ class CanvasLayerEntry {
         strokeIndex = null,
         stroke = null,
         textId = null,
-        textItem = null;
+        textItem = null,
+        paperRegionId = null,
+        paperRegion = null;
+
+  const CanvasLayerEntry.paperRegion({
+    required String this.paperRegionId,
+    required CanvasPaperRegion this.paperRegion,
+    required this.layerOrder,
+  })  : type = CanvasLayerType.paperRegion,
+        strokeIndex = null,
+        stroke = null,
+        textId = null,
+        textItem = null,
+        imageId = null,
+        imageItem = null;
 
   bool get isStroke => type == CanvasLayerType.stroke;
   bool get isText => type == CanvasLayerType.text;
   bool get isImage => type == CanvasLayerType.image;
+  bool get isPaperRegion => type == CanvasLayerType.paperRegion;
   bool get isLocked {
     switch (type) {
       case CanvasLayerType.stroke:
@@ -553,6 +575,8 @@ class CanvasLayerEntry {
         return textItem?.isLocked ?? false;
       case CanvasLayerType.image:
         return imageItem?.isLocked ?? false;
+      case CanvasLayerType.paperRegion:
+        return paperRegion?.isLocked ?? false;
     }
   }
 
@@ -564,6 +588,8 @@ class CanvasLayerEntry {
         return 'layer_text_$textId';
       case CanvasLayerType.image:
         return 'layer_image_$imageId';
+      case CanvasLayerType.paperRegion:
+        return 'layer_paper_region_$paperRegionId';
     }
   }
 
@@ -585,6 +611,12 @@ class CanvasLayerEntry {
         return CanvasLayerEntry.image(
           imageId: imageId!,
           imageItem: imageItem!,
+          layerOrder: order,
+        );
+      case CanvasLayerType.paperRegion:
+        return CanvasLayerEntry.paperRegion(
+          paperRegionId: paperRegionId!,
+          paperRegion: paperRegion!,
           layerOrder: order,
         );
     }
@@ -773,6 +805,7 @@ class CanvasPaperRegion {
   final double spacing;
   final double opacity;
   final bool isLocked;
+  final int? layerOrder;
 
   const CanvasPaperRegion({
     required this.id,
@@ -781,6 +814,7 @@ class CanvasPaperRegion {
     this.spacing = 24.0,
     this.opacity = 0.16,
     this.isLocked = false,
+    this.layerOrder,
   });
 
   CanvasPaperRegion copyWith({
@@ -790,6 +824,7 @@ class CanvasPaperRegion {
     double? spacing,
     double? opacity,
     bool? isLocked,
+    int? layerOrder,
   }) {
     return CanvasPaperRegion(
       id: id ?? this.id,
@@ -798,6 +833,7 @@ class CanvasPaperRegion {
       spacing: spacing ?? this.spacing,
       opacity: opacity ?? this.opacity,
       isLocked: isLocked ?? this.isLocked,
+      layerOrder: layerOrder ?? this.layerOrder,
     );
   }
 
@@ -811,6 +847,7 @@ class CanvasPaperRegion {
     'spacing': spacing,
     'opacity': opacity,
     'isLocked': isLocked,
+    if (layerOrder != null) 'layerOrder': layerOrder,
   };
 
   factory CanvasPaperRegion.fromMap(Map<String, dynamic> map) {
@@ -830,8 +867,25 @@ class CanvasPaperRegion {
       spacing: (map['spacing'] as num?)?.toDouble() ?? 24.0,
       opacity: (map['opacity'] as num?)?.toDouble() ?? 0.16,
       isLocked: map['isLocked'] as bool? ?? false,
+      layerOrder: (map['layerOrder'] as num?)?.toInt(),
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CanvasPaperRegion &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          rect == other.rect &&
+          style == other.style &&
+          spacing == other.spacing &&
+          opacity == other.opacity &&
+          isLocked == other.isLocked &&
+          layerOrder == other.layerOrder;
+
+  @override
+  int get hashCode => Object.hash(id, rect, style, spacing, opacity, isLocked, layerOrder);
 }
 
 class SavedCanvasAsset {

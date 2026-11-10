@@ -184,13 +184,15 @@ class PlannerController extends ChangeNotifier {
       _selectedStrokeIndices.isNotEmpty ||
       _selectedTextIds.isNotEmpty ||
       _selectedImageIds.isNotEmpty ||
-      _selectedTextId != null;
+      _selectedTextId != null ||
+      _selectedPaperRegionId != null;
   int get selectedLayerCount =>
       _selectedStrokeIndices.length +
       _selectedImageIds.length +
       (_selectedTextIds.isNotEmpty
           ? _selectedTextIds.length
-          : (_selectedTextId != null ? 1 : 0));
+          : (_selectedTextId != null ? 1 : 0)) +
+      (_selectedPaperRegionId != null ? 1 : 0);
   bool get showOnlySelectedLayers =>
       _showOnlySelectedLayers && hasAnyLayerSelection;
   bool get showOnlySelectedGroups =>
@@ -233,6 +235,12 @@ class PlannerController extends ChangeNotifier {
     for (final id in _selectedImageIds) {
       final idx = _canvasImages.indexWhere((img) => img.id == id);
       if (idx != -1 && _canvasImages[idx].isLocked) {
+        return true;
+      }
+    }
+    if (_selectedPaperRegionId != null) {
+      final idx = _canvasPaperRegions.indexWhere((r) => r.id == _selectedPaperRegionId);
+      if (idx != -1 && _canvasPaperRegions[idx].isLocked) {
         return true;
       }
     }
@@ -673,11 +681,13 @@ class PlannerController extends ChangeNotifier {
       style: style,
       spacing: _paperConfig.spacing,
       opacity: (_paperConfig.opacity * 1.2).clamp(0.12, 0.40),
+      layerOrder: _nextTopLayerOrder(),
     );
 
     _canvasPaperRegions.add(newRegion);
     _selectedPaperRegionId = newRegion.id;
     _activeAreaSelectionRect = null;
+    _normalizeUnifiedLayerOrders();
     _saveCurrentCanvasPaperRegions();
     notifyListeners();
     return newRegion;
@@ -1678,14 +1688,22 @@ class PlannerController extends ChangeNotifier {
         }
       }
 
-      // 3. Check if user directly touched/grabbed an existing stroke, shape, text box or image
+      // 3. Check if user directly touched/grabbed an existing stroke, shape, text box, image or paper region
       final hitIndex = _findStrokeAtPoint(point);
       final hitText = _findTextAtPoint(point);
       final hitImage = _findImageAtPoint(point);
+      int? hitPaperRegionIdx;
+      for (int i = _canvasPaperRegions.length - 1; i >= 0; i--) {
+        if (_canvasPaperRegions[i].rect.contains(point)) {
+          hitPaperRegionIdx = i;
+          break;
+        }
+      }
 
       bool selectStroke = false;
       bool selectText = false;
       bool selectImage = false;
+      bool selectPaperRegion = false;
 
       {
         int bestOrder = -1 << 30;
@@ -1710,9 +1728,41 @@ class PlannerController extends ChangeNotifier {
             selectText = false;
           }
         }
+        if (hitPaperRegionIdx != null) {
+          final paperOrder = _canvasPaperRegions[hitPaperRegionIdx].layerOrder ?? 0;
+          if ((!selectStroke && !selectText && !selectImage) || paperOrder >= bestOrder) {
+            bestOrder = paperOrder;
+            selectPaperRegion = true;
+            selectStroke = false;
+            selectText = false;
+            selectImage = false;
+          }
+        }
+      }
+
+      if (selectPaperRegion && hitPaperRegionIdx != null) {
+        _selectedTextIds.clear();
+        _selectedImageIds.clear();
+        _selectedStrokeIndices.clear();
+        _selectedPaperRegionId = _canvasPaperRegions[hitPaperRegionIdx].id;
+        _activeAreaSelectionRect = null;
+        _selectionRotationAngle = 0.0;
+        if (isSelectionLocked) {
+          _isDraggingSelection = false;
+          _lastLassoDragPoint = null;
+        } else {
+          _isDraggingSelection = true;
+          _lastLassoDragPoint = point;
+        }
+        _activeResizeHandle = null;
+        _lassoPoints = [];
+        notifyListeners();
+        return;
       }
 
       if (selectImage && hitImage != null) {
+        _selectedPaperRegionId = null;
+        _activeAreaSelectionRect = null;
         _selectedStrokeIndices.clear();
         _selectedTextIds.clear();
         _selectedImageIds
@@ -1737,6 +1787,8 @@ class PlannerController extends ChangeNotifier {
       }
 
       if (selectText && hitText != null) {
+        _selectedPaperRegionId = null;
+        _activeAreaSelectionRect = null;
         _selectedStrokeIndices.clear();
         _selectedImageIds.clear();
         _selectedTextIds
@@ -1761,6 +1813,8 @@ class PlannerController extends ChangeNotifier {
       }
 
       if (selectStroke && hitIndex != null) {
+        _selectedPaperRegionId = null;
+        _activeAreaSelectionRect = null;
         _selectedTextIds.clear();
         _selectedImageIds.clear();
         _selectedStrokeIndices
@@ -1778,29 +1832,6 @@ class PlannerController extends ChangeNotifier {
           _isDraggingSelection = true;
           _lastLassoDragPoint = point;
         }
-        _activeResizeHandle = null;
-        _lassoPoints = [];
-        notifyListeners();
-        return;
-      }
-
-      int? hitPaperRegionIdx;
-      for (int i = _canvasPaperRegions.length - 1; i >= 0; i--) {
-        if (_canvasPaperRegions[i].rect.contains(point)) {
-          hitPaperRegionIdx = i;
-          break;
-        }
-      }
-
-      if (hitPaperRegionIdx != null) {
-        _selectedTextIds.clear();
-        _selectedImageIds.clear();
-        _selectedStrokeIndices.clear();
-        _selectedPaperRegionId = _canvasPaperRegions[hitPaperRegionIdx].id;
-        _activeAreaSelectionRect = null;
-        _selectionRotationAngle = 0.0;
-        _isDraggingSelection = true;
-        _lastLassoDragPoint = point;
         _activeResizeHandle = null;
         _lassoPoints = [];
         notifyListeners();
@@ -3269,11 +3300,21 @@ class PlannerController extends ChangeNotifier {
           (_strokes.length + _canvasTexts.length + i);
       if (order > maxOrder) maxOrder = order;
     }
+    for (int i = 0; i < _canvasPaperRegions.length; i++) {
+      final order = _canvasPaperRegions[i].layerOrder ??
+          (_strokes.length + _canvasTexts.length + _canvasImages.length + i);
+      if (order > maxOrder) maxOrder = order;
+    }
     return maxOrder + 1;
   }
 
   void _normalizeUnifiedLayerOrders() {
-    if (_strokes.isEmpty && _canvasTexts.isEmpty && _canvasImages.isEmpty) return;
+    if (_strokes.isEmpty &&
+        _canvasTexts.isEmpty &&
+        _canvasImages.isEmpty &&
+        _canvasPaperRegions.isEmpty) {
+      return;
+    }
 
     final entries = <_InternalLayerSortItem>[];
     for (int i = 0; i < _strokes.length; i++) {
@@ -3307,6 +3348,19 @@ class PlannerController extends ChangeNotifier {
         ),
       );
     }
+    for (int i = 0; i < _canvasPaperRegions.length; i++) {
+      entries.add(
+        _InternalLayerSortItem(
+          type: CanvasLayerType.paperRegion,
+          paperRegion: _canvasPaperRegions[i],
+          sortOrder: _canvasPaperRegions[i].layerOrder,
+          tieBreaker: _strokes.length +
+              _canvasTexts.length +
+              _canvasImages.length +
+              i,
+        ),
+      );
+    }
 
     entries.sort((a, b) {
       final aOrder = a.sortOrder ?? (1000000 + a.tieBreaker);
@@ -3320,6 +3374,7 @@ class PlannerController extends ChangeNotifier {
     final newSelected = <int>{};
     final newTexts = <CanvasTextItem>[];
     final newImages = <CanvasImageItem>[];
+    final newPaperRegions = <CanvasPaperRegion>[];
 
     for (int unifiedIdx = 0; unifiedIdx < entries.length; unifiedIdx++) {
       final item = entries[unifiedIdx];
@@ -3333,6 +3388,8 @@ class PlannerController extends ChangeNotifier {
         newTexts.add(item.textItem!.copyWith(layerOrder: unifiedIdx));
       } else if (item.isImage) {
         newImages.add(item.imageItem!.copyWith(layerOrder: unifiedIdx));
+      } else if (item.isPaperRegion) {
+        newPaperRegions.add(item.paperRegion!.copyWith(layerOrder: unifiedIdx));
       }
     }
 
@@ -3342,6 +3399,8 @@ class PlannerController extends ChangeNotifier {
       ..addAll(newSelected);
     _canvasTexts = newTexts;
     _canvasImages = newImages;
+    _canvasPaperRegions = newPaperRegions;
+    _saveCurrentCanvasPaperRegions();
   }
 
   /// Unified layer list ordered from BOTTOMMOST (0) to TOPMOST (length - 1).
@@ -3375,6 +3434,19 @@ class PlannerController extends ChangeNotifier {
         ),
       );
     }
+    for (int i = 0; i < _canvasPaperRegions.length; i++) {
+      result.add(
+        CanvasLayerEntry.paperRegion(
+          paperRegionId: _canvasPaperRegions[i].id,
+          paperRegion: _canvasPaperRegions[i],
+          layerOrder: _canvasPaperRegions[i].layerOrder ??
+              (_strokes.length +
+                  _canvasTexts.length +
+                  _canvasImages.length +
+                  i),
+        ),
+      );
+    }
     result.sort((a, b) => a.layerOrder.compareTo(b.layerOrder));
     return [
       for (int i = 0; i < result.length; i++)
@@ -3390,6 +3462,8 @@ class PlannerController extends ChangeNotifier {
           (_selectedTextId != null && _selectedTextId == entry.textId);
     } else if (entry.isImage) {
       return _selectedImageIds.contains(entry.imageId);
+    } else if (entry.isPaperRegion) {
+      return _selectedPaperRegionId == entry.paperRegionId;
     }
     return false;
   }
@@ -3400,6 +3474,7 @@ class PlannerController extends ChangeNotifier {
     final newSelected = <int>{};
     final newTexts = <CanvasTextItem>[];
     final newImages = <CanvasImageItem>[];
+    final newPaperRegions = <CanvasPaperRegion>[];
 
     for (int i = 0; i < reordered.length; i++) {
       final entry = reordered[i];
@@ -3413,6 +3488,8 @@ class PlannerController extends ChangeNotifier {
         newTexts.add(entry.textItem!.copyWith(layerOrder: i));
       } else if (entry.isImage) {
         newImages.add(entry.imageItem!.copyWith(layerOrder: i));
+      } else if (entry.isPaperRegion) {
+        newPaperRegions.add(entry.paperRegion!.copyWith(layerOrder: i));
       }
     }
 
@@ -3422,10 +3499,12 @@ class PlannerController extends ChangeNotifier {
       ..addAll(newSelected);
     _canvasTexts = newTexts;
     _canvasImages = newImages;
+    _canvasPaperRegions = newPaperRegions;
 
     _saveCurrentStrokes();
     _saveCurrentCanvasTexts();
     _saveCurrentCanvasImages();
+    _saveCurrentCanvasPaperRegions();
     notifyListeners();
   }
 
@@ -3685,6 +3764,53 @@ class PlannerController extends ChangeNotifier {
       selectCanvasText(entry.textId!);
     } else if (entry.isImage && entry.imageId != null) {
       selectCanvasImage(entry.imageId!);
+    } else if (entry.isPaperRegion && entry.paperRegionId != null) {
+      _selectedStrokeIndices.clear();
+      _selectedTextIds.clear();
+      _selectedImageIds.clear();
+      _selectedPaperRegionId = entry.paperRegionId;
+      _activeAreaSelectionRect = null;
+      _selectedTool = DrawingTool.lasso;
+      notifyListeners();
+    }
+  }
+
+  int _findPaperRegionUnifiedIndex(String id, List<CanvasLayerEntry> layers) {
+    return layers.indexWhere((e) => e.isPaperRegion && e.paperRegionId == id);
+  }
+
+  void movePaperRegionLayerUp(String id) {
+    final layers = unifiedLayers;
+    final uIdx = _findPaperRegionUnifiedIndex(id, layers);
+    if (uIdx != -1) moveUnifiedLayerUp(uIdx);
+  }
+
+  void movePaperRegionLayerDown(String id) {
+    final layers = unifiedLayers;
+    final uIdx = _findPaperRegionUnifiedIndex(id, layers);
+    if (uIdx != -1) moveUnifiedLayerDown(uIdx);
+  }
+
+  void bringPaperRegionToFront(String id) {
+    final layers = unifiedLayers;
+    final uIdx = _findPaperRegionUnifiedIndex(id, layers);
+    if (uIdx != -1) bringUnifiedLayerToFront(uIdx);
+  }
+
+  void sendPaperRegionToBack(String id) {
+    final layers = unifiedLayers;
+    final uIdx = _findPaperRegionUnifiedIndex(id, layers);
+    if (uIdx != -1) sendUnifiedLayerToBack(uIdx);
+  }
+
+  void togglePaperRegionLock(String id) {
+    final idx = _canvasPaperRegions.indexWhere((r) => r.id == id);
+    if (idx != -1) {
+      _canvasPaperRegions[idx] = _canvasPaperRegions[idx].copyWith(
+        isLocked: !_canvasPaperRegions[idx].isLocked,
+      );
+      _saveCurrentCanvasPaperRegions();
+      notifyListeners();
     }
   }
 
@@ -4177,6 +4303,7 @@ class _InternalLayerSortItem {
   final DrawingStroke? stroke;
   final CanvasTextItem? textItem;
   final CanvasImageItem? imageItem;
+  final CanvasPaperRegion? paperRegion;
   final int? sortOrder;
   final int tieBreaker;
 
@@ -4186,6 +4313,7 @@ class _InternalLayerSortItem {
     this.stroke,
     this.textItem,
     this.imageItem,
+    this.paperRegion,
     this.sortOrder,
     required this.tieBreaker,
   });
@@ -4193,6 +4321,7 @@ class _InternalLayerSortItem {
   bool get isStroke => type == CanvasLayerType.stroke;
   bool get isText => type == CanvasLayerType.text;
   bool get isImage => type == CanvasLayerType.image;
+  bool get isPaperRegion => type == CanvasLayerType.paperRegion;
 }
 
 

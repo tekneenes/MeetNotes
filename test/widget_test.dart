@@ -1293,4 +1293,46 @@ void main() {
     // Drain debounce save timer
     await tester.pump(const Duration(milliseconds: 1000));
   });
+
+  testWidgets('Custom Paper Region unified layering test', (WidgetTester tester) async {
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // 1. Draw a stroke
+    controller.setTool(DrawingTool.pen);
+    controller.startStroke(const Offset(50, 50));
+    controller.updateStroke(const Offset(60, 60));
+    controller.endStroke();
+    expect(controller.strokes.length, 1);
+
+    // 2. Create a custom paper region
+    controller.setTool(DrawingTool.lasso);
+    controller.setLassoSelectionMode(LassoSelectionMode.rectangle);
+    controller.startStroke(const Offset(100, 100));
+    controller.updateStroke(const Offset(300, 300));
+    controller.endStroke();
+    final region = controller.applyPaperStyleToSelection(PaperStyle.lined);
+    expect(region, isNotNull);
+
+    // 3. Verify it is part of unifiedLayers
+    final layers = controller.unifiedLayers;
+    expect(layers.length, 2);
+    expect(layers.any((l) => l.isPaperRegion && l.paperRegionId == region!.id), isTrue);
+
+    // 4. Test reordering: move paper region down below stroke
+    final regionLayerIdx = layers.indexWhere((l) => l.isPaperRegion);
+    expect(regionLayerIdx, 1);
+    controller.moveUnifiedLayerDown(regionLayerIdx);
+
+    final reorderedLayers = controller.unifiedLayers;
+    expect(reorderedLayers.first.isPaperRegion, isTrue);
+    expect(reorderedLayers.last.isStroke, isTrue);
+
+    // 5. Test lock/unlock toggle via unified layer
+    expect(controller.canvasPaperRegions.first.isLocked, isFalse);
+    controller.togglePaperRegionLock(region!.id);
+    expect(controller.canvasPaperRegions.first.isLocked, isTrue);
+
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
 }

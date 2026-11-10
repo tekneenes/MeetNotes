@@ -33,6 +33,7 @@ class CompactShapesPicker extends StatefulWidget {
     DrawingTool.circle,
     DrawingTool.ellipse,
     DrawingTool.triangle,
+    DrawingTool.rightTriangle,
     DrawingTool.pentagon,
     DrawingTool.hexagon,
     DrawingTool.deltoid,
@@ -44,6 +45,7 @@ class CompactShapesPicker extends StatefulWidget {
     DrawingTool.circleFilled,
     DrawingTool.ellipseFilled,
     DrawingTool.triangleFilled,
+    DrawingTool.rightTriangleFilled,
     DrawingTool.pentagonFilled,
     DrawingTool.hexagonFilled,
     DrawingTool.deltoidFilled,
@@ -446,28 +448,30 @@ class _CompactShapesPickerState extends State<CompactShapesPicker> {
     );
   }
 
-  Widget _buildGrid4x2(BuildContext context, List<DrawingTool> tools) {
-    return Column(
-      children: [
+  Widget _buildGrid4x2(BuildContext context, List<DrawingTool> tools, {int crossAxisCount = 4}) {
+    final rows = <Widget>[];
+    for (int i = 0; i < tools.length; i += crossAxisCount) {
+      final end = math.min(i + crossAxisCount, tools.length);
+      final rowTools = tools.sublist(i, end);
+      rows.add(
         Row(
           children: [
-            for (int i = 0; i < 4; i++) ...[
-              if (i > 0) const SizedBox(width: 5),
-              Expanded(child: _buildShapeCard(context, tools[i])),
+            for (int j = 0; j < rowTools.length; j++) ...[
+              if (j > 0) const SizedBox(width: 5),
+              Expanded(child: _buildShapeCard(context, rowTools[j])),
+            ],
+            for (int k = 0; k < crossAxisCount - rowTools.length; k++) ...[
+              const SizedBox(width: 5),
+              const Expanded(child: SizedBox.shrink()),
             ],
           ],
         ),
-        const SizedBox(height: 5),
-        Row(
-          children: [
-            for (int i = 4; i < 8; i++) ...[
-              if (i > 4) const SizedBox(width: 5),
-              Expanded(child: _buildShapeCard(context, tools[i])),
-            ],
-          ],
-        ),
-      ],
-    );
+      );
+      if (end < tools.length) {
+        rows.add(const SizedBox(height: 5));
+      }
+    }
+    return Column(children: rows);
   }
 
   Widget _buildShapeCard(BuildContext context, DrawingTool shapeTool) {

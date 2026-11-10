@@ -4009,6 +4009,16 @@ void _renderStrokePreview(
         canvas.drawPath(path, paint);
         break;
 
+      case DrawingTool.rightTriangle:
+      case DrawingTool.rightTriangleFilled:
+        final path = Path()
+          ..moveTo(rect.left, rect.top)
+          ..lineTo(rect.left, rect.bottom)
+          ..lineTo(rect.right, rect.bottom)
+          ..close();
+        canvas.drawPath(path, paint);
+        break;
+
       case DrawingTool.pentagon:
       case DrawingTool.pentagonFilled:
         final center = rect.center;

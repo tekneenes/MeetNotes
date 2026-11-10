@@ -81,6 +81,7 @@ enum DrawingTool {
   circle('Daire', Icons.circle_outlined, 2.5),
   ellipse('Elips', Icons.egg_outlined, 2.5),
   triangle('Üçgen', Icons.change_history_rounded, 2.5),
+  rightTriangle('Dik Üçgen', Icons.square_foot_rounded, 2.5),
   pentagon('Beşgen', Icons.pentagon_outlined, 2.5),
   hexagon('Altıgen', Icons.hexagon_outlined, 2.5),
   deltoid('Deltoid', Icons.diamond_outlined, 2.5),
@@ -89,6 +90,7 @@ enum DrawingTool {
   circleFilled('Dolu Daire', Icons.circle, 2.5),
   ellipseFilled('Dolu Elips', Icons.egg_rounded, 2.5),
   triangleFilled('Dolu Üçgen', Icons.change_history, 2.5),
+  rightTriangleFilled('Dolu Dik Üçgen', Icons.square_foot_rounded, 2.5),
   pentagonFilled('Dolu Beşgen', Icons.pentagon_rounded, 2.5),
   hexagonFilled('Dolu Altıgen', Icons.hexagon_rounded, 2.5),
   deltoidFilled('Dolu Deltoid', Icons.diamond_rounded, 2.5),
@@ -108,6 +110,7 @@ enum DrawingTool {
       this == DrawingTool.circle ||
       this == DrawingTool.ellipse ||
       this == DrawingTool.triangle ||
+      this == DrawingTool.rightTriangle ||
       this == DrawingTool.pentagon ||
       this == DrawingTool.hexagon ||
       this == DrawingTool.deltoid ||
@@ -116,6 +119,7 @@ enum DrawingTool {
       this == DrawingTool.circleFilled ||
       this == DrawingTool.ellipseFilled ||
       this == DrawingTool.triangleFilled ||
+      this == DrawingTool.rightTriangleFilled ||
       this == DrawingTool.pentagonFilled ||
       this == DrawingTool.hexagonFilled ||
       this == DrawingTool.deltoidFilled;
@@ -126,6 +130,7 @@ enum DrawingTool {
       this == DrawingTool.circleFilled ||
       this == DrawingTool.ellipseFilled ||
       this == DrawingTool.triangleFilled ||
+      this == DrawingTool.rightTriangleFilled ||
       this == DrawingTool.pentagonFilled ||
       this == DrawingTool.hexagonFilled ||
       this == DrawingTool.deltoidFilled;

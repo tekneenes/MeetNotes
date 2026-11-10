@@ -251,16 +251,54 @@ class ShapeRecognitionService {
       );
     }
 
-    // 3. TRIANGLE
+    // 3. TRIANGLE (Standard Triangle vs Right Triangle / Dik Üçgen)
     // 3 prominent corners and triangle fill ratio (< 0.68)
     if ((cornerCount == 3 && fillRatio < 0.68) ||
         (fillRatio >= 0.30 && fillRatio <= 0.65 && cornerCount <= 4 && circularity <= 0.70)) {
       final triangleBounds = Rect.fromLTWH(minX, minY, width, height);
+
+      // Check if one of the corners is approximately a 90° right angle
+      bool isRightTriangle = false;
+      if (corners.length == 3) {
+        for (int i = 0; i < 3; i++) {
+          final cPrev = corners[(i - 1 + 3) % 3];
+          final cCurr = corners[i];
+          final cNext = corners[(i + 1) % 3];
+
+          final v1 = cPrev - cCurr;
+          final v2 = cNext - cCurr;
+          final len1 = v1.distance;
+          final len2 = v2.distance;
+          if (len1 > 0 && len2 > 0) {
+            final dot = (v1.dx * v2.dx + v1.dy * v2.dy) / (len1 * len2);
+            final angleDeg = math.acos(dot.clamp(-1.0, 1.0)) * 180.0 / math.pi;
+            if ((angleDeg - 90.0).abs() <= 18.0) {
+              isRightTriangle = true;
+              break;
+            }
+          }
+        }
+
+        if (!isRightTriangle) {
+          final d01 = (corners[1] - corners[0]).distance;
+          final d12 = (corners[2] - corners[1]).distance;
+          final d20 = (corners[0] - corners[2]).distance;
+          final sides = [d01, d12, d20]..sort();
+          final a = sides[0];
+          final b = sides[1];
+          final c = sides[2];
+          if (((a * a + b * b) - c * c).abs() / (c * c) <= 0.25) {
+            isRightTriangle = true;
+          }
+        }
+      }
+
+      final chosenTool = isRightTriangle ? DrawingTool.rightTriangle : DrawingTool.triangle;
       return RecognizedShape(
-        tool: DrawingTool.triangle,
+        tool: chosenTool,
         points: [triangleBounds.topLeft, triangleBounds.bottomRight],
         bounds: triangleBounds,
-        confidence: 0.88,
+        confidence: isRightTriangle ? 0.92 : 0.88,
       );
     }
 

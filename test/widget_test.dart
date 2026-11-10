@@ -1686,6 +1686,21 @@ void main() {
     final arrowResult = ShapeRecognitionService.recognize(arrowPoints);
     expect(arrowResult, isNotNull);
     expect(arrowResult!.tool, DrawingTool.arrow);
+
+    // 7. Right Triangle (Dik Üçgen) test
+    final rightTrianglePoints = <Offset>[];
+    for (int i = 0; i <= 10; i++) {
+      rightTrianglePoints.add(Offset(100.0, 100.0 + i * 10));
+    }
+    for (int i = 1; i <= 10; i++) {
+      rightTrianglePoints.add(Offset(100.0 + i * 10, 200.0));
+    }
+    for (int i = 1; i <= 10; i++) {
+      rightTrianglePoints.add(Offset(200.0 - i * 10, 200.0 - i * 10));
+    }
+    final rightTriangleResult = ShapeRecognitionService.recognize(rightTrianglePoints);
+    expect(rightTriangleResult, isNotNull);
+    expect(rightTriangleResult!.tool, DrawingTool.rightTriangle);
   });
 
   testWidgets('Draw & Hold (Çiz ve Beklet) 500ms shape recognition, interactive resizing, and toggle test', (WidgetTester tester) async {

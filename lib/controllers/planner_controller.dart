@@ -1606,6 +1606,20 @@ class PlannerController extends ChangeNotifier {
           list.add(rect.center);
           break;
 
+        case DrawingTool.rightTriangle:
+        case DrawingTool.rightTriangleFilled:
+          final v0 = Offset(rect.left, rect.top);
+          final v1 = Offset(rect.left, rect.bottom);
+          final v2 = Offset(rect.right, rect.bottom);
+          list.addAll([v0, v1, v2]);
+          list.addAll([
+            (v0 + v1) / 2.0,
+            (v1 + v2) / 2.0,
+            (v2 + v0) / 2.0,
+          ]);
+          list.add(rect.center);
+          break;
+
         case DrawingTool.circle:
         case DrawingTool.ellipse:
         case DrawingTool.circleFilled:
@@ -4443,6 +4457,14 @@ class PlannerController extends ChangeNotifier {
           Offset(rect.left, rect.bottom),
         ];
         break;
+      case DrawingTool.rightTriangle:
+      case DrawingTool.rightTriangleFilled:
+        poly = [
+          Offset(rect.left, rect.top),
+          Offset(rect.left, rect.bottom),
+          Offset(rect.right, rect.bottom),
+        ];
+        break;
       case DrawingTool.deltoid:
       case DrawingTool.deltoidFilled:
         poly = [
@@ -4660,7 +4682,8 @@ class PlannerController extends ChangeNotifier {
       );
     } else if (tool == DrawingTool.rectangle ||
         tool == DrawingTool.ellipse ||
-        tool == DrawingTool.triangle) {
+        tool == DrawingTool.triangle ||
+        tool == DrawingTool.rightTriangle) {
       final anchor = _activeRecognizedShape!.bounds.topLeft;
       _activeStroke = _activeStroke!.copyWith(
         points: [anchor, point],

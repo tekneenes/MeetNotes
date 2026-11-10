@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -8,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../models/planner_models.dart';
 import '../services/pdf_service.dart';
 import '../services/planner_storage_service.dart';
+import '../services/shape_recognition_service.dart';
 
 class PlannerController extends ChangeNotifier {
   final PlannerStorageService _storage = PlannerStorageService();
@@ -90,6 +92,11 @@ class PlannerController extends ChangeNotifier {
   EraserType _eraserType = EraserType.object;
   bool _enableScribbleToErase = true;
   double _eraserSize = 22.0;
+  bool _enableDrawAndHold = true;
+  Timer? _drawAndHoldTimer;
+  Offset? _holdAnchorPoint;
+  bool _isDrawAndHoldActive = false;
+  RecognizedShape? _activeRecognizedShape;
   String? _selectedTextId;
   String? _editingTextId;
   String? _selectedFileId;
@@ -201,6 +208,23 @@ class PlannerController extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  bool get enableDrawAndHold => _enableDrawAndHold;
+
+  void setEnableDrawAndHold(bool value) {
+    if (_enableDrawAndHold != value) {
+      _enableDrawAndHold = value;
+      notifyListeners();
+    }
+  }
+
+  void toggleDrawAndHold() {
+    setEnableDrawAndHold(!_enableDrawAndHold);
+  }
+
+  bool get isDrawAndHoldActive => _isDrawAndHoldActive;
+  RecognizedShape? get activeRecognizedShape => _activeRecognizedShape;
+
   CanvasPaperRegion? get selectedPaperRegion {
     if (_selectedPaperRegionId == null) return null;
     final idx = _canvasPaperRegions.indexWhere((r) => r.id == _selectedPaperRegionId);
@@ -2035,6 +2059,16 @@ class PlannerController extends ChangeNotifier {
         strokeWidth: _strokeWidth,
         tool: _selectedTool,
       );
+      if (_enableDrawAndHold &&
+          _selectedTool != DrawingTool.eraser &&
+          _selectedTool != DrawingTool.lasso &&
+          _selectedTool != DrawingTool.text) {
+        _drawAndHoldTimer?.cancel();
+        _isDrawAndHoldActive = false;
+        _activeRecognizedShape = null;
+        _holdAnchorPoint = point;
+        _drawAndHoldTimer = Timer(const Duration(milliseconds: 500), _triggerDrawAndHold);
+      }
     }
     notifyListeners();
   }
@@ -2139,6 +2173,12 @@ class PlannerController extends ChangeNotifier {
     }
 
     if (_activeStroke != null) {
+      if (_isDrawAndHoldActive && _activeRecognizedShape != null) {
+        _updateDrawAndHoldGeometry(point);
+        activeStrokeTick.value++;
+        return;
+      }
+
       if (_selectedTool.isShape) {
         final startPoint = _activeStroke!.points.first;
         Offset targetPoint = point;
@@ -2173,12 +2213,26 @@ class PlannerController extends ChangeNotifier {
           final updatedPoints = List<Offset>.from(_activeStroke!.points)..add(point);
           _activeStroke = _activeStroke!.copyWith(points: updatedPoints);
         }
+        if (_enableDrawAndHold && !_isDrawAndHoldActive) {
+          final distFromAnchor = _holdAnchorPoint != null
+              ? (point - _holdAnchorPoint!).distance
+              : 0.0;
+          if (distFromAnchor > 12.0) {
+            _holdAnchorPoint = point;
+            _drawAndHoldTimer?.cancel();
+            _drawAndHoldTimer = Timer(const Duration(milliseconds: 500), _triggerDrawAndHold);
+          }
+        }
       }
       activeStrokeTick.value++;
     }
   }
 
   void endStroke() {
+    _drawAndHoldTimer?.cancel();
+    _drawAndHoldTimer = null;
+    _holdAnchorPoint = null;
+
     if (_selectedTool == DrawingTool.eraser) {
       _saveCurrentStrokes();
       return;
@@ -2263,6 +2317,28 @@ class PlannerController extends ChangeNotifier {
     }
 
     if (_activeStroke != null) {
+      if (_isDrawAndHoldActive && _activeRecognizedShape != null) {
+        final strokeWithOrder = _activeStroke!.copyWith(
+          layerOrder: _nextTopLayerOrder(),
+        );
+        _strokes.add(strokeWithOrder);
+        if (_activeStroke!.tool.isLineOrArrow) {
+          _selectedStrokeIndices.clear();
+          _selectedStrokeIndices.add(_strokes.length - 1);
+          _selectedTextIds.clear();
+          _selectedImageIds.clear();
+        }
+        _activeStroke = null;
+        _isDrawAndHoldActive = false;
+        _activeRecognizedShape = null;
+        _activeSnapPoint = null;
+        _nearbySnapAnchors = [];
+        _normalizeUnifiedLayerOrders();
+        _saveCurrentStrokes();
+        notifyListeners();
+        return;
+      }
+
       if (_enableScribbleToErase &&
           !_selectedTool.isShape &&
           (_strokes.isNotEmpty || _canvasTexts.isNotEmpty)) {
@@ -2307,6 +2383,12 @@ class PlannerController extends ChangeNotifier {
   }
 
   void cancelActiveStroke() {
+    _drawAndHoldTimer?.cancel();
+    _drawAndHoldTimer = null;
+    _isDrawAndHoldActive = false;
+    _activeRecognizedShape = null;
+    _holdAnchorPoint = null;
+
     if (_lassoPoints.isNotEmpty ||
         _isDraggingSelection ||
         _activeResizeHandle != null ||
@@ -4526,6 +4608,71 @@ class PlannerController extends ChangeNotifier {
     return true;
   }
 
+  void _triggerDrawAndHold() {
+    if (_activeStroke == null || _isDrawAndHoldActive) return;
+    if (_activeStroke!.points.length < 6) return;
+
+    final recognized = ShapeRecognitionService.recognize(_activeStroke!.points);
+    if (recognized != null) {
+      try {
+        HapticFeedback.mediumImpact();
+      } catch (_) {}
+
+      _isDrawAndHoldActive = true;
+      _activeRecognizedShape = recognized;
+      _activeStroke = _activeStroke!.copyWith(
+        tool: recognized.tool,
+        points: recognized.points,
+      );
+      activeStrokeTick.value++;
+      notifyListeners();
+    }
+  }
+
+  void _updateDrawAndHoldGeometry(Offset point) {
+    if (_activeStroke == null || _activeRecognizedShape == null) return;
+    final tool = _activeRecognizedShape!.tool;
+    final initialPoints = _activeRecognizedShape!.points;
+
+    if (tool == DrawingTool.line || tool == DrawingTool.arrow) {
+      final start = initialPoints.first;
+      final snapped = ShapeRecognitionService.snapAngle(start, point);
+      _activeStroke = _activeStroke!.copyWith(
+        points: [start, snapped],
+      );
+    } else if (tool == DrawingTool.curve) {
+      final start = initialPoints[0];
+      final apex = (start + point) / 2.0;
+      _activeStroke = _activeStroke!.copyWith(
+        points: [start, apex, point],
+      );
+    } else if (tool == DrawingTool.circle || tool == DrawingTool.square) {
+      final anchor = _activeRecognizedShape!.bounds.topLeft;
+      final dx = point.dx - anchor.dx;
+      final dy = point.dy - anchor.dy;
+      final side = math.max(dx.abs(), dy.abs());
+      final target = Offset(
+        anchor.dx + (dx >= 0 ? side : -side),
+        anchor.dy + (dy >= 0 ? side : -side),
+      );
+      _activeStroke = _activeStroke!.copyWith(
+        points: [anchor, target],
+      );
+    } else if (tool == DrawingTool.rectangle ||
+        tool == DrawingTool.ellipse ||
+        tool == DrawingTool.triangle) {
+      final anchor = _activeRecognizedShape!.bounds.topLeft;
+      _activeStroke = _activeStroke!.copyWith(
+        points: [anchor, point],
+      );
+    }
+  }
+
+  @visibleForTesting
+  void triggerDrawAndHoldForTesting() {
+    _triggerDrawAndHold();
+  }
+
   void _eraseNear(Offset point) {
     final eraseRadius = _eraserSize * 1.2;
     final initialCount = _strokes.length;
@@ -4959,6 +5106,13 @@ class PlannerController extends ChangeNotifier {
     if (notify) {
       notifyListeners();
     }
+  }
+
+  @override
+  void dispose() {
+    _drawAndHoldTimer?.cancel();
+    _drawAndHoldTimer = null;
+    super.dispose();
   }
 }
 

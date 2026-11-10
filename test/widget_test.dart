@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -8,8 +9,10 @@ import 'package:meet_notes/widgets/compact_color_picker_dialog.dart';
 import 'package:meet_notes/widgets/compact_font_picker_dialog.dart';
 import 'package:meet_notes/widgets/compact_stroke_width_picker.dart';
 import 'package:meet_notes/widgets/compact_lasso_picker_dialog.dart';
+import 'package:meet_notes/widgets/compact_shapes_picker.dart';
 import 'package:meet_notes/widgets/apple_notes_toolbar.dart';
 import 'package:meet_notes/widgets/drawing_workspace.dart';
+import 'package:meet_notes/services/shape_recognition_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -1601,6 +1604,167 @@ void main() {
 
     // The underlying stroke should be erased, and the scribble stroke itself not saved as ink!
     expect(controller.strokes.isEmpty, isTrue);
+
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
+
+  test('ShapeRecognitionService basic shapes recognition tests', () {
+    // 1. Straight Line test
+    final linePoints = List.generate(20, (i) => Offset(50.0 + i * 10.0, 100.0 + (i % 2 == 0 ? 0.5 : -0.5)));
+    final lineResult = ShapeRecognitionService.recognize(linePoints);
+    expect(lineResult, isNotNull);
+    expect(lineResult!.tool, DrawingTool.line);
+
+    // 2. Circle test (points on a circle of radius 50)
+    final circlePoints = List.generate(36, (i) {
+      final angle = i * (2 * math.pi / 36);
+      return Offset(200.0 + 50.0 * math.cos(angle), 200.0 + 50.0 * math.sin(angle));
+    });
+    circlePoints.add(circlePoints.first);
+    final circleResult = ShapeRecognitionService.recognize(circlePoints);
+    expect(circleResult, isNotNull);
+    expect(circleResult!.tool, DrawingTool.circle);
+
+    // 3. Square test (100x100 box)
+    final squarePoints = <Offset>[];
+    for (int i = 0; i <= 10; i++) {
+      squarePoints.add(Offset(100.0 + i * 10, 100.0));
+    }
+    for (int i = 1; i <= 10; i++) {
+      squarePoints.add(Offset(200.0, 100.0 + i * 10));
+    }
+    for (int i = 1; i <= 10; i++) {
+      squarePoints.add(Offset(200.0 - i * 10, 200.0));
+    }
+    for (int i = 1; i <= 10; i++) {
+      squarePoints.add(Offset(100.0, 200.0 - i * 10));
+    }
+    final squareResult = ShapeRecognitionService.recognize(squarePoints);
+    expect(squareResult, isNotNull);
+    expect(squareResult!.tool, DrawingTool.square);
+
+    // 4. Rectangle test (200x80 box)
+    final rectPoints = <Offset>[];
+    for (int i = 0; i <= 20; i++) {
+      rectPoints.add(Offset(100.0 + i * 10, 100.0));
+    }
+    for (int i = 1; i <= 8; i++) {
+      rectPoints.add(Offset(300.0, 100.0 + i * 10));
+    }
+    for (int i = 1; i <= 20; i++) {
+      rectPoints.add(Offset(300.0 - i * 10, 180.0));
+    }
+    for (int i = 1; i <= 8; i++) {
+      rectPoints.add(Offset(100.0, 180.0 - i * 10));
+    }
+    final rectResult = ShapeRecognitionService.recognize(rectPoints);
+    expect(rectResult, isNotNull);
+    expect(rectResult!.tool, DrawingTool.rectangle);
+
+    // 5. Triangle test
+    final trianglePoints = <Offset>[];
+    for (int i = 0; i <= 10; i++) {
+      trianglePoints.add(Offset(150.0 + i * 10, 50.0 + i * 15));
+    }
+    for (int i = 1; i <= 10; i++) {
+      trianglePoints.add(Offset(250.0 - i * 20, 200.0));
+    }
+    for (int i = 1; i <= 10; i++) {
+      trianglePoints.add(Offset(50.0 + i * 10, 200.0 - i * 15));
+    }
+    final triangleResult = ShapeRecognitionService.recognize(trianglePoints);
+    expect(triangleResult, isNotNull);
+    expect(triangleResult!.tool, DrawingTool.triangle);
+
+    // 6. Arrow test (shaft with barb)
+    final arrowPoints = <Offset>[];
+    for (int i = 0; i <= 15; i++) {
+      arrowPoints.add(Offset(50.0 + i * 10, 100.0));
+    }
+    arrowPoints.add(const Offset(190, 85));
+    arrowPoints.add(const Offset(180, 75));
+    final arrowResult = ShapeRecognitionService.recognize(arrowPoints);
+    expect(arrowResult, isNotNull);
+    expect(arrowResult!.tool, DrawingTool.arrow);
+  });
+
+  testWidgets('Draw & Hold (Çiz ve Beklet) 500ms shape recognition, interactive resizing, and toggle test', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(controller.enableDrawAndHold, isTrue);
+
+    // 1. Draw a circle freehand with pen
+    controller.setTool(DrawingTool.pen);
+    final circlePoints = List.generate(36, (i) {
+      final angle = i * (2 * math.pi / 36);
+      return Offset(300.0 + 60.0 * math.cos(angle), 300.0 + 60.0 * math.sin(angle));
+    });
+    circlePoints.add(circlePoints.first);
+
+    controller.startStroke(circlePoints.first);
+    for (int i = 1; i < circlePoints.length; i++) {
+      controller.updateStroke(circlePoints[i]);
+    }
+    expect(controller.isDrawAndHoldActive, isFalse);
+
+    // Hold pen for 500ms
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(controller.isDrawAndHoldActive, isTrue);
+    expect(controller.activeStroke, isNotNull);
+    expect(controller.activeStroke!.tool, DrawingTool.circle);
+
+    // Drag while holding to dynamically resize the recognized circle
+    controller.updateStroke(const Offset(450, 450));
+    expect(controller.activeStroke!.tool, DrawingTool.circle);
+    expect(controller.activeStroke!.points.last, const Offset(450, 450));
+
+    // Lift pen -> shape is finalized and added to strokes
+    controller.endStroke();
+    expect(controller.isDrawAndHoldActive, isFalse);
+    expect(controller.strokes.length, 1);
+    expect(controller.strokes.first.tool, DrawingTool.circle);
+
+    // 2. Draw a quick stroke without holding (<500ms)
+    controller.startStroke(const Offset(10, 10));
+    controller.updateStroke(const Offset(30, 30));
+    controller.updateStroke(const Offset(50, 50));
+    controller.endStroke();
+    expect(controller.strokes.length, 2);
+    expect(controller.strokes.last.tool, DrawingTool.pen);
+
+    // 3. Test toggle in CompactShapesPicker
+    controller.setEnableDrawAndHold(false);
+    expect(controller.enableDrawAndHold, isFalse);
+
+    controller.toggleDrawAndHold();
+    expect(controller.enableDrawAndHold, isTrue);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CompactShapesPicker(
+            controller: controller,
+            dockEdge: ToolbarDockEdge.bottom,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Çiz ve Beklet (Akıllı Şekil)'), findsOneWidget);
+    expect(find.text('0.5 sn bekletince kusursuz şekle dönüştürür'), findsOneWidget);
+
+    final switchFinder = find.byType(Switch);
+    expect(switchFinder, findsOneWidget);
+
+    await tester.tap(switchFinder);
+    await tester.pumpAndSettle();
+    expect(controller.enableDrawAndHold, isFalse);
 
     await tester.pump(const Duration(milliseconds: 1000));
   });

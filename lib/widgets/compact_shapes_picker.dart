@@ -72,7 +72,7 @@ class CompactShapesPicker extends StatefulWidget {
     final viewInsets = mediaQuery.viewInsets;
 
     const popoverWidth = 280.0;
-    const popoverHeight = 196.0;
+    const popoverHeight = 236.0;
     const clearance = 22.0;
 
     double left;
@@ -322,9 +322,82 @@ class _CompactShapesPickerState extends State<CompactShapesPicker> {
             ),
           ),
 
+          // Draw & Hold (Akıllı Şekil Tanıma) Toggle
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(
+                color: widget.controller.enableDrawAndHold
+                    ? const Color(0xFF007AFF).withValues(alpha: 0.25)
+                    : Colors.black.withValues(alpha: 0.05),
+                width: 1.0,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: widget.controller.enableDrawAndHold
+                        ? const Color(0xFF007AFF).withValues(alpha: 0.12)
+                        : Colors.black.withValues(alpha: 0.05),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 12,
+                    color: widget.controller.enableDrawAndHold
+                        ? const Color(0xFF007AFF)
+                        : const Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(width: 7),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Çiz ve Beklet (Akıllı Şekil)',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                      Text(
+                        '0.5 sn bekletince kusursuz şekle dönüştürür',
+                        style: TextStyle(
+                          fontSize: 8,
+                          color: Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Transform.scale(
+                  scale: 0.70,
+                  child: Switch.adaptive(
+                    value: widget.controller.enableDrawAndHold,
+                    activeTrackColor: const Color(0xFF007AFF),
+                    activeThumbColor: Colors.white,
+                    onChanged: (val) {
+                      widget.controller.setEnableDrawAndHold(val);
+                      setState(() {});
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+
           // Subtle Divider
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(vertical: 3),
             child: Divider(
               height: 1,
               thickness: 1,

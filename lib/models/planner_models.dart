@@ -208,6 +208,7 @@ enum QuickAccessSubPage {
 enum SmartGuideAlignmentType {
   edge,
   center,
+  spacing,
 }
 
 class SmartAlignmentGuide {
@@ -216,6 +217,8 @@ class SmartAlignmentGuide {
   final double start;
   final double end;
   final SmartGuideAlignmentType type;
+  final Rect? secondarySpacingRect;
+  final double? gapSize;
 
   const SmartAlignmentGuide({
     required this.isVertical,
@@ -223,6 +226,8 @@ class SmartAlignmentGuide {
     required this.start,
     required this.end,
     this.type = SmartGuideAlignmentType.edge,
+    this.secondarySpacingRect,
+    this.gapSize,
   });
 }
 

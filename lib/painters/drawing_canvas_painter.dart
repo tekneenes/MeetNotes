@@ -803,6 +803,48 @@ class DrawingCanvasPainter extends CustomPainter {
       ..color = Colors.white;
 
     for (final guide in guides) {
+      if (guide.type == SmartGuideAlignmentType.spacing) {
+        guidePaint.color = canvaEdgeGuideColor;
+        dotFillPaint.color = canvaEdgeGuideColor;
+        _drawSpacingIndicator(
+          canvas,
+          isVertical: guide.isVertical,
+          coordinate: guide.coordinate,
+          start: guide.start,
+          end: guide.end,
+          linePaint: guidePaint,
+          fillPaint: dotFillPaint,
+          ringPaint: dotRingPaint,
+        );
+        if (guide.secondarySpacingRect != null) {
+          final sec = guide.secondarySpacingRect!;
+          if (guide.isVertical) {
+            _drawSpacingIndicator(
+              canvas,
+              isVertical: true,
+              coordinate: guide.coordinate,
+              start: sec.top,
+              end: sec.bottom,
+              linePaint: guidePaint,
+              fillPaint: dotFillPaint,
+              ringPaint: dotRingPaint,
+            );
+          } else {
+            _drawSpacingIndicator(
+              canvas,
+              isVertical: false,
+              coordinate: guide.coordinate,
+              start: sec.left,
+              end: sec.right,
+              linePaint: guidePaint,
+              fillPaint: dotFillPaint,
+              ringPaint: dotRingPaint,
+            );
+          }
+        }
+        continue;
+      }
+
       final isCenter = guide.type == SmartGuideAlignmentType.center;
       final color = isCenter ? canvaCenterGuideColor : canvaEdgeGuideColor;
       guidePaint.color = color;
@@ -843,6 +885,56 @@ class DrawingCanvasPainter extends CustomPainter {
       canvas.drawCircle(p1, r, dotRingPaint);
       canvas.drawCircle(p2, r, dotFillPaint);
       canvas.drawCircle(p2, r, dotRingPaint);
+    }
+  }
+
+  void _drawSpacingIndicator(
+    Canvas canvas, {
+    required bool isVertical,
+    required double coordinate,
+    required double start,
+    required double end,
+    required Paint linePaint,
+    required Paint fillPaint,
+    required Paint ringPaint,
+  }) {
+    final capRadius = 3.0 / scale.clamp(0.5, 2.5);
+    final tickLen = 7.0 / scale.clamp(0.5, 2.5);
+
+    if (isVertical) {
+      final y1 = math.min(start, end);
+      final y2 = math.max(start, end);
+      canvas.drawLine(Offset(coordinate, y1), Offset(coordinate, y2), linePaint);
+      canvas.drawLine(
+        Offset(coordinate - tickLen, y1),
+        Offset(coordinate + tickLen, y1),
+        linePaint,
+      );
+      canvas.drawLine(
+        Offset(coordinate - tickLen, y2),
+        Offset(coordinate + tickLen, y2),
+        linePaint,
+      );
+      final mid = Offset(coordinate, (y1 + y2) / 2);
+      canvas.drawCircle(mid, capRadius, fillPaint);
+      canvas.drawCircle(mid, capRadius, ringPaint);
+    } else {
+      final x1 = math.min(start, end);
+      final x2 = math.max(start, end);
+      canvas.drawLine(Offset(x1, coordinate), Offset(x2, coordinate), linePaint);
+      canvas.drawLine(
+        Offset(x1, coordinate - tickLen),
+        Offset(x1, coordinate + tickLen),
+        linePaint,
+      );
+      canvas.drawLine(
+        Offset(x2, coordinate - tickLen),
+        Offset(x2, coordinate + tickLen),
+        linePaint,
+      );
+      final mid = Offset((x1 + x2) / 2, coordinate);
+      canvas.drawCircle(mid, capRadius, fillPaint);
+      canvas.drawCircle(mid, capRadius, ringPaint);
     }
   }
 

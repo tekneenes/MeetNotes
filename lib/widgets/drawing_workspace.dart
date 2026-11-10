@@ -349,6 +349,13 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final viewportSize = Size(constraints.maxWidth, constraints.maxHeight);
+        final visibleCanvasRect = Rect.fromLTWH(
+          -_panOffset.dx / _scale,
+          -_panOffset.dy / _scale,
+          viewportSize.width / _scale,
+          viewportSize.height / _scale,
+        );
+        controller.setCanvasVisibleRect(visibleCanvasRect);
 
         final effectiveRightInset = controller.isQuickAccessOpen ? 300.0 : 0.0;
         final availableWidth = constraints.maxWidth - effectiveRightInset;

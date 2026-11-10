@@ -1953,4 +1953,120 @@ void main() {
     // Drain timer
     await tester.pump(const Duration(milliseconds: 1000));
   });
+
+  testWidgets('Canva & Figma Equal Spacing, Resize Snapping, and Viewport Culling test', (WidgetTester tester) async {
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // 1. Viewport Culling Test:
+    // Set visible viewport to (0, 0, 1000, 1000)
+    controller.setCanvasVisibleRect(const Rect.fromLTWH(0, 0, 1000, 1000));
+
+    // Create Item 1 inside visible area: (100, 100) -> (200, 200)
+    controller.setTool(DrawingTool.rectangle);
+    controller.startStroke(const Offset(100, 100));
+    controller.updateStroke(const Offset(200, 200));
+    controller.endStroke();
+
+    // Create Item 2 far outside visible area: (5000, 5000) -> (5100, 5100)
+    controller.startStroke(const Offset(5000, 5000));
+    controller.updateStroke(const Offset(5100, 5100));
+    controller.endStroke();
+
+    // Create Item 3 inside visible area: (400, 103) -> (500, 203)
+    controller.startStroke(const Offset(400, 103));
+    controller.updateStroke(const Offset(500, 203));
+    controller.endStroke();
+
+    // Select Item 3 and drag it
+    controller.selectStrokeFromLayerPanel(2);
+    final dragCenter = controller.selectionBounds!.center;
+    controller.startStroke(dragCenter);
+    controller.updateStroke(dragCenter + const Offset(0, -1));
+
+    // Item 3 should snap to Item 1 (y=100 or y=150), but NOT to Item 2 at 5000!
+    expect(controller.activeSmartGuides.isNotEmpty, isTrue);
+    expect(controller.activeSmartGuides.any((g) => g.coordinate >= 4000), isFalse);
+    controller.endStroke();
+
+    // 2. Resize Snapping & Dimension Matching Test:
+    // Select Item 3 (Rect at 400, 100 to 500, 200)
+    controller.selectStrokeFromLayerPanel(2);
+    expect(controller.hasLassoSelection, isTrue);
+    final bounds3 = controller.selectionBounds!;
+    final rightHandlePoint = bounds3.centerRight;
+
+    // Grab centerRight handle to resize
+    controller.startStroke(rightHandlePoint);
+    expect(controller.activeResizeHandle, SelectionHandle.centerRight);
+
+    // Drag right edge close to 550 (or snap towards another target's dimension)
+    // Add a target at (700, 100) -> (800, 200) so its left is at 700.0
+    controller.cancelActiveStroke();
+    controller.clearLassoSelection();
+    controller.setTool(DrawingTool.rectangle);
+    controller.startStroke(const Offset(700, 100));
+    controller.updateStroke(const Offset(800, 200));
+    controller.endStroke();
+
+    // Re-select Item 3 and resize its right edge towards 700 (say to 698)
+    controller.selectStrokeFromLayerPanel(2);
+    final selBounds = controller.selectionBounds!;
+    controller.startStroke(selBounds.centerRight);
+    expect(controller.activeResizeHandle, SelectionHandle.centerRight);
+
+    // Delta of +198px from initial right (500) brings newRight to 698 (within 7px of 700.0)
+    controller.updateStroke(selBounds.centerRight + const Offset(198, 0));
+    expect(controller.activeSmartGuides.isNotEmpty, isTrue);
+    final resizeGuide = controller.activeSmartGuides.firstWhere((g) => g.isVertical);
+    expect(resizeGuide.coordinate, closeTo(700.0, 0.01));
+
+    // End resize -> guidelines clear
+    controller.endStroke();
+    expect(controller.activeSmartGuides.isEmpty, isTrue);
+
+    // 3. Equal Spacing (Distribution) Test:
+    // Create 3 text items or shapes stacked vertically
+    controller.clearLassoSelection();
+    // Shape A: top 100, bottom 150 (height 50)
+    controller.setTool(DrawingTool.rectangle);
+    controller.startStroke(const Offset(200, 100));
+    controller.updateStroke(const Offset(300, 150));
+    controller.endStroke();
+
+    // Shape B: top 200, bottom 250 (height 50) -> Gap between A & B is 200 - 150 = 50px
+    controller.startStroke(const Offset(200, 200));
+    controller.updateStroke(const Offset(300, 250));
+    controller.endStroke();
+
+    // Shape C: initial top 400, bottom 450 (height 50)
+    controller.startStroke(const Offset(200, 400));
+    controller.updateStroke(const Offset(300, 450));
+    controller.endStroke();
+
+    final shapeCIdx = controller.strokes.length - 1;
+    controller.selectStrokeFromLayerPanel(shapeCIdx);
+    expect(controller.hasLassoSelection, isTrue);
+
+    // Drag Shape C so its top approaches 300 (which is 250 + 50 = 300, giving equal 50px gap!)
+    // Current top is 400, so delta dy of -102 brings proposed top to 298 (within 7px of 300)
+    final shapeCCenter = controller.selectionBounds!.center;
+    controller.startStroke(shapeCCenter);
+    controller.updateStroke(shapeCCenter + const Offset(0, -102));
+
+    // Smart alignment engine should detect equal spacing (50px gap) and emit spacing guide!
+    expect(controller.activeSmartGuides.isNotEmpty, isTrue);
+    final spacingGuide = controller.activeSmartGuides.firstWhere(
+      (g) => g.type == SmartGuideAlignmentType.spacing,
+    );
+    expect(spacingGuide.gapSize, closeTo(50.0, 1.0));
+    expect(spacingGuide.secondarySpacingRect, isNotNull);
+
+    // Release stroke -> guidelines clear and position is snapped to exact equal gap
+    controller.endStroke();
+    expect(controller.activeSmartGuides.isEmpty, isTrue);
+
+    // Drain timer
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
 }

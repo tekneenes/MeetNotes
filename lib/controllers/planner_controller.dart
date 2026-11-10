@@ -81,6 +81,10 @@ class PlannerController extends ChangeNotifier {
   final Map<String, Offset> _initialDragImages = {};
   Rect? _initialDragPaperRegionRect;
   Rect? _initialDragAreaSelectionRect;
+  Rect? _canvasVisibleRect;
+  int? _lastDragTimestamp;
+  Offset? _lastDragPoint;
+  double _currentDragVelocity = 0.0;
 
   // Hızlı Erişim, Katman Sıralaması & Gruplama State
   bool _isQuickAccessOpen = false;
@@ -249,6 +253,10 @@ class PlannerController extends ChangeNotifier {
   List<Offset> get nearbySnapAnchors => List.unmodifiable(_nearbySnapAnchors);
   bool get enableSmartSnapping => _enableSmartSnapping;
   List<SmartAlignmentGuide> get activeSmartGuides => List.unmodifiable(_activeSmartGuides);
+  Rect? get canvasVisibleRect => _canvasVisibleRect;
+  void setCanvasVisibleRect(Rect rect) {
+    _canvasVisibleRect = rect;
+  }
   void setEnableSmartSnapping(bool value) {
     if (_enableSmartSnapping != value) {
       _enableSmartSnapping = value;
@@ -1760,6 +1768,9 @@ class PlannerController extends ChangeNotifier {
     _dragStartPoint = point;
     _activeResizeHandle = null;
     _activeSmartGuides = [];
+    _lastDragTimestamp = DateTime.now().millisecondsSinceEpoch;
+    _lastDragPoint = point;
+    _currentDragVelocity = 0.0;
 
     _initialDragSelectionBounds = _computeRawSelectionBounds();
     _initialDragStrokes.clear();
@@ -1812,9 +1823,29 @@ class PlannerController extends ChangeNotifier {
     return false;
   }
 
-  List<Rect> _collectSmartSnappingTargets() {
+  List<Rect> _collectSmartSnappingTargets({Rect? referenceBounds}) {
     final targets = <Rect>[];
     final processedGroupIds = <String>{};
+
+    Rect? filterArea;
+    if (_canvasVisibleRect != null) {
+      final marginX = _canvasVisibleRect!.width * 0.5;
+      final marginY = _canvasVisibleRect!.height * 0.5;
+      filterArea = _canvasVisibleRect!.inflate(math.max(marginX, marginY));
+    }
+
+    bool isTargetAcceptable(Rect r) {
+      if (filterArea != null && !filterArea.overlaps(r)) {
+        return false;
+      }
+      if (referenceBounds != null && filterArea != null) {
+        final dist = (r.center - referenceBounds.center).distance;
+        if (dist > filterArea.width * 1.5) {
+          return false;
+        }
+      }
+      return true;
+    }
 
     for (int i = 0; i < _strokes.length; i++) {
       if (_selectedStrokeIndices.contains(i)) continue;
@@ -1843,7 +1874,10 @@ class PlannerController extends ChangeNotifier {
           }
         }
         if (gFound) {
-          targets.add(Rect.fromLTRB(gMinX, gMinY, gMaxX, gMaxY));
+          final r = Rect.fromLTRB(gMinX, gMinY, gMaxX, gMaxY);
+          if (isTargetAcceptable(r)) {
+            targets.add(r);
+          }
         }
         continue;
       }
@@ -1858,43 +1892,57 @@ class PlannerController extends ChangeNotifier {
           if (p.dy > sMaxY) sMaxY = p.dy;
         }
         if (sMinX.isFinite && sMinY.isFinite) {
-          targets.add(Rect.fromLTRB(sMinX, sMinY, sMaxX, sMaxY));
+          final r = Rect.fromLTRB(sMinX, sMinY, sMaxX, sMaxY);
+          if (isTargetAcceptable(r)) {
+            targets.add(r);
+          }
         }
       }
     }
 
     for (final text in _canvasTexts) {
       if (_selectedTextIds.contains(text.id)) continue;
-      targets.add(Rect.fromLTWH(
+      final r = Rect.fromLTWH(
         text.position.dx,
         text.position.dy,
         text.width,
         text.computeHeight(),
-      ));
+      );
+      if (isTargetAcceptable(r)) {
+        targets.add(r);
+      }
     }
 
     for (final img in _canvasImages) {
       if (_selectedImageIds.contains(img.id)) continue;
-      targets.add(Rect.fromLTWH(
+      final r = Rect.fromLTWH(
         img.position.dx,
         img.position.dy,
         img.width,
         img.height,
-      ));
+      );
+      if (isTargetAcceptable(r)) {
+        targets.add(r);
+      }
     }
 
     for (final reg in _canvasPaperRegions) {
       if (reg.id == _selectedPaperRegionId) continue;
-      targets.add(reg.rect);
+      if (isTargetAcceptable(reg.rect)) {
+        targets.add(reg.rect);
+      }
     }
 
     for (final file in _canvasFiles) {
-      targets.add(Rect.fromLTWH(
+      final r = Rect.fromLTWH(
         file.position.dx,
         file.position.dy,
         240.0,
         80.0,
-      ));
+      );
+      if (isTargetAcceptable(r)) {
+        targets.add(r);
+      }
     }
 
     return targets;
@@ -1906,14 +1954,24 @@ class PlannerController extends ChangeNotifier {
       return rawDelta;
     }
 
-    final targets = _collectSmartSnappingTargets();
+    final proposedBounds = _initialDragSelectionBounds!.shift(rawDelta);
+    final targets = _collectSmartSnappingTargets(referenceBounds: proposedBounds);
     if (targets.isEmpty) {
       _activeSmartGuides = [];
       return rawDelta;
     }
 
-    final proposedBounds = _initialDragSelectionBounds!.shift(rawDelta);
-    final snapThreshold = 8.0 / _zoomScale;
+    // Velocity-aware dynamic threshold:
+    // When dragging fast (> 500 px/s), threshold drops to 1.0 (free, zero drag friction)
+    // When moving slowly (< 180 px/s), full magnetic pull (7.0 px) applies.
+    double baseThreshold = 7.0;
+    if (_currentDragVelocity > 500.0) {
+      baseThreshold = 1.0;
+    } else if (_currentDragVelocity > 180.0) {
+      final t = (_currentDragVelocity - 180.0) / 320.0;
+      baseThreshold = 7.0 * (1.0 - t) + 1.0 * t;
+    }
+    final snapThreshold = baseThreshold / _zoomScale;
 
     double? bestSnapDeltaX;
     double minDiffX = snapThreshold + 0.001;
@@ -1931,6 +1989,198 @@ class PlannerController extends ChangeNotifier {
     final mCenterY = proposedBounds.center.dy;
     final mBottom = proposedBounds.bottom;
 
+    // --- Equal Spacing Detection (Vertical / Y Axis) ---
+    SmartAlignmentGuide? bestSpacingGuideY;
+    for (int i = 0; i < targets.length; i++) {
+      for (int j = i + 1; j < targets.length; j++) {
+        final tA = targets[i];
+        final tB = targets[j];
+        final t1 = tA.top <= tB.top ? tA : tB;
+        final t2 = tA.top <= tB.top ? tB : tA;
+
+        final maxLeft = math.max(math.max(t1.left, t2.left), proposedBounds.left);
+        final minRight = math.min(math.min(t1.right, t2.right), proposedBounds.right);
+        final hAlign = (minRight >= maxLeft - 30.0) ||
+            ((t1.center.dx - proposedBounds.center.dx).abs() < 120.0 &&
+             (t2.center.dx - proposedBounds.center.dx).abs() < 120.0);
+        if (!hAlign) continue;
+
+        // Case 1: Proposed selection is between t1 and t2
+        if (t1.bottom < t2.top - proposedBounds.height) {
+          final idealGap = (t2.top - t1.bottom - proposedBounds.height) / 2.0;
+          if (idealGap >= 4.0) {
+            final targetTop = t1.bottom + idealGap;
+            final diff = (proposedBounds.top - targetTop).abs();
+            if (diff <= snapThreshold && diff < minDiffY) {
+              minDiffY = diff;
+              bestSnapDeltaY = targetTop - proposedBounds.top;
+              bestGuideY = null;
+              bestSpacingGuideY = SmartAlignmentGuide(
+                isVertical: true,
+                coordinate: proposedBounds.center.dx,
+                start: t1.bottom,
+                end: targetTop,
+                type: SmartGuideAlignmentType.spacing,
+                gapSize: idealGap,
+                secondarySpacingRect: Rect.fromLTRB(
+                  proposedBounds.left,
+                  targetTop + proposedBounds.height,
+                  proposedBounds.right,
+                  t2.top,
+                ),
+              );
+            }
+          }
+        }
+
+        // Case 2: Proposed selection is below both t1 and t2
+        final gap12 = t2.top - t1.bottom;
+        if (gap12 >= 4.0) {
+          final targetTop = t2.bottom + gap12;
+          final diff = (proposedBounds.top - targetTop).abs();
+          if (diff <= snapThreshold && diff < minDiffY) {
+            minDiffY = diff;
+            bestSnapDeltaY = targetTop - proposedBounds.top;
+            bestGuideY = null;
+            bestSpacingGuideY = SmartAlignmentGuide(
+              isVertical: true,
+              coordinate: proposedBounds.center.dx,
+              start: t2.bottom,
+              end: targetTop,
+              type: SmartGuideAlignmentType.spacing,
+              gapSize: gap12,
+              secondarySpacingRect: Rect.fromLTRB(
+                proposedBounds.left,
+                t1.bottom,
+                proposedBounds.right,
+                t2.top,
+              ),
+            );
+          }
+
+          // Case 3: Proposed selection is above both t1 and t2
+          final targetBottom = t1.top - gap12;
+          final targetTopAbove = targetBottom - proposedBounds.height;
+          final diffAbove = (proposedBounds.top - targetTopAbove).abs();
+          if (diffAbove <= snapThreshold && diffAbove < minDiffY) {
+            minDiffY = diffAbove;
+            bestSnapDeltaY = targetTopAbove - proposedBounds.top;
+            bestGuideY = null;
+            bestSpacingGuideY = SmartAlignmentGuide(
+              isVertical: true,
+              coordinate: proposedBounds.center.dx,
+              start: targetBottom,
+              end: t1.top,
+              type: SmartGuideAlignmentType.spacing,
+              gapSize: gap12,
+              secondarySpacingRect: Rect.fromLTRB(
+                proposedBounds.left,
+                t1.bottom,
+                proposedBounds.right,
+                t2.top,
+              ),
+            );
+          }
+        }
+      }
+    }
+
+    // --- Equal Spacing Detection (Horizontal / X Axis) ---
+    SmartAlignmentGuide? bestSpacingGuideX;
+    for (int i = 0; i < targets.length; i++) {
+      for (int j = i + 1; j < targets.length; j++) {
+        final tA = targets[i];
+        final tB = targets[j];
+        final t1 = tA.left <= tB.left ? tA : tB;
+        final t2 = tA.left <= tB.left ? tB : tA;
+
+        final maxTop = math.max(math.max(t1.top, t2.top), proposedBounds.top);
+        final minBottom = math.min(math.min(t1.bottom, t2.bottom), proposedBounds.bottom);
+        final vAlign = (minBottom >= maxTop - 30.0) ||
+            ((t1.center.dy - proposedBounds.center.dy).abs() < 120.0 &&
+             (t2.center.dy - proposedBounds.center.dy).abs() < 120.0);
+        if (!vAlign) continue;
+
+        // Case 1: Proposed selection between t1 and t2
+        if (t1.right < t2.left - proposedBounds.width) {
+          final idealGap = (t2.left - t1.right - proposedBounds.width) / 2.0;
+          if (idealGap >= 4.0) {
+            final targetLeft = t1.right + idealGap;
+            final diff = (proposedBounds.left - targetLeft).abs();
+            if (diff <= snapThreshold && diff < minDiffX) {
+              minDiffX = diff;
+              bestSnapDeltaX = targetLeft - proposedBounds.left;
+              bestGuideX = null;
+              bestSpacingGuideX = SmartAlignmentGuide(
+                isVertical: false,
+                coordinate: proposedBounds.center.dy,
+                start: t1.right,
+                end: targetLeft,
+                type: SmartGuideAlignmentType.spacing,
+                gapSize: idealGap,
+                secondarySpacingRect: Rect.fromLTRB(
+                  targetLeft + proposedBounds.width,
+                  proposedBounds.top,
+                  t2.left,
+                  proposedBounds.bottom,
+                ),
+              );
+            }
+          }
+        }
+
+        // Case 2: Proposed selection to the right of both t1 and t2
+        final gap12 = t2.left - t1.right;
+        if (gap12 >= 4.0) {
+          final targetLeft = t2.right + gap12;
+          final diff = (proposedBounds.left - targetLeft).abs();
+          if (diff <= snapThreshold && diff < minDiffX) {
+            minDiffX = diff;
+            bestSnapDeltaX = targetLeft - proposedBounds.left;
+            bestGuideX = null;
+            bestSpacingGuideX = SmartAlignmentGuide(
+              isVertical: false,
+              coordinate: proposedBounds.center.dy,
+              start: t2.right,
+              end: targetLeft,
+              type: SmartGuideAlignmentType.spacing,
+              gapSize: gap12,
+              secondarySpacingRect: Rect.fromLTRB(
+                t1.right,
+                proposedBounds.top,
+                t2.left,
+                proposedBounds.bottom,
+              ),
+            );
+          }
+
+          // Case 3: Proposed selection to the left of both t1 and t2
+          final targetRight = t1.left - gap12;
+          final targetLeftBefore = targetRight - proposedBounds.width;
+          final diffBefore = (proposedBounds.left - targetLeftBefore).abs();
+          if (diffBefore <= snapThreshold && diffBefore < minDiffX) {
+            minDiffX = diffBefore;
+            bestSnapDeltaX = targetLeftBefore - proposedBounds.left;
+            bestGuideX = null;
+            bestSpacingGuideX = SmartAlignmentGuide(
+              isVertical: false,
+              coordinate: proposedBounds.center.dy,
+              start: targetRight,
+              end: t1.left,
+              type: SmartGuideAlignmentType.spacing,
+              gapSize: gap12,
+              secondarySpacingRect: Rect.fromLTRB(
+                t1.right,
+                proposedBounds.top,
+                t2.left,
+                proposedBounds.bottom,
+              ),
+            );
+          }
+        }
+      }
+    }
+
     for (final target in targets) {
       final tLeft = target.left;
       final tCenterX = target.center.dx;
@@ -1945,6 +2195,7 @@ class PlannerController extends ChangeNotifier {
       if (diffCenterX <= snapThreshold && diffCenterX < minDiffX) {
         minDiffX = diffCenterX;
         bestSnapDeltaX = tCenterX - mCenterX;
+        bestSpacingGuideX = null;
         bestGuideX = SmartAlignmentGuide(
           isVertical: true,
           coordinate: tCenterX,
@@ -1959,6 +2210,7 @@ class PlannerController extends ChangeNotifier {
       if (diffLeftLeft <= snapThreshold && diffLeftLeft < minDiffX) {
         minDiffX = diffLeftLeft;
         bestSnapDeltaX = tLeft - mLeft;
+        bestSpacingGuideX = null;
         bestGuideX = SmartAlignmentGuide(
           isVertical: true,
           coordinate: tLeft,
@@ -1973,6 +2225,7 @@ class PlannerController extends ChangeNotifier {
       if (diffRightRight <= snapThreshold && diffRightRight < minDiffX) {
         minDiffX = diffRightRight;
         bestSnapDeltaX = tRight - mRight;
+        bestSpacingGuideX = null;
         bestGuideX = SmartAlignmentGuide(
           isVertical: true,
           coordinate: tRight,
@@ -1987,6 +2240,7 @@ class PlannerController extends ChangeNotifier {
       if (diffLeftRight <= snapThreshold && diffLeftRight < minDiffX) {
         minDiffX = diffLeftRight;
         bestSnapDeltaX = tRight - mLeft;
+        bestSpacingGuideX = null;
         bestGuideX = SmartAlignmentGuide(
           isVertical: true,
           coordinate: tRight,
@@ -2001,6 +2255,7 @@ class PlannerController extends ChangeNotifier {
       if (diffRightLeft <= snapThreshold && diffRightLeft < minDiffX) {
         minDiffX = diffRightLeft;
         bestSnapDeltaX = tLeft - mRight;
+        bestSpacingGuideX = null;
         bestGuideX = SmartAlignmentGuide(
           isVertical: true,
           coordinate: tLeft,
@@ -2016,6 +2271,7 @@ class PlannerController extends ChangeNotifier {
       if (diffCenterY <= snapThreshold && diffCenterY < minDiffY) {
         minDiffY = diffCenterY;
         bestSnapDeltaY = tCenterY - mCenterY;
+        bestSpacingGuideY = null;
         bestGuideY = SmartAlignmentGuide(
           isVertical: false,
           coordinate: tCenterY,
@@ -2030,6 +2286,7 @@ class PlannerController extends ChangeNotifier {
       if (diffTopTop <= snapThreshold && diffTopTop < minDiffY) {
         minDiffY = diffTopTop;
         bestSnapDeltaY = tTop - mTop;
+        bestSpacingGuideY = null;
         bestGuideY = SmartAlignmentGuide(
           isVertical: false,
           coordinate: tTop,
@@ -2044,6 +2301,7 @@ class PlannerController extends ChangeNotifier {
       if (diffBottomBottom <= snapThreshold && diffBottomBottom < minDiffY) {
         minDiffY = diffBottomBottom;
         bestSnapDeltaY = tBottom - mBottom;
+        bestSpacingGuideY = null;
         bestGuideY = SmartAlignmentGuide(
           isVertical: false,
           coordinate: tBottom,
@@ -2058,6 +2316,7 @@ class PlannerController extends ChangeNotifier {
       if (diffTopBottom <= snapThreshold && diffTopBottom < minDiffY) {
         minDiffY = diffTopBottom;
         bestSnapDeltaY = tBottom - mTop;
+        bestSpacingGuideY = null;
         bestGuideY = SmartAlignmentGuide(
           isVertical: false,
           coordinate: tBottom,
@@ -2072,6 +2331,7 @@ class PlannerController extends ChangeNotifier {
       if (diffBottomTop <= snapThreshold && diffBottomTop < minDiffY) {
         minDiffY = diffBottomTop;
         bestSnapDeltaY = tTop - mBottom;
+        bestSpacingGuideY = null;
         bestGuideY = SmartAlignmentGuide(
           isVertical: false,
           coordinate: tTop,
@@ -2087,7 +2347,9 @@ class PlannerController extends ChangeNotifier {
     final finalBounds = _initialDragSelectionBounds!.shift(Offset(finalSnappedX, finalSnappedY));
 
     final guides = <SmartAlignmentGuide>[];
-    if (bestGuideX != null) {
+    if (bestSpacingGuideX != null) {
+      guides.add(bestSpacingGuideX);
+    } else if (bestGuideX != null) {
       guides.add(SmartAlignmentGuide(
         isVertical: true,
         coordinate: bestGuideX.coordinate,
@@ -2096,7 +2358,10 @@ class PlannerController extends ChangeNotifier {
         type: bestGuideX.type,
       ));
     }
-    if (bestGuideY != null) {
+
+    if (bestSpacingGuideY != null) {
+      guides.add(bestSpacingGuideY);
+    } else if (bestGuideY != null) {
       guides.add(SmartAlignmentGuide(
         isVertical: false,
         coordinate: bestGuideY.coordinate,
@@ -2475,6 +2740,18 @@ class PlannerController extends ChangeNotifier {
     }
 
     if (isSingleLineOrArrowSelected && _isDraggingSelection && _dragStartPoint != null) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (_lastDragTimestamp != null && _lastDragPoint != null) {
+        final dt = (now - _lastDragTimestamp!) / 1000.0;
+        if (dt > 0.008) {
+          final screenDist = (point - _lastDragPoint!).distance * _zoomScale;
+          final instantVelocity = screenDist / dt;
+          _currentDragVelocity = _currentDragVelocity * 0.4 + instantVelocity * 0.6;
+          _lastDragTimestamp = now;
+          _lastDragPoint = point;
+        }
+      }
+
       final rawDelta = point - _dragStartPoint!;
       final snappedDelta = _enableSmartSnapping ? _applySmartAlignmentGuides(rawDelta) : rawDelta;
       final idx = _selectedStrokeIndices.first;
@@ -2496,6 +2773,18 @@ class PlannerController extends ChangeNotifier {
           _initialResizeRawBounds != null) {
         _applyResizeToSelection(point);
       } else if (_isDraggingSelection && _dragStartPoint != null) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        if (_lastDragTimestamp != null && _lastDragPoint != null) {
+          final dt = (now - _lastDragTimestamp!) / 1000.0;
+          if (dt > 0.008) {
+            final screenDist = (point - _lastDragPoint!).distance * _zoomScale;
+            final instantVelocity = screenDist / dt;
+            _currentDragVelocity = _currentDragVelocity * 0.4 + instantVelocity * 0.6;
+            _lastDragTimestamp = now;
+            _lastDragPoint = point;
+          }
+        }
+
         final rawDelta = point - _dragStartPoint!;
         final snappedDelta = _enableSmartSnapping ? _applySmartAlignmentGuides(rawDelta) : rawDelta;
 
@@ -2635,6 +2924,7 @@ class PlannerController extends ChangeNotifier {
         return;
       }
       if (_activeResizeHandle != null) {
+        _activeSmartGuides = [];
         _activeResizeHandle = null;
         _resizeStartPoint = null;
         _initialResizeRawBounds = null;
@@ -2977,6 +3267,188 @@ class PlannerController extends ChangeNotifier {
       case SelectionHandle.lineVertex:
       case SelectionHandle.lineControl:
         break;
+    }
+
+    final guides = <SmartAlignmentGuide>[];
+    if (_enableSmartSnapping) {
+      final snapThreshold = 7.0 / _zoomScale;
+      final currentBounds = Rect.fromLTRB(newLeft, newTop, newRight, newBottom);
+      final targets = _collectSmartSnappingTargets(referenceBounds: currentBounds);
+
+      final modifiesLeft = handle == SelectionHandle.topLeft ||
+          handle == SelectionHandle.centerLeft ||
+          handle == SelectionHandle.bottomLeft;
+      final modifiesRight = handle == SelectionHandle.topRight ||
+          handle == SelectionHandle.centerRight ||
+          handle == SelectionHandle.bottomRight;
+      final modifiesTop = handle == SelectionHandle.topLeft ||
+          handle == SelectionHandle.topCenter ||
+          handle == SelectionHandle.topRight;
+      final modifiesBottom = handle == SelectionHandle.bottomLeft ||
+          handle == SelectionHandle.bottomCenter ||
+          handle == SelectionHandle.bottomRight;
+
+      if (modifiesRight) {
+        double minDiff = snapThreshold + 0.001;
+        double? snappedX;
+        SmartAlignmentGuide? guide;
+        for (final target in targets) {
+          for (final tx in [target.left, target.center.dx, target.right]) {
+            final diff = (newRight - tx).abs();
+            if (diff <= snapThreshold && diff < minDiff) {
+              minDiff = diff;
+              snappedX = tx;
+              guide = SmartAlignmentGuide(
+                coordinate: tx,
+                isVertical: true,
+                start: math.min(newTop, target.top) - 20.0,
+                end: math.max(newBottom, target.bottom) + 20.0,
+                type: (tx == target.center.dx)
+                    ? SmartGuideAlignmentType.center
+                    : SmartGuideAlignmentType.edge,
+              );
+            }
+          }
+          final widthDiff = ((newRight - newLeft) - target.width).abs();
+          if (widthDiff <= snapThreshold && widthDiff < minDiff) {
+            minDiff = widthDiff;
+            snappedX = newLeft + target.width;
+            guide = SmartAlignmentGuide(
+              coordinate: snappedX,
+              isVertical: true,
+              start: math.min(newTop, target.top) - 20.0,
+              end: math.max(newBottom, target.bottom) + 20.0,
+              type: SmartGuideAlignmentType.edge,
+            );
+          }
+        }
+        if (snappedX != null && guide != null) {
+          newRight = snappedX;
+          guides.add(guide);
+        }
+      }
+
+      if (modifiesLeft) {
+        double minDiff = snapThreshold + 0.001;
+        double? snappedX;
+        SmartAlignmentGuide? guide;
+        for (final target in targets) {
+          for (final tx in [target.left, target.center.dx, target.right]) {
+            final diff = (newLeft - tx).abs();
+            if (diff <= snapThreshold && diff < minDiff) {
+              minDiff = diff;
+              snappedX = tx;
+              guide = SmartAlignmentGuide(
+                coordinate: tx,
+                isVertical: true,
+                start: math.min(newTop, target.top) - 20.0,
+                end: math.max(newBottom, target.bottom) + 20.0,
+                type: (tx == target.center.dx)
+                    ? SmartGuideAlignmentType.center
+                    : SmartGuideAlignmentType.edge,
+              );
+            }
+          }
+          final widthDiff = ((newRight - newLeft) - target.width).abs();
+          if (widthDiff <= snapThreshold && widthDiff < minDiff) {
+            minDiff = widthDiff;
+            snappedX = newRight - target.width;
+            guide = SmartAlignmentGuide(
+              coordinate: snappedX,
+              isVertical: true,
+              start: math.min(newTop, target.top) - 20.0,
+              end: math.max(newBottom, target.bottom) + 20.0,
+              type: SmartGuideAlignmentType.edge,
+            );
+          }
+        }
+        if (snappedX != null && guide != null) {
+          newLeft = snappedX;
+          guides.add(guide);
+        }
+      }
+
+      if (modifiesBottom) {
+        double minDiff = snapThreshold + 0.001;
+        double? snappedY;
+        SmartAlignmentGuide? guide;
+        for (final target in targets) {
+          for (final ty in [target.top, target.center.dy, target.bottom]) {
+            final diff = (newBottom - ty).abs();
+            if (diff <= snapThreshold && diff < minDiff) {
+              minDiff = diff;
+              snappedY = ty;
+              guide = SmartAlignmentGuide(
+                coordinate: ty,
+                isVertical: false,
+                start: math.min(newLeft, target.left) - 20.0,
+                end: math.max(newRight, target.right) + 20.0,
+                type: (ty == target.center.dy)
+                    ? SmartGuideAlignmentType.center
+                    : SmartGuideAlignmentType.edge,
+              );
+            }
+          }
+          final heightDiff = ((newBottom - newTop) - target.height).abs();
+          if (heightDiff <= snapThreshold && heightDiff < minDiff) {
+            minDiff = heightDiff;
+            snappedY = newTop + target.height;
+            guide = SmartAlignmentGuide(
+              coordinate: snappedY,
+              isVertical: false,
+              start: math.min(newLeft, target.left) - 20.0,
+              end: math.max(newRight, target.right) + 20.0,
+              type: SmartGuideAlignmentType.edge,
+            );
+          }
+        }
+        if (snappedY != null && guide != null) {
+          newBottom = snappedY;
+          guides.add(guide);
+        }
+      }
+
+      if (modifiesTop) {
+        double minDiff = snapThreshold + 0.001;
+        double? snappedY;
+        SmartAlignmentGuide? guide;
+        for (final target in targets) {
+          for (final ty in [target.top, target.center.dy, target.bottom]) {
+            final diff = (newTop - ty).abs();
+            if (diff <= snapThreshold && diff < minDiff) {
+              minDiff = diff;
+              snappedY = ty;
+              guide = SmartAlignmentGuide(
+                coordinate: ty,
+                isVertical: false,
+                start: math.min(newLeft, target.left) - 20.0,
+                end: math.max(newRight, target.right) + 20.0,
+                type: (ty == target.center.dy)
+                    ? SmartGuideAlignmentType.center
+                    : SmartGuideAlignmentType.edge,
+              );
+            }
+          }
+          final heightDiff = ((newBottom - newTop) - target.height).abs();
+          if (heightDiff <= snapThreshold && heightDiff < minDiff) {
+            minDiff = heightDiff;
+            snappedY = newBottom - target.height;
+            guide = SmartAlignmentGuide(
+              coordinate: snappedY,
+              isVertical: false,
+              start: math.min(newLeft, target.left) - 20.0,
+              end: math.max(newRight, target.right) + 20.0,
+              type: SmartGuideAlignmentType.edge,
+            );
+          }
+        }
+        if (snappedY != null && guide != null) {
+          newTop = snappedY;
+          guides.add(guide);
+        }
+      }
+
+      _activeSmartGuides = guides;
     }
 
     const minSize = 10.0;

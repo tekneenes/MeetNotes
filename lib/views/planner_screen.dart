@@ -447,7 +447,7 @@ class _PlannerScreenState extends State<PlannerScreen>
     final isFilesPage = activeController.isQuickAccessFilesPage;
     final isPdfViewerPage = activeController.isQuickAccessPdfViewerPage;
     final isPageSettingsPage = activeController.isQuickAccessPageSettingsPage;
-    final allGroups = activeController.allStrokeGroups;
+    final allGroups = activeController.allUnifiedGroups;
     final savedAssets = activeController.savedAssets;
     final selectedSet = activeController.selectedStrokeIndices;
 
@@ -1285,10 +1285,8 @@ class _PlannerScreenState extends State<PlannerScreen>
   Widget _buildGroupsSubPage(
     BuildContext context,
     PlannerController activeController,
-    Map<String, List<int>> allGroups,
+    Map<String, List<CanvasLayerEntry>> allGroups,
   ) {
-    final allStrokes = activeController.strokes;
-    final selectedSet = activeController.selectedStrokeIndices;
     final selectedGroupIds = activeController.selectedGroupIds;
     final onlySelectedGroups = activeController.showOnlySelectedGroups;
 
@@ -1388,7 +1386,7 @@ class _PlannerScreenState extends State<PlannerScreen>
         if (activeController.canGroupSelection) ...[
           InkWell(
             borderRadius: BorderRadius.circular(10),
-            onTap: activeController.groupSelectedStrokes,
+            onTap: activeController.groupSelectedItems,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
@@ -1408,7 +1406,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Seçili ${selectedSet.length} Öğeyi Grupla',
+                      'Seçili ${activeController.selectedLayerCount} Öğeyi Grupla',
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -1474,7 +1472,7 @@ class _PlannerScreenState extends State<PlannerScreen>
           ),
           ...List.generate(groupEntries.length, (gIdx) {
             final groupId = groupEntries[gIdx].key;
-            final memberIndices = groupEntries[gIdx].value; // Topmost to bottommost
+            final memberEntries = groupEntries[gIdx].value; // Topmost to bottommost
             final isGroupSelected = selectedGroupIds.contains(groupId);
 
             return Padding(
@@ -1487,8 +1485,8 @@ class _PlannerScreenState extends State<PlannerScreen>
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: isGroupSelected
-                        ? const Color(0xFF4F46E5).withValues(alpha: 0.45)
-                        : Colors.black.withValues(alpha: 0.08),
+                      ? const Color(0xFF4F46E5).withValues(alpha: 0.45)
+                      : Colors.black.withValues(alpha: 0.08),
                     width: isGroupSelected ? 1.4 : 1.0,
                   ),
                 ),
@@ -1543,7 +1541,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                                           borderRadius: BorderRadius.circular(6),
                                         ),
                                         child: Text(
-                                          '${memberIndices.length} öğe',
+                                          '${memberEntries.length} öğe',
                                           style: const TextStyle(
                                             fontSize: 9.5,
                                             fontWeight: FontWeight.w700,
@@ -1617,11 +1615,36 @@ class _PlannerScreenState extends State<PlannerScreen>
                     Padding(
                       padding: const EdgeInsets.all(8),
                       child: Column(
-                        children: List.generate(memberIndices.length, (mPos) {
-                          final strokeIdx = memberIndices[mPos];
-                          final stroke = allStrokes[strokeIdx];
+                        children: List.generate(memberEntries.length, (mPos) {
+                          final memberEntry = memberEntries[mPos];
                           final isTopMember = mPos == 0;
-                          final isBottomMember = mPos == memberIndices.length - 1;
+                          final isBottomMember = mPos == memberEntries.length - 1;
+                          final isText = memberEntry.isText;
+                          final isImage = memberEntry.isImage;
+                          final isPaperRegion = memberEntry.isPaperRegion;
+                          final label = isText
+                              ? (memberEntry.textItem!.text.trim().isEmpty
+                                  ? 'Metin Kutusu'
+                                  : memberEntry.textItem!.text.split('\n').first)
+                              : (isImage
+                                  ? (memberEntry.imageItem!.name ?? 'PDF Sayfası / Görsel')
+                                  : (isPaperRegion
+                                      ? _getPaperRegionLabel(memberEntry.paperRegion!)
+                                      : memberEntry.stroke!.tool.label));
+                          final dotColor = isText
+                              ? memberEntry.textItem!.color
+                              : (isImage
+                                  ? const Color(0xFFEF4444)
+                                  : (isPaperRegion
+                                      ? const Color(0xFF007AFF)
+                                      : memberEntry.stroke!.color));
+
+                          Uint8List? memberImgBytes;
+                          if (isImage) {
+                            try {
+                              memberImgBytes = base64Decode(memberEntry.imageItem!.base64Data);
+                            } catch (_) {}
+                          }
 
                           return Padding(
                             padding: EdgeInsets.only(
@@ -1651,11 +1674,39 @@ class _PlannerScreenState extends State<PlannerScreen>
                                         color: Colors.black.withValues(alpha: 0.08),
                                       ),
                                     ),
-                                    child: CustomPaint(
-                                      painter: _StrokeLayerMiniPreviewPainter(
-                                        stroke: stroke,
-                                      ),
-                                    ),
+                                    child: isText
+                                        ? const Center(
+                                            child: Icon(
+                                              Icons.title_rounded,
+                                              size: 15,
+                                              color: Color(0xFF007AFF),
+                                            ),
+                                          )
+                                        : (isImage
+                                            ? ClipRRect(
+                                                borderRadius: BorderRadius.circular(5),
+                                                child: memberImgBytes != null
+                                                    ? Image.memory(
+                                                        memberImgBytes,
+                                                        fit: BoxFit.cover,
+                                                        errorBuilder: (_, __, ___) =>
+                                                            const Icon(Icons.picture_as_pdf_rounded, size: 15, color: Color(0xFFEF4444)),
+                                                      )
+                                                    : const Icon(Icons.picture_as_pdf_rounded, size: 15, color: Color(0xFFEF4444)),
+                                              )
+                                            : (isPaperRegion
+                                                ? Center(
+                                                    child: Icon(
+                                                      _getPaperRegionIcon(memberEntry.paperRegion!.style),
+                                                      size: 15,
+                                                      color: const Color(0xFF007AFF),
+                                                    ),
+                                                  )
+                                                : CustomPaint(
+                                                    painter: _StrokeLayerMiniPreviewPainter(
+                                                      stroke: memberEntry.stroke!,
+                                                    ),
+                                                  ))),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
@@ -1668,14 +1719,14 @@ class _PlannerScreenState extends State<PlannerScreen>
                                               width: 7,
                                               height: 7,
                                               decoration: BoxDecoration(
-                                                color: stroke.color,
+                                                color: dotColor,
                                                 shape: BoxShape.circle,
                                               ),
                                             ),
                                             const SizedBox(width: 5),
                                             Expanded(
                                               child: Text(
-                                                stroke.tool.label,
+                                                label,
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
                                                 style: const TextStyle(
@@ -1689,7 +1740,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          '${isTopMember ? "Grupta Üstte" : isBottomMember ? "Grupta Altta" : "Grupta Ortada"} • Katman #${strokeIdx + 1}',
+                                          '${isTopMember ? "Grupta Üstte" : isBottomMember ? "Grupta Altta" : "Grupta Ortada"} • Katman #${memberEntry.layerOrder + 1}',
                                           style: TextStyle(
                                             fontSize: 9.5,
                                             fontWeight: FontWeight.w600,
@@ -1704,7 +1755,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                                     child: InkWell(
                                       borderRadius: BorderRadius.circular(6),
                                       onTap: () => activeController
-                                          .removeStrokeFromGroup(strokeIdx),
+                                          .removeLayerFromGroup(memberEntry),
                                       child: Padding(
                                         padding: const EdgeInsets.all(4),
                                         child: Icon(

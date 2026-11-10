@@ -249,30 +249,86 @@ class PlannerController extends ChangeNotifier {
 
   int get lockedStrokeCount => _strokes.where((s) => s.isLocked).length;
 
-  bool get hasGroupedStrokeInSelection {
+  bool get hasGroupedItemInSelection {
     for (final idx in _selectedStrokeIndices) {
       if (idx >= 0 && idx < _strokes.length && _strokes[idx].groupId != null) {
         return true;
       }
     }
+    for (final id in _selectedTextIds) {
+      final t = _canvasTexts.where((x) => x.id == id).firstOrNull;
+      if (t != null && t.groupId != null) return true;
+    }
+    for (final id in _selectedImageIds) {
+      final img = _canvasImages.where((x) => x.id == id).firstOrNull;
+      if (img != null && img.groupId != null) return true;
+    }
+    if (_selectedPaperRegionId != null) {
+      final reg = selectedPaperRegion;
+      if (reg != null && reg.groupId != null) return true;
+    }
     return false;
   }
 
+  bool get hasGroupedStrokeInSelection => hasGroupedItemInSelection;
+
   bool get canGroupSelection {
-    if (_selectedStrokeIndices.length < 2) return false;
+    if (selectedLayerCount < 2) return false;
     String? commonGroup;
+    bool hasAnyUngrouped = false;
+
     for (final idx in _selectedStrokeIndices) {
       if (idx >= 0 && idx < _strokes.length) {
         final gid = _strokes[idx].groupId;
-        if (gid == null) return true; // En az bir grupsuz öğe var
-        if (commonGroup == null) {
+        if (gid == null) {
+          hasAnyUngrouped = true;
+        } else if (commonGroup == null) {
           commonGroup = gid;
         } else if (commonGroup != gid) {
-          return true; // Farklı gruplardan öğeler seçili -> tek grupta birleştirilebilir
+          return true;
         }
       }
     }
-    return false; // Hepsi zaten aynı grupta
+    for (final id in _selectedTextIds) {
+      final t = _canvasTexts.where((x) => x.id == id).firstOrNull;
+      if (t != null) {
+        final gid = t.groupId;
+        if (gid == null) {
+          hasAnyUngrouped = true;
+        } else if (commonGroup == null) {
+          commonGroup = gid;
+        } else if (commonGroup != gid) {
+          return true;
+        }
+      }
+    }
+    for (final id in _selectedImageIds) {
+      final img = _canvasImages.where((x) => x.id == id).firstOrNull;
+      if (img != null) {
+        final gid = img.groupId;
+        if (gid == null) {
+          hasAnyUngrouped = true;
+        } else if (commonGroup == null) {
+          commonGroup = gid;
+        } else if (commonGroup != gid) {
+          return true;
+        }
+      }
+    }
+    if (_selectedPaperRegionId != null) {
+      final reg = selectedPaperRegion;
+      if (reg != null) {
+        final gid = reg.groupId;
+        if (gid == null) {
+          hasAnyUngrouped = true;
+        } else if (commonGroup == null) {
+          commonGroup = gid;
+        } else if (commonGroup != gid) {
+          return true;
+        }
+      }
+    }
+    return hasAnyUngrouped;
   }
 
   Set<String> get selectedGroupIds {
@@ -283,7 +339,34 @@ class PlannerController extends ChangeNotifier {
         if (gid != null) ids.add(gid);
       }
     }
+    for (final id in _selectedTextIds) {
+      final t = _canvasTexts.where((x) => x.id == id).firstOrNull;
+      if (t != null && t.groupId != null) ids.add(t.groupId!);
+    }
+    for (final id in _selectedImageIds) {
+      final img = _canvasImages.where((x) => x.id == id).firstOrNull;
+      if (img != null && img.groupId != null) ids.add(img.groupId!);
+    }
+    if (_selectedPaperRegionId != null) {
+      final reg = selectedPaperRegion;
+      if (reg != null && reg.groupId != null) ids.add(reg.groupId!);
+    }
     return ids;
+  }
+
+  /// Returns all active groups across all canvas layers (ordered top-to-bottom).
+  Map<String, List<CanvasLayerEntry>> get allUnifiedGroups {
+    final map = <String, List<CanvasLayerEntry>>{};
+    final layers = unifiedLayers;
+    for (int i = layers.length - 1; i >= 0; i--) {
+      final entry = layers[i];
+      final gid = entry.groupId;
+      if (gid != null) {
+        map.putIfAbsent(gid, () => <CanvasLayerEntry>[]).add(entry);
+      }
+    }
+    map.removeWhere((_, members) => members.length < 2);
+    return map;
   }
 
   /// Returns all active groups on the current page: groupId -> stroke indices (ordered top-to-bottom).
@@ -1744,9 +1827,13 @@ class PlannerController extends ChangeNotifier {
         _selectedTextIds.clear();
         _selectedImageIds.clear();
         _selectedStrokeIndices.clear();
-        _selectedPaperRegionId = _canvasPaperRegions[hitPaperRegionIdx].id;
+        final hitRegion = _canvasPaperRegions[hitPaperRegionIdx];
+        _selectedPaperRegionId = hitRegion.id;
         _activeAreaSelectionRect = null;
         _selectionRotationAngle = 0.0;
+        if (hitRegion.groupId != null) {
+          _expandSelectionWithGroups();
+        }
         if (isSelectionLocked) {
           _isDraggingSelection = false;
           _lastLassoDragPoint = null;
@@ -1770,6 +1857,9 @@ class PlannerController extends ChangeNotifier {
           ..add(hitImage.id);
         _selectedTextId = null;
         _editingTextId = null;
+        if (hitImage.groupId != null) {
+          _expandSelectionWithGroups();
+        }
         _syncSelectionRotationFromStrokes();
         if (isSelectionLocked) {
           _isDraggingSelection = false;
@@ -1796,6 +1886,9 @@ class PlannerController extends ChangeNotifier {
           ..add(hitText.id);
         _selectedTextId = null;
         _editingTextId = null;
+        if (hitText.groupId != null) {
+          _expandSelectionWithGroups();
+        }
         _syncSelectionRotationFromStrokes();
         if (isSelectionLocked) {
           _isDraggingSelection = false;
@@ -2710,18 +2803,50 @@ class PlannerController extends ChangeNotifier {
       }
     }
 
+    final unlockedPaperRegionHits = <String>{};
+    final lockedPaperRegionHits = <String>{};
+    for (final reg in _canvasPaperRegions) {
+      final rect = reg.rect;
+      final samplePoints = [
+        rect.center,
+        rect.topLeft,
+        rect.topRight,
+        rect.bottomLeft,
+        rect.bottomRight,
+      ];
+      bool isSelected = samplePoints.any(lassoPath.contains);
+      if (!isSelected && lassoBounds.overlaps(rect)) {
+        final intersection = lassoBounds.intersect(rect);
+        if (intersection.width >= rect.width * 0.4 &&
+            intersection.height >= rect.height * 0.4) {
+          isSelected = true;
+        }
+      }
+      if (isSelected) {
+        (reg.isLocked ? lockedPaperRegionHits : unlockedPaperRegionHits).add(reg.id);
+      }
+    }
+
     if (unlockedHits.isNotEmpty ||
         unlockedTextHits.isNotEmpty ||
-        unlockedImageHits.isNotEmpty) {
+        unlockedImageHits.isNotEmpty ||
+        unlockedPaperRegionHits.isNotEmpty) {
       _selectedStrokeIndices.addAll(unlockedHits);
       _selectedTextIds.addAll(unlockedTextHits);
       _selectedImageIds.addAll(unlockedImageHits);
+      if (unlockedPaperRegionHits.isNotEmpty) {
+        _selectedPaperRegionId = unlockedPaperRegionHits.first;
+      }
     } else if (lockedHits.isNotEmpty ||
         lockedTextHits.isNotEmpty ||
-        lockedImageHits.isNotEmpty) {
+        lockedImageHits.isNotEmpty ||
+        lockedPaperRegionHits.isNotEmpty) {
       _selectedStrokeIndices.addAll(lockedHits);
       _selectedTextIds.addAll(lockedTextHits);
       _selectedImageIds.addAll(lockedImageHits);
+      if (lockedPaperRegionHits.isNotEmpty) {
+        _selectedPaperRegionId = lockedPaperRegionHits.first;
+      }
     }
     _selectedTextId = null;
     _editingTextId = null;
@@ -2730,21 +2855,28 @@ class PlannerController extends ChangeNotifier {
   }
 
   void _expandSelectionWithGroups() {
-    if (_selectedStrokeIndices.isEmpty) return;
-    final groupIds = <String>{};
-    for (final idx in _selectedStrokeIndices) {
-      if (idx >= 0 && idx < _strokes.length) {
-        final gid = _strokes[idx].groupId;
-        if (gid != null) {
-          groupIds.add(gid);
-        }
-      }
-    }
+    final groupIds = selectedGroupIds;
     if (groupIds.isEmpty) return;
+
     for (int i = 0; i < _strokes.length; i++) {
       final gid = _strokes[i].groupId;
       if (gid != null && groupIds.contains(gid)) {
         _selectedStrokeIndices.add(i);
+      }
+    }
+    for (final t in _canvasTexts) {
+      if (t.groupId != null && groupIds.contains(t.groupId)) {
+        _selectedTextIds.add(t.id);
+      }
+    }
+    for (final img in _canvasImages) {
+      if (img.groupId != null && groupIds.contains(img.groupId)) {
+        _selectedImageIds.add(img.id);
+      }
+    }
+    for (final reg in _canvasPaperRegions) {
+      if (reg.groupId != null && groupIds.contains(reg.groupId)) {
+        _selectedPaperRegionId = reg.id;
       }
     }
   }
@@ -2752,14 +2884,40 @@ class PlannerController extends ChangeNotifier {
   void _cleanupSingletonGroups() {
     final counts = <String, int>{};
     for (final s in _strokes) {
-      if (s.groupId != null) {
-        counts[s.groupId!] = (counts[s.groupId!] ?? 0) + 1;
-      }
+      if (s.groupId != null) counts[s.groupId!] = (counts[s.groupId!] ?? 0) + 1;
     }
+    for (final t in _canvasTexts) {
+      if (t.groupId != null) counts[t.groupId!] = (counts[t.groupId!] ?? 0) + 1;
+    }
+    for (final img in _canvasImages) {
+      if (img.groupId != null) counts[img.groupId!] = (counts[img.groupId!] ?? 0) + 1;
+    }
+    for (final reg in _canvasPaperRegions) {
+      if (reg.groupId != null) counts[reg.groupId!] = (counts[reg.groupId!] ?? 0) + 1;
+    }
+
     for (int i = 0; i < _strokes.length; i++) {
       final gid = _strokes[i].groupId;
       if (gid != null && (counts[gid] ?? 0) < 2) {
         _strokes[i] = _strokes[i].copyWith(clearGroupId: true);
+      }
+    }
+    for (int i = 0; i < _canvasTexts.length; i++) {
+      final gid = _canvasTexts[i].groupId;
+      if (gid != null && (counts[gid] ?? 0) < 2) {
+        _canvasTexts[i] = _canvasTexts[i].copyWith(clearGroupId: true);
+      }
+    }
+    for (int i = 0; i < _canvasImages.length; i++) {
+      final gid = _canvasImages[i].groupId;
+      if (gid != null && (counts[gid] ?? 0) < 2) {
+        _canvasImages[i] = _canvasImages[i].copyWith(clearGroupId: true);
+      }
+    }
+    for (int i = 0; i < _canvasPaperRegions.length; i++) {
+      final gid = _canvasPaperRegions[i].groupId;
+      if (gid != null && (counts[gid] ?? 0) < 2) {
+        _canvasPaperRegions[i] = _canvasPaperRegions[i].copyWith(clearGroupId: true);
       }
     }
   }
@@ -2768,10 +2926,14 @@ class PlannerController extends ChangeNotifier {
     if (_selectedStrokeIndices.isNotEmpty ||
         _selectedTextIds.isNotEmpty ||
         _selectedImageIds.isNotEmpty ||
+        _selectedPaperRegionId != null ||
+        _activeAreaSelectionRect != null ||
         _lassoPoints.isNotEmpty) {
       _selectedStrokeIndices.clear();
       _selectedTextIds.clear();
       _selectedImageIds.clear();
+      _selectedPaperRegionId = null;
+      _activeAreaSelectionRect = null;
       _selectionRotationAngle = 0.0;
       _lassoPoints = [];
       _isDraggingSelection = false;
@@ -2798,6 +2960,11 @@ class PlannerController extends ChangeNotifier {
     for (final imageId in _selectedImageIds) {
       _canvasImages.removeWhere((img) => img.id == imageId);
     }
+    final hadPaperRegion = _selectedPaperRegionId != null;
+    if (_selectedPaperRegionId != null) {
+      _canvasPaperRegions.removeWhere((r) => r.id == _selectedPaperRegionId);
+      _selectedPaperRegionId = null;
+    }
     _selectedStrokeIndices.clear();
     _selectedTextIds.clear();
     _selectedImageIds.clear();
@@ -2807,6 +2974,7 @@ class PlannerController extends ChangeNotifier {
     _saveCurrentStrokes();
     _saveCurrentCanvasTexts();
     if (hadImages) _saveCurrentCanvasImages();
+    if (hadPaperRegion) _saveCurrentCanvasPaperRegions();
     notifyListeners();
   }
 
@@ -2844,10 +3012,18 @@ class PlannerController extends ChangeNotifier {
       final idx = _canvasTexts.indexWhere((t) => t.id == textId);
       if (idx != -1) {
         final origText = _canvasTexts[idx];
+        String? duplicatedGroupId;
+        if (origText.groupId != null) {
+          duplicatedGroupId = groupMap.putIfAbsent(
+            origText.groupId!,
+            () => 'grp_${nowMicros}_${groupMap.length}',
+          );
+        }
         final duplicatedText = origText.copyWith(
           id: 'txt_${nowMicros}_${newTextIds.length}',
           position: origText.position + const Offset(24, 24),
           isLocked: false,
+          groupId: duplicatedGroupId,
           layerOrder: _nextTopLayerOrder(),
         );
         _canvasTexts.add(duplicatedText);
@@ -2859,14 +3035,45 @@ class PlannerController extends ChangeNotifier {
       final idx = _canvasImages.indexWhere((img) => img.id == imageId);
       if (idx != -1) {
         final orig = _canvasImages[idx];
+        String? duplicatedGroupId;
+        if (orig.groupId != null) {
+          duplicatedGroupId = groupMap.putIfAbsent(
+            orig.groupId!,
+            () => 'grp_${nowMicros}_${groupMap.length}',
+          );
+        }
         final dup = orig.copyWith(
           id: 'img_${nowMicros}_${newImageIds.length}',
           position: orig.position + const Offset(24, 24),
           isLocked: false,
+          groupId: duplicatedGroupId,
           layerOrder: _nextTopLayerOrder(),
         );
         _canvasImages.add(dup);
         newImageIds.add(dup.id);
+      }
+    }
+    if (_selectedPaperRegionId != null) {
+      final idx = _canvasPaperRegions.indexWhere((r) => r.id == _selectedPaperRegionId);
+      if (idx != -1) {
+        final orig = _canvasPaperRegions[idx];
+        String? duplicatedGroupId;
+        if (orig.groupId != null) {
+          duplicatedGroupId = groupMap.putIfAbsent(
+            orig.groupId!,
+            () => 'grp_${nowMicros}_${groupMap.length}',
+          );
+        }
+        final dup = orig.copyWith(
+          id: 'reg_$nowMicros',
+          rect: orig.rect.shift(const Offset(24, 24)),
+          isLocked: false,
+          groupId: duplicatedGroupId,
+          layerOrder: _nextTopLayerOrder(),
+        );
+        _canvasPaperRegions.add(dup);
+        _selectedPaperRegionId = dup.id;
+        _saveCurrentCanvasPaperRegions();
       }
     }
     _selectedStrokeIndices
@@ -2887,8 +3094,8 @@ class PlannerController extends ChangeNotifier {
 
   // --- Canva-Style Gruplama (Group / Ungroup Management) ---
 
-  void groupSelectedStrokes() {
-    if (_selectedStrokeIndices.length < 2) return;
+  void groupSelectedItems() {
+    if (selectedLayerCount < 2) return;
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
 
@@ -2898,13 +3105,36 @@ class PlannerController extends ChangeNotifier {
         _strokes[idx] = _strokes[idx].copyWith(groupId: newGroupId);
       }
     }
+    for (final textId in _selectedTextIds) {
+      final idx = _canvasTexts.indexWhere((t) => t.id == textId);
+      if (idx != -1) {
+        _canvasTexts[idx] = _canvasTexts[idx].copyWith(groupId: newGroupId);
+      }
+    }
+    for (final imgId in _selectedImageIds) {
+      final idx = _canvasImages.indexWhere((i) => i.id == imgId);
+      if (idx != -1) {
+        _canvasImages[idx] = _canvasImages[idx].copyWith(groupId: newGroupId);
+      }
+    }
+    if (_selectedPaperRegionId != null) {
+      final idx = _canvasPaperRegions.indexWhere((r) => r.id == _selectedPaperRegionId);
+      if (idx != -1) {
+        _canvasPaperRegions[idx] = _canvasPaperRegions[idx].copyWith(groupId: newGroupId);
+      }
+    }
     _cleanupSingletonGroups();
     _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
+    _saveCurrentCanvasImages();
+    _saveCurrentCanvasPaperRegions();
     notifyListeners();
   }
 
-  void ungroupSelectedStrokes() {
-    if (!hasGroupedStrokeInSelection) return;
+  void groupSelectedStrokes() => groupSelectedItems();
+
+  void ungroupSelectedItems() {
+    if (!hasGroupedItemInSelection) return;
     _undoStack.add(List.from(_strokes));
     _redoStack.clear();
 
@@ -2915,9 +3145,32 @@ class PlannerController extends ChangeNotifier {
         _strokes[i] = _strokes[i].copyWith(clearGroupId: true);
       }
     }
+    for (int i = 0; i < _canvasTexts.length; i++) {
+      final gid = _canvasTexts[i].groupId;
+      if (gid != null && targetGroups.contains(gid)) {
+        _canvasTexts[i] = _canvasTexts[i].copyWith(clearGroupId: true);
+      }
+    }
+    for (int i = 0; i < _canvasImages.length; i++) {
+      final gid = _canvasImages[i].groupId;
+      if (gid != null && targetGroups.contains(gid)) {
+        _canvasImages[i] = _canvasImages[i].copyWith(clearGroupId: true);
+      }
+    }
+    for (int i = 0; i < _canvasPaperRegions.length; i++) {
+      final gid = _canvasPaperRegions[i].groupId;
+      if (gid != null && targetGroups.contains(gid)) {
+        _canvasPaperRegions[i] = _canvasPaperRegions[i].copyWith(clearGroupId: true);
+      }
+    }
     _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
+    _saveCurrentCanvasImages();
+    _saveCurrentCanvasPaperRegions();
     notifyListeners();
   }
+
+  void ungroupSelectedStrokes() => ungroupSelectedItems();
 
   void ungroupByGroupId(String groupId) {
     _undoStack.add(List.from(_strokes));
@@ -2928,7 +3181,25 @@ class PlannerController extends ChangeNotifier {
         _strokes[i] = _strokes[i].copyWith(clearGroupId: true);
       }
     }
+    for (int i = 0; i < _canvasTexts.length; i++) {
+      if (_canvasTexts[i].groupId == groupId) {
+        _canvasTexts[i] = _canvasTexts[i].copyWith(clearGroupId: true);
+      }
+    }
+    for (int i = 0; i < _canvasImages.length; i++) {
+      if (_canvasImages[i].groupId == groupId) {
+        _canvasImages[i] = _canvasImages[i].copyWith(clearGroupId: true);
+      }
+    }
+    for (int i = 0; i < _canvasPaperRegions.length; i++) {
+      if (_canvasPaperRegions[i].groupId == groupId) {
+        _canvasPaperRegions[i] = _canvasPaperRegions[i].copyWith(clearGroupId: true);
+      }
+    }
     _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
+    _saveCurrentCanvasImages();
+    _saveCurrentCanvasPaperRegions();
     notifyListeners();
   }
 
@@ -2945,12 +3216,76 @@ class PlannerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void removeLayerFromGroup(CanvasLayerEntry entry) {
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    switch (entry.type) {
+      case CanvasLayerType.stroke:
+        if (entry.strokeIndex != null &&
+            entry.strokeIndex! >= 0 &&
+            entry.strokeIndex! < _strokes.length) {
+          _strokes[entry.strokeIndex!] =
+              _strokes[entry.strokeIndex!].copyWith(clearGroupId: true);
+        }
+        break;
+      case CanvasLayerType.text:
+        final idx = _canvasTexts.indexWhere((t) => t.id == entry.textId);
+        if (idx != -1) {
+          _canvasTexts[idx] =
+              _canvasTexts[idx].copyWith(clearGroupId: true);
+        }
+        break;
+      case CanvasLayerType.image:
+        final idx = _canvasImages.indexWhere((i) => i.id == entry.imageId);
+        if (idx != -1) {
+          _canvasImages[idx] =
+              _canvasImages[idx].copyWith(clearGroupId: true);
+        }
+        break;
+      case CanvasLayerType.paperRegion:
+        final idx = _canvasPaperRegions
+            .indexWhere((r) => r.id == entry.paperRegionId);
+        if (idx != -1) {
+          _canvasPaperRegions[idx] =
+              _canvasPaperRegions[idx].copyWith(clearGroupId: true);
+        }
+        break;
+    }
+    _cleanupSingletonGroups();
+    _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
+    _saveCurrentCanvasImages();
+    _saveCurrentCanvasPaperRegions();
+    notifyListeners();
+  }
+
   void selectGroup(String groupId) {
     _selectedTool = DrawingTool.lasso;
     _selectedStrokeIndices.clear();
+    _selectedTextIds.clear();
+    _selectedImageIds.clear();
+    _selectedPaperRegionId = null;
+    _activeAreaSelectionRect = null;
+
     for (int i = 0; i < _strokes.length; i++) {
       if (_strokes[i].groupId == groupId) {
         _selectedStrokeIndices.add(i);
+      }
+    }
+    for (final t in _canvasTexts) {
+      if (t.groupId == groupId) {
+        _selectedTextIds.add(t.id);
+      }
+    }
+    for (final img in _canvasImages) {
+      if (img.groupId == groupId) {
+        _selectedImageIds.add(img.id);
+      }
+    }
+    for (final reg in _canvasPaperRegions) {
+      if (reg.groupId == groupId) {
+        _selectedPaperRegionId = reg.id;
       }
     }
     _syncSelectionRotationFromStrokes();
@@ -2958,6 +3293,14 @@ class PlannerController extends ChangeNotifier {
   }
 
   // --- Canva-Style Kilitleme (Lock / Unlock Management) ---
+
+  void lockSelection() {
+    lockSelectedStrokes();
+  }
+
+  void unlockSelection() {
+    unlockSelectedStrokes();
+  }
 
   void lockSelectedStrokes() {
     if (!hasLassoSelection) return;
@@ -2976,6 +3319,13 @@ class PlannerController extends ChangeNotifier {
       }
     }
     _setSelectedImagesLocked(true);
+    if (_selectedPaperRegionId != null) {
+      final idx = _canvasPaperRegions.indexWhere((r) => r.id == _selectedPaperRegionId);
+      if (idx != -1) {
+        _canvasPaperRegions[idx] = _canvasPaperRegions[idx].copyWith(isLocked: true);
+        _saveCurrentCanvasPaperRegions();
+      }
+    }
     _isDraggingSelection = false;
     _activeResizeHandle = null;
     _isRotatingSelection = false;
@@ -3001,6 +3351,13 @@ class PlannerController extends ChangeNotifier {
       }
     }
     _setSelectedImagesLocked(false);
+    if (_selectedPaperRegionId != null) {
+      final idx = _canvasPaperRegions.indexWhere((r) => r.id == _selectedPaperRegionId);
+      if (idx != -1) {
+        _canvasPaperRegions[idx] = _canvasPaperRegions[idx].copyWith(isLocked: false);
+        _saveCurrentCanvasPaperRegions();
+      }
+    }
     _saveCurrentStrokes();
     _saveCurrentCanvasTexts();
     notifyListeners();
@@ -3227,6 +3584,22 @@ class PlannerController extends ChangeNotifier {
         );
       }
     }
+    if (_selectedPaperRegionId != null) {
+      final idx = _canvasPaperRegions.indexWhere((r) => r.id == _selectedPaperRegionId);
+      if (idx != -1) {
+        final reg = _canvasPaperRegions[idx];
+        final centerDx = reg.rect.center.dx;
+        final newCenterDx = 2 * cx - centerDx;
+        _canvasPaperRegions[idx] = reg.copyWith(
+          rect: Rect.fromCenter(
+            center: Offset(newCenterDx, reg.rect.center.dy),
+            width: reg.rect.width,
+            height: reg.rect.height,
+          ),
+        );
+        _saveCurrentCanvasPaperRegions();
+      }
+    }
     if (_selectedImageIds.isNotEmpty) _saveCurrentCanvasImages();
     _saveCurrentStrokes();
     _saveCurrentCanvasTexts();
@@ -3275,6 +3648,22 @@ class PlannerController extends ChangeNotifier {
           position: Offset(img.position.dx, newCenterDy - img.height / 2.0),
           rotation: -img.rotation,
         );
+      }
+    }
+    if (_selectedPaperRegionId != null) {
+      final idx = _canvasPaperRegions.indexWhere((r) => r.id == _selectedPaperRegionId);
+      if (idx != -1) {
+        final reg = _canvasPaperRegions[idx];
+        final centerDy = reg.rect.center.dy;
+        final newCenterDy = 2 * cy - centerDy;
+        _canvasPaperRegions[idx] = reg.copyWith(
+          rect: Rect.fromCenter(
+            center: Offset(reg.rect.center.dx, newCenterDy),
+            width: reg.rect.width,
+            height: reg.rect.height,
+          ),
+        );
+        _saveCurrentCanvasPaperRegions();
       }
     }
     if (_selectedImageIds.isNotEmpty) _saveCurrentCanvasImages();

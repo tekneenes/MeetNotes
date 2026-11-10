@@ -1100,7 +1100,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: () {
-            controller.unlockSelectedStrokes();
+            controller.unlockSelection();
             if (textItem != null) {
               controller.updateCanvasTextStyle(
                 textItem.id,
@@ -1757,6 +1757,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
   }
 
   List<Widget> _buildAreaSelectionItems(PlannerController controller) {
+    final isLocked = controller.isSelectionLocked;
     Widget buildTemplateBtn({
       required PaperStyle style,
       required IconData icon,
@@ -1854,6 +1855,94 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         tooltip: 'Seçili Alanı Boş Yap',
       ),
       if (controller.selectedPaperRegionId != null) ...[
+        _buildPillDivider(),
+        Tooltip(
+          message: isLocked ? 'Kilidi Aç' : 'Şablon Alanını Kilitle',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () {
+              controller.togglePaperRegionLock(controller.selectedPaperRegionId!);
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isLocked ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
+                    size: 15,
+                    color: const Color(0xFFFBBF24),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    isLocked ? 'Kilidi Aç' : 'Kilitle',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFFBBF24),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (controller.canGroupSelection) ...[
+          _buildPillDivider(),
+          Tooltip(
+            message: 'Seçili Öğeleri Grupla (${controller.selectedLayerCount})',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: controller.groupSelectedItems,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.link_rounded, size: 15, color: Color(0xFF38BDF8)),
+                    SizedBox(width: 4),
+                    Text(
+                      'Grupla',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF38BDF8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+        if (controller.hasGroupedItemInSelection) ...[
+          _buildPillDivider(),
+          Tooltip(
+            message: 'Grubu Çöz',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: controller.ungroupSelectedItems,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.link_off_rounded, size: 15, color: Color(0xFFFBBF24)),
+                    SizedBox(width: 4),
+                    Text(
+                      'Grubu Çöz',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFFBBF24),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
         _buildPillDivider(),
         Tooltip(
           message: 'Özel Şablonu Kaldır (Normal Sayfa Düzenine Dön)',
@@ -2194,7 +2283,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
             controller.openQuickAccessAssetsPage();
             break;
           case 'lock_selection':
-            controller.lockSelectedStrokes();
+            controller.lockSelection();
             if (textItem != null) {
               controller.updateCanvasTextStyle(
                 textItem.id,
@@ -2203,10 +2292,10 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
             }
             break;
           case 'group_selection':
-            controller.groupSelectedStrokes();
+            controller.groupSelectedItems();
             break;
           case 'ungroup_selection':
-            controller.ungroupSelectedStrokes();
+            controller.ungroupSelectedItems();
             break;
           case 'show_selected_group':
             controller.openQuickAccessForSelectedGroup();
@@ -2333,7 +2422,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Seçili Öğeleri Grupla (${controller.selectedStrokeIndices.length})',
+                    'Seçili Öğeleri Grupla (${controller.selectedLayerCount})',
                     style: const TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.w700,
@@ -2344,7 +2433,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
               ],
             ),
           ),
-        if (controller.hasGroupedStrokeInSelection) ...[
+        if (controller.hasGroupedItemInSelection) ...[
           const PopupMenuItem<String>(
             value: 'ungroup_selection',
             height: 36,

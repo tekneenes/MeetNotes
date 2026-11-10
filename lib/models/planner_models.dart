@@ -376,6 +376,7 @@ class CanvasTextItem {
   final double width;
   final bool isLocked;
   final int? layerOrder;
+  final String? groupId;
 
   const CanvasTextItem({
     required this.id,
@@ -394,6 +395,7 @@ class CanvasTextItem {
     this.width = 220.0,
     this.isLocked = false,
     this.layerOrder,
+    this.groupId,
   });
 
   CanvasTextItem copyWith({
@@ -414,6 +416,8 @@ class CanvasTextItem {
     double? width,
     bool? isLocked,
     int? layerOrder,
+    String? groupId,
+    bool clearGroupId = false,
   }) {
     return CanvasTextItem(
       id: id ?? this.id,
@@ -433,6 +437,7 @@ class CanvasTextItem {
       width: width ?? this.width,
       isLocked: isLocked ?? this.isLocked,
       layerOrder: layerOrder ?? this.layerOrder,
+      groupId: clearGroupId ? null : (groupId ?? this.groupId),
     );
   }
 
@@ -454,6 +459,7 @@ class CanvasTextItem {
     'width': width,
     'isLocked': isLocked,
     if (layerOrder != null) 'layerOrder': layerOrder,
+    if (groupId != null) 'groupId': groupId,
   };
 
   factory CanvasTextItem.fromMap(Map<String, dynamic> map) {
@@ -477,6 +483,7 @@ class CanvasTextItem {
       width: (map['width'] as num?)?.toDouble() ?? 220.0,
       isLocked: map['isLocked'] as bool? ?? false,
       layerOrder: (map['layerOrder'] as num?)?.toInt(),
+      groupId: map['groupId'] as String?,
     );
   }
   double computeHeight() {
@@ -567,6 +574,18 @@ class CanvasLayerEntry {
   bool get isText => type == CanvasLayerType.text;
   bool get isImage => type == CanvasLayerType.image;
   bool get isPaperRegion => type == CanvasLayerType.paperRegion;
+  String? get groupId {
+    switch (type) {
+      case CanvasLayerType.stroke:
+        return stroke?.groupId;
+      case CanvasLayerType.text:
+        return textItem?.groupId;
+      case CanvasLayerType.image:
+        return imageItem?.groupId;
+      case CanvasLayerType.paperRegion:
+        return paperRegion?.groupId;
+    }
+  }
   bool get isLocked {
     switch (type) {
       case CanvasLayerType.stroke:
@@ -634,6 +653,7 @@ class CanvasImageItem {
   final double rotation;
   final int? layerOrder;
   final Uint8List? memoryBytes;
+  final String? groupId;
 
   const CanvasImageItem({
     required this.id,
@@ -646,6 +666,7 @@ class CanvasImageItem {
     this.rotation = 0.0,
     this.layerOrder,
     this.memoryBytes,
+    this.groupId,
   });
 
   Rect get rect => Rect.fromLTWH(position.dx, position.dy, width, height);
@@ -672,6 +693,8 @@ class CanvasImageItem {
     double? rotation,
     int? layerOrder,
     Uint8List? memoryBytes,
+    String? groupId,
+    bool clearGroupId = false,
   }) {
     return CanvasImageItem(
       id: id ?? this.id,
@@ -684,6 +707,7 @@ class CanvasImageItem {
       rotation: rotation ?? this.rotation,
       layerOrder: layerOrder ?? this.layerOrder,
       memoryBytes: memoryBytes ?? this.memoryBytes,
+      groupId: clearGroupId ? null : (groupId ?? this.groupId),
     );
   }
 
@@ -698,6 +722,7 @@ class CanvasImageItem {
     'isLocked': isLocked,
     'rotation': rotation,
     if (layerOrder != null) 'layerOrder': layerOrder,
+    if (groupId != null) 'groupId': groupId,
   };
 
   factory CanvasImageItem.fromMap(Map<String, dynamic> map) {
@@ -722,6 +747,7 @@ class CanvasImageItem {
       rotation: (map['rotation'] as num?)?.toDouble() ?? 0.0,
       layerOrder: (map['layerOrder'] as num?)?.toInt(),
       memoryBytes: decoded,
+      groupId: map['groupId'] as String?,
     );
   }
 }
@@ -806,6 +832,7 @@ class CanvasPaperRegion {
   final double opacity;
   final bool isLocked;
   final int? layerOrder;
+  final String? groupId;
 
   const CanvasPaperRegion({
     required this.id,
@@ -815,6 +842,7 @@ class CanvasPaperRegion {
     this.opacity = 0.16,
     this.isLocked = false,
     this.layerOrder,
+    this.groupId,
   });
 
   CanvasPaperRegion copyWith({
@@ -825,6 +853,8 @@ class CanvasPaperRegion {
     double? opacity,
     bool? isLocked,
     int? layerOrder,
+    String? groupId,
+    bool clearGroupId = false,
   }) {
     return CanvasPaperRegion(
       id: id ?? this.id,
@@ -834,6 +864,7 @@ class CanvasPaperRegion {
       opacity: opacity ?? this.opacity,
       isLocked: isLocked ?? this.isLocked,
       layerOrder: layerOrder ?? this.layerOrder,
+      groupId: clearGroupId ? null : (groupId ?? this.groupId),
     );
   }
 
@@ -848,6 +879,7 @@ class CanvasPaperRegion {
     'opacity': opacity,
     'isLocked': isLocked,
     if (layerOrder != null) 'layerOrder': layerOrder,
+    if (groupId != null) 'groupId': groupId,
   };
 
   factory CanvasPaperRegion.fromMap(Map<String, dynamic> map) {
@@ -868,6 +900,7 @@ class CanvasPaperRegion {
       opacity: (map['opacity'] as num?)?.toDouble() ?? 0.16,
       isLocked: map['isLocked'] as bool? ?? false,
       layerOrder: (map['layerOrder'] as num?)?.toInt(),
+      groupId: map['groupId'] as String?,
     );
   }
 
@@ -882,10 +915,11 @@ class CanvasPaperRegion {
           spacing == other.spacing &&
           opacity == other.opacity &&
           isLocked == other.isLocked &&
-          layerOrder == other.layerOrder;
+          layerOrder == other.layerOrder &&
+          groupId == other.groupId;
 
   @override
-  int get hashCode => Object.hash(id, rect, style, spacing, opacity, isLocked, layerOrder);
+  int get hashCode => Object.hash(id, rect, style, spacing, opacity, isLocked, layerOrder, groupId);
 }
 
 class SavedCanvasAsset {

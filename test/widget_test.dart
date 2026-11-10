@@ -1335,4 +1335,64 @@ void main() {
 
     await tester.pump(const Duration(milliseconds: 1000));
   });
+
+  testWidgets('Custom Paper Region locking and unified grouping test', (WidgetTester tester) async {
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // 1. Draw a stroke inside a region
+    controller.setTool(DrawingTool.pen);
+    controller.startStroke(const Offset(120, 120));
+    controller.updateStroke(const Offset(150, 150));
+    controller.endStroke();
+    expect(controller.strokes.length, 1);
+
+    // 2. Create a custom paper region
+    controller.setTool(DrawingTool.lasso);
+    controller.setLassoSelectionMode(LassoSelectionMode.rectangle);
+    controller.startStroke(const Offset(100, 100));
+    controller.updateStroke(const Offset(250, 250));
+    controller.endStroke();
+    final region = controller.applyPaperStyleToSelection(PaperStyle.grid);
+    expect(region, isNotNull);
+
+    // 3. Select both the stroke and the paper region
+    controller.startStroke(const Offset(80, 80));
+    controller.updateStroke(const Offset(270, 270));
+    controller.endStroke();
+
+    expect(controller.selectedLayerCount, greaterThanOrEqualTo(2));
+    expect(controller.canGroupSelection, isTrue);
+
+    // 4. Group the selection
+    controller.groupSelectedItems();
+    final groups = controller.allUnifiedGroups;
+    expect(groups.isNotEmpty, isTrue);
+    final groupMembers = groups.values.first;
+    expect(groupMembers.length, 2);
+    expect(groupMembers.any((m) => m.isStroke), isTrue);
+    expect(groupMembers.any((m) => m.isPaperRegion), isTrue);
+
+    // 5. Locking the group / selection
+    expect(controller.isSelectionLocked, isFalse);
+    controller.lockSelection();
+    expect(controller.isSelectionLocked, isTrue);
+    expect(controller.canvasPaperRegions.first.isLocked, isTrue);
+    expect(controller.strokes.first.isLocked, isTrue);
+
+    // 6. Unlocking the selection
+    controller.unlockSelection();
+    expect(controller.isSelectionLocked, isFalse);
+    expect(controller.canvasPaperRegions.first.isLocked, isFalse);
+    expect(controller.strokes.first.isLocked, isFalse);
+
+    // 7. Ungrouping
+    expect(controller.hasGroupedItemInSelection, isTrue);
+    controller.ungroupSelectedItems();
+    expect(controller.allUnifiedGroups.isEmpty, isTrue);
+    expect(controller.canvasPaperRegions.first.groupId, isNull);
+    expect(controller.strokes.first.groupId, isNull);
+
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
 }

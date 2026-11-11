@@ -278,6 +278,63 @@ class PdfPageDragData {
   });
 }
 
+class EraserMask {
+  final String id;
+  final List<Offset> points;
+  final double strokeWidth;
+
+  const EraserMask({
+    required this.id,
+    required this.points,
+    required this.strokeWidth,
+  });
+
+  EraserMask copyWith({
+    String? id,
+    List<Offset>? points,
+    double? strokeWidth,
+  }) {
+    return EraserMask(
+      id: id ?? this.id,
+      points: points ?? this.points,
+      strokeWidth: strokeWidth ?? this.strokeWidth,
+    );
+  }
+
+  EraserMask translate(Offset delta) {
+    return EraserMask(
+      id: id,
+      points: points.map((p) => p + delta).toList(),
+      strokeWidth: strokeWidth,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'points': points.map((p) => [p.dx, p.dy]).toList(),
+      'strokeWidth': strokeWidth,
+    };
+  }
+
+  factory EraserMask.fromMap(Map<String, dynamic> map) {
+    final rawPoints = (map['points'] as List<dynamic>? ?? []);
+    final points = rawPoints.map((pt) {
+      final list = pt as List<dynamic>;
+      return Offset(
+        (list[0] as num).toDouble(),
+        (list[1] as num).toDouble(),
+      );
+    }).toList();
+
+    return EraserMask(
+      id: map['id'] as String? ?? 'mask_${DateTime.now().microsecondsSinceEpoch}',
+      points: points,
+      strokeWidth: (map['strokeWidth'] as num?)?.toDouble() ?? 20.0,
+    );
+  }
+}
+
 class DrawingStroke {
   final List<Offset> points;
   final Color color;
@@ -287,6 +344,7 @@ class DrawingStroke {
   final String? groupId;
   final bool isLocked;
   final int? layerOrder;
+  final List<EraserMask> eraserMasks;
 
   const DrawingStroke({
     required this.points,
@@ -297,6 +355,7 @@ class DrawingStroke {
     this.groupId,
     this.isLocked = false,
     this.layerOrder,
+    this.eraserMasks = const [],
   });
 
   DrawingStroke copyWith({
@@ -309,6 +368,7 @@ class DrawingStroke {
     bool clearGroupId = false,
     bool? isLocked,
     int? layerOrder,
+    List<EraserMask>? eraserMasks,
   }) {
     return DrawingStroke(
       points: points ?? this.points,
@@ -319,6 +379,7 @@ class DrawingStroke {
       groupId: clearGroupId ? null : (groupId ?? this.groupId),
       isLocked: isLocked ?? this.isLocked,
       layerOrder: layerOrder ?? this.layerOrder,
+      eraserMasks: eraserMasks ?? this.eraserMasks,
     );
   }
 
@@ -332,6 +393,8 @@ class DrawingStroke {
       if (groupId != null) 'groupId': groupId,
       if (isLocked) 'isLocked': true,
       if (layerOrder != null) 'layerOrder': layerOrder,
+      if (eraserMasks.isNotEmpty)
+        'eraserMasks': eraserMasks.map((m) => m.toMap()).toList(),
     };
   }
 
@@ -345,6 +408,11 @@ class DrawingStroke {
       );
     }).toList();
 
+    final rawMasks = (map['eraserMasks'] as List<dynamic>? ?? []);
+    final eraserMasks = rawMasks
+        .map((m) => EraserMask.fromMap(m as Map<String, dynamic>))
+        .toList();
+
     return DrawingStroke(
       points: points,
       color: Color((map['color'] as num?)?.toInt() ?? 0xFF000000),
@@ -357,6 +425,7 @@ class DrawingStroke {
       groupId: map['groupId'] as String?,
       isLocked: map['isLocked'] as bool? ?? false,
       layerOrder: (map['layerOrder'] as num?)?.toInt(),
+      eraserMasks: eraserMasks,
     );
   }
 }

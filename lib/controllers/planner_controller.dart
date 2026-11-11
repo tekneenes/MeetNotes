@@ -77,6 +77,7 @@ class PlannerController extends ChangeNotifier {
   Offset? _dragStartPoint;
   Rect? _initialDragSelectionBounds;
   final Map<int, List<Offset>> _initialDragStrokes = {};
+  final Map<int, List<EraserMask>> _initialDragStrokeMasks = {};
   final Map<String, Offset> _initialDragTexts = {};
   final Map<String, Offset> _initialDragImages = {};
   final Map<String, Rect> _initialDragPaperRegionRects = {};
@@ -109,6 +110,7 @@ class PlannerController extends ChangeNotifier {
   double _eraserSize = 22.0;
   Offset? _lastEraserPoint;
   Offset? _activeEraserPoint;
+  String? _activeEraserGestureId;
   bool _enableDrawAndHold = true;
   Timer? _drawAndHoldTimer;
   Offset? _holdAnchorPoint;
@@ -1128,8 +1130,10 @@ class PlannerController extends ChangeNotifier {
     final newSelectedIndices = <int>{};
     for (final s in asset.strokes) {
       final movedPoints = s.points.map((p) => p + delta).toList();
+      final movedMasks = s.eraserMasks.map((m) => m.translate(delta)).toList();
       final placedStroke = s.copyWith(
         points: movedPoints,
+        eraserMasks: movedMasks,
         groupId: newGroupId,
         clearGroupId: newGroupId == null,
         isLocked: false,
@@ -1904,9 +1908,11 @@ class PlannerController extends ChangeNotifier {
 
     _initialDragSelectionBounds = _computeRawSelectionBounds();
     _initialDragStrokes.clear();
+    _initialDragStrokeMasks.clear();
     for (final idx in _selectedStrokeIndices) {
       if (idx >= 0 && idx < _strokes.length) {
         _initialDragStrokes[idx] = List<Offset>.from(_strokes[idx].points);
+        _initialDragStrokeMasks[idx] = List<EraserMask>.from(_strokes[idx].eraserMasks);
       }
     }
     _initialDragTexts.clear();
@@ -2517,6 +2523,7 @@ class PlannerController extends ChangeNotifier {
     if (_selectedTool == DrawingTool.eraser) {
       _undoStack.add(List.from(_strokes));
       _redoStack.clear();
+      _activeEraserGestureId = 'eg_${DateTime.now().microsecondsSinceEpoch}';
       _lastEraserPoint = point;
       _activeEraserPoint = point;
       _eraseSegment(point, point);
@@ -2906,7 +2913,14 @@ class PlannerController extends ChangeNotifier {
       if (_initialDragStrokes.containsKey(idx)) {
         final initialPoints = _initialDragStrokes[idx]!;
         final movedPoints = initialPoints.map((p) => p + snappedDelta).toList();
-        _strokes[idx] = _strokes[idx].copyWith(points: movedPoints);
+        final initialMasks = _initialDragStrokeMasks[idx];
+        final movedMasks = initialMasks != null && initialMasks.isNotEmpty
+            ? initialMasks.map((m) => m.translate(snappedDelta)).toList()
+            : _strokes[idx].eraserMasks;
+        _strokes[idx] = _strokes[idx].copyWith(
+          points: movedPoints,
+          eraserMasks: movedMasks,
+        );
         canvasDragTick.value++;
       }
       return;
@@ -2940,7 +2954,14 @@ class PlannerController extends ChangeNotifier {
           if (idx >= 0 && idx < _strokes.length && _initialDragStrokes.containsKey(idx)) {
             final initialPoints = _initialDragStrokes[idx]!;
             final movedPoints = initialPoints.map((p) => p + snappedDelta).toList();
-            _strokes[idx] = _strokes[idx].copyWith(points: movedPoints);
+            final initialMasks = _initialDragStrokeMasks[idx];
+            final movedMasks = initialMasks != null && initialMasks.isNotEmpty
+                ? initialMasks.map((m) => m.translate(snappedDelta)).toList()
+                : _strokes[idx].eraserMasks;
+            _strokes[idx] = _strokes[idx].copyWith(
+              points: movedPoints,
+              eraserMasks: movedMasks,
+            );
           }
         }
         for (final textId in _selectedTextIds) {
@@ -3050,6 +3071,7 @@ class PlannerController extends ChangeNotifier {
     if (_selectedTool == DrawingTool.eraser) {
       _lastEraserPoint = null;
       _activeEraserPoint = null;
+      _activeEraserGestureId = null;
       activeStrokeTick.value++;
       _saveCurrentStrokes();
       notifyListeners();
@@ -3066,6 +3088,7 @@ class PlannerController extends ChangeNotifier {
       _dragStartPoint = null;
       _initialDragSelectionBounds = null;
       _initialDragStrokes.clear();
+      _initialDragStrokeMasks.clear();
       _saveCurrentStrokes();
       notifyListeners();
       return;
@@ -3096,6 +3119,7 @@ class PlannerController extends ChangeNotifier {
         _activeSmartGuides = [];
         _initialDragSelectionBounds = null;
         _initialDragStrokes.clear();
+        _initialDragStrokeMasks.clear();
         _initialDragTexts.clear();
         _initialDragImages.clear();
         _initialDragPaperRegionRects.clear();
@@ -3239,6 +3263,7 @@ class PlannerController extends ChangeNotifier {
         _initialResizeStrokes.clear();
         _initialDragSelectionBounds = null;
         _initialDragStrokes.clear();
+        _initialDragStrokeMasks.clear();
         _initialDragTexts.clear();
         _initialDragImages.clear();
         _initialDragPaperRegionRects.clear();
@@ -3662,7 +3687,34 @@ class PlannerController extends ChangeNotifier {
           );
         }).toList();
 
-        _strokes[idx] = origStroke.copyWith(points: scaledPoints);
+        final avgScale = (initW > 0.001 && initH > 0.001)
+            ? (newW / initW + newH / initH) / 2.0
+            : 1.0;
+        final scaledMasks = origStroke.eraserMasks.map((mask) {
+          final mappedMaskPoints = mask.points.map((pt) {
+            final mappedX = initW > 0.001
+                ? newLeft + ((pt.dx - initRect.left) / initW) * newW
+                : newLeft + (pt.dx - initRect.left);
+            final mappedY = initH > 0.001
+                ? newTop + ((pt.dy - initRect.top) / initH) * newH
+                : newTop + (pt.dy - initRect.top);
+            final localScaled = Offset(mappedX, mappedY);
+            return _rotatePointAround(
+              localScaled,
+              pivot,
+              _selectionRotationAngle,
+            );
+          }).toList();
+          return mask.copyWith(
+            points: mappedMaskPoints,
+            strokeWidth: mask.strokeWidth * avgScale,
+          );
+        }).toList();
+
+        _strokes[idx] = origStroke.copyWith(
+          points: scaledPoints,
+          eraserMasks: scaledMasks,
+        );
       }
     }
 
@@ -4182,6 +4234,7 @@ class PlannerController extends ChangeNotifier {
       if (idx >= 0 && idx < _strokes.length) {
         final original = _strokes[idx];
         final shiftedPoints = original.points.map((p) => p + const Offset(24, 24)).toList();
+        final shiftedMasks = original.eraserMasks.map((m) => m.translate(const Offset(24, 24))).toList();
         String? duplicatedGroupId;
         if (original.groupId != null) {
           duplicatedGroupId = groupMap.putIfAbsent(
@@ -4192,6 +4245,7 @@ class PlannerController extends ChangeNotifier {
         _strokes.add(
           original.copyWith(
             points: shiftedPoints,
+            eraserMasks: shiftedMasks,
             groupId: duplicatedGroupId,
             layerOrder: _nextTopLayerOrder(),
           ),
@@ -4682,8 +4736,21 @@ class PlannerController extends ChangeNotifier {
             center.dy + dx * sinA + dy * cosA,
           );
         }).toList();
+        final rotatedMasks = origStroke.eraserMasks.map((mask) {
+          final rotatedMaskPoints = mask.points.map((pt) {
+            final dx = pt.dx - center.dx;
+            final dy = pt.dy - center.dy;
+            return Offset(
+              center.dx + dx * cosA - dy * sinA,
+              center.dy + dx * sinA + dy * cosA,
+            );
+          }).toList();
+          return mask.copyWith(points: rotatedMaskPoints);
+        }).toList();
+
         _strokes[idx] = origStroke.copyWith(
           points: rotatedPoints,
+          eraserMasks: rotatedMasks,
           rotation: origStroke.rotation + deltaAngle,
         );
       }
@@ -5803,12 +5870,39 @@ class PlannerController extends ChangeNotifier {
           }
 
           if (stroke.points.isNotEmpty) {
-            final sliceResult = _sliceStrokeWithCircle(stroke, center, eraseRadius);
-            if (sliceResult.changed) {
-              anyChanged = true;
-              stepChanged = true;
+            final isThickStroke = stroke.tool == DrawingTool.marker ||
+                stroke.tool == DrawingTool.watercolor ||
+                stroke.strokeWidth > 8.0;
+
+            if (isThickStroke) {
+              // Masking approach for thick strokes: allows carving notches and bites out of edges
+              final strokeHalfWidth = stroke.strokeWidth / 2.0;
+              final contactDist = eraseRadius + strokeHalfWidth;
+              final minDist = _minDistanceToStrokeCenterline(center, stroke.points);
+
+              if (minDist <= contactDist) {
+                final maskedStroke = _applyEraserMaskToStroke(
+                  stroke,
+                  center,
+                  eraseRadius,
+                  _activeEraserGestureId ?? 'eg_fallback',
+                );
+                if (!identical(maskedStroke, stroke)) {
+                  anyChanged = true;
+                  stepChanged = true;
+                }
+                updatedStrokes.add(maskedStroke);
+              } else {
+                updatedStrokes.add(stroke);
+              }
+            } else {
+              final sliceResult = _sliceStrokeWithCircle(stroke, center, eraseRadius);
+              if (sliceResult.changed) {
+                anyChanged = true;
+                stepChanged = true;
+              }
+              updatedStrokes.addAll(sliceResult.strokes);
             }
-            updatedStrokes.addAll(sliceResult.strokes);
           }
         }
 
@@ -5840,6 +5934,38 @@ class PlannerController extends ChangeNotifier {
     return minDist;
   }
 
+  DrawingStroke _applyEraserMaskToStroke(
+    DrawingStroke stroke,
+    Offset center,
+    double radius,
+    String gestureId,
+  ) {
+    final maskWidth = radius * 2.0;
+    final existingMasks = List<EraserMask>.from(stroke.eraserMasks);
+
+    if (existingMasks.isNotEmpty && existingMasks.last.id == gestureId) {
+      final lastMask = existingMasks.last;
+      final dist = (center - lastMask.points.last).distance;
+      // If continuing an active contact motion, append points
+      if (dist <= radius * 2.5) {
+        if (dist >= 1.0) {
+          final updatedPoints = List<Offset>.from(lastMask.points)..add(center);
+          existingMasks[existingMasks.length - 1] = lastMask.copyWith(points: updatedPoints);
+          return stroke.copyWith(eraserMasks: existingMasks);
+        }
+        return stroke;
+      }
+    }
+
+    final newMask = EraserMask(
+      id: gestureId,
+      points: [center],
+      strokeWidth: maskWidth,
+    );
+    existingMasks.add(newMask);
+    return stroke.copyWith(eraserMasks: existingMasks);
+  }
+
   ({bool changed, List<DrawingStroke> strokes}) _sliceStrokeWithCircle(
     DrawingStroke stroke,
     Offset center,
@@ -5847,28 +5973,10 @@ class PlannerController extends ChangeNotifier {
   ) {
     final pts = stroke.points;
     if (pts.isEmpty) return (changed: false, strokes: const []);
-    
-    final isThickStroke = stroke.tool == DrawingTool.marker ||
-        stroke.tool == DrawingTool.watercolor ||
-        stroke.strokeWidth > 8.0;
 
     // For thin strokes (pen/pencil/line/arrow), we use a small ink cap offset so cut ends sit tangent to the eraser ring.
-    // For thick strokes (highlighter, thick marker), we require the eraser circle to reach the stroke's core centerline
-    // (Goodnotes centerline penetration threshold), preventing accidental grazing cuts when lightly skimming the edge.
-    final strokeInkCapOffset = isThickStroke
-        ? math.min(2.5, stroke.strokeWidth * 0.1)
-        : math.max(0.0, stroke.strokeWidth / 2.0);
-
+    final strokeInkCapOffset = math.max(0.0, stroke.strokeWidth / 2.0);
     final cutRadius = radius + strokeInkCapOffset;
-
-    // Centerline threshold check for thick strokes / highlighter:
-    // If the eraser circle only grazes the outer margin and does not reach the core centerline, preserve the stroke.
-    if (isThickStroke) {
-      final minDistToCenterline = _minDistanceToStrokeCenterline(center, pts);
-      if (minDistToCenterline > radius) {
-        return (changed: false, strokes: [stroke]);
-      }
-    }
 
     if (pts.length == 1) {
       if ((pts.first - center).distance <= cutRadius) {
@@ -5896,6 +6004,10 @@ class PlannerController extends ChangeNotifier {
     final List<List<Offset>> resultSegments = [];
     List<Offset> current = [];
 
+    // Minimum surviving length for an eraser-sliced segment:
+    // Discards micro-crumbs (e.g. 1-3px slivers) left at the circle boundary.
+    final minSurvivingLength = math.max(stroke.strokeWidth * 1.1, 3.5);
+
     void addPoint(Offset p) {
       if (current.isNotEmpty && (current.last - p).distance < 0.25) {
         return;
@@ -5909,7 +6021,7 @@ class PlannerController extends ChangeNotifier {
         for (int k = 0; k < current.length - 1; k++) {
           totalLen += (current[k + 1] - current[k]).distance;
         }
-        if (totalLen >= 1.0) {
+        if (totalLen >= minSurvivingLength) {
           resultSegments.add(List.from(current));
         } else {
           wasModified = true;

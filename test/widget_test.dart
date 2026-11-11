@@ -1657,15 +1657,16 @@ void main() {
     // All 3 vertical lines must have been cleanly intersected and split (3 * 2 = 6 segments)
     expect(controller.strokes.length, 6);
 
-    // 7. Test Smart Centerline Penetration Threshold on Thick Strokes (Highlighter)
+    // 7. Test Masking & Precision Edge Nibbling on Thick Strokes (Highlighter)
     controller.clearCanvas();
-    controller.setTool(DrawingTool.marker); // Fosforlu Kalem (width: 20.0)
+    controller.setTool(DrawingTool.marker); // Fosforlu Kalem (width: 30.0)
     controller.setStrokeWidth(30.0);
     controller.startStroke(const Offset(100, 100));
     controller.updateStroke(const Offset(400, 100));
     controller.endStroke();
     expect(controller.strokes.length, 1);
     expect(controller.strokes.first.strokeWidth, 30.0);
+    expect(controller.strokes.first.eraserMasks.isEmpty, isTrue);
 
     // Eraser size: 20.0 (radius: 10.0)
     controller.setTool(DrawingTool.eraser);
@@ -1673,18 +1674,36 @@ void main() {
     controller.setEraserSize(20.0);
     expect(controller.effectiveEraserRadius, 10.0);
 
+    // Completely outside the stroke (y = 130 > 100 + 15 + 10 = 125):
+    controller.startStroke(const Offset(250, 130));
+    controller.endStroke();
+    expect(controller.strokes.first.eraserMasks.isEmpty, isTrue); // Not touched
+
     // Skim the outer bottom edge at y = 118:
-    // Distance to centerline (y = 100) is 18.0 > radius (10.0).
-    // The Goodnotes centerline threshold preserves the stroke from accidental grazing!
+    // Distance to centerline (y = 100) is 18.0 <= contactDist (10 + 15 = 25.0).
+    // Now with masking, it carves a circular notch from the edge without severing the stroke!
     controller.startStroke(const Offset(250, 118));
     controller.endStroke();
-    expect(controller.strokes.length, 1); // NOT cut!
+    expect(controller.strokes.length, 1);
+    expect(controller.strokes.first.eraserMasks.length, 1);
+    expect(controller.strokes.first.eraserMasks.first.points, contains(const Offset(250, 118)));
 
     // Now move the eraser into the core centerline at (250, 100):
-    // Distance to centerline is 0.0 <= radius (10.0). Now it cleanly severs!
+    // Adds a second eraser mask carving through the stroke
     controller.startStroke(const Offset(250, 100));
     controller.endStroke();
-    expect(controller.strokes.length, 2); // Cleanly severed into 2 segments!
+    expect(controller.strokes.length, 1);
+    expect(controller.strokes.first.eraserMasks.length, 2);
+
+    // Test Undo reverts the masks:
+    controller.undo();
+    expect(controller.strokes.first.eraserMasks.length, 1);
+    controller.undo();
+    expect(controller.strokes.first.eraserMasks.isEmpty, isTrue);
+
+    // Test Redo restores the masks:
+    controller.redo();
+    expect(controller.strokes.first.eraserMasks.length, 1);
 
     await tester.pump(const Duration(milliseconds: 1000));
   });

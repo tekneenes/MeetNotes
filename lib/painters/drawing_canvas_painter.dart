@@ -160,6 +160,65 @@ class DrawingCanvasPainter extends CustomPainter {
   void _drawStroke(Canvas canvas, DrawingStroke stroke, {bool isSelected = false}) {
     if (stroke.points.isEmpty) return;
 
+    if (stroke.eraserMasks.isNotEmpty) {
+      // Compute isolated bounds for this stroke and its eraser masks
+      double minX = stroke.points.first.dx;
+      double maxX = stroke.points.first.dx;
+      double minY = stroke.points.first.dy;
+      double maxY = stroke.points.first.dy;
+      for (int i = 1; i < stroke.points.length; i++) {
+        final p = stroke.points[i];
+        if (p.dx < minX) minX = p.dx;
+        if (p.dx > maxX) maxX = p.dx;
+        if (p.dy < minY) minY = p.dy;
+        if (p.dy > maxY) maxY = p.dy;
+      }
+      double maxMaskWidth = 0.0;
+      for (final mask in stroke.eraserMasks) {
+        if (mask.strokeWidth > maxMaskWidth) maxMaskWidth = mask.strokeWidth;
+        for (final p in mask.points) {
+          if (p.dx < minX) minX = p.dx;
+          if (p.dx > maxX) maxX = p.dx;
+          if (p.dy < minY) minY = p.dy;
+          if (p.dy > maxY) maxY = p.dy;
+        }
+      }
+      final inflatePadding = math.max(stroke.strokeWidth, maxMaskWidth) + 16.0;
+      final bounds = Rect.fromLTRB(minX, minY, maxX, maxY).inflate(inflatePadding);
+
+      final isMultiplyTool = stroke.tool == DrawingTool.marker || stroke.tool == DrawingTool.watercolor;
+      final layerPaint = Paint()
+        ..blendMode = isMultiplyTool ? BlendMode.multiply : BlendMode.srcOver;
+      canvas.saveLayer(bounds, layerPaint);
+
+      _drawStrokeDirect(canvas, stroke, isSelected: isSelected, insideMaskLayer: isMultiplyTool);
+
+      final clearPaint = Paint()
+        ..blendMode = BlendMode.clear
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+
+      for (final mask in stroke.eraserMasks) {
+        if (mask.points.isEmpty) continue;
+        clearPaint.strokeWidth = mask.strokeWidth;
+        _drawFreehandStrokePath(canvas, mask.points, clearPaint);
+      }
+
+      canvas.restore();
+    } else {
+      _drawStrokeDirect(canvas, stroke, isSelected: isSelected);
+    }
+  }
+
+  void _drawStrokeDirect(
+    Canvas canvas,
+    DrawingStroke stroke, {
+    bool isSelected = false,
+    bool insideMaskLayer = false,
+  }) {
+    if (stroke.points.isEmpty) return;
+
     if (isSelected) {
       if (selectedLineStroke != null && stroke == selectedLineStroke) {
         // Line selection is highlighted via _drawLineSelectionOverlay
@@ -193,7 +252,7 @@ class DrawingCanvasPainter extends CustomPainter {
           ..color = stroke.color.withValues(alpha: stroke.color.a * 0.38)
           ..strokeCap = StrokeCap.square
           ..strokeJoin = StrokeJoin.miter
-          ..blendMode = BlendMode.multiply;
+          ..blendMode = insideMaskLayer ? BlendMode.srcOver : BlendMode.multiply;
         break;
 
       case DrawingTool.watercolor:
@@ -201,7 +260,7 @@ class DrawingCanvasPainter extends CustomPainter {
           ..color = stroke.color.withValues(alpha: stroke.color.a * 0.26)
           ..strokeCap = StrokeCap.round
           ..strokeJoin = StrokeJoin.round
-          ..blendMode = BlendMode.multiply
+          ..blendMode = insideMaskLayer ? BlendMode.srcOver : BlendMode.multiply
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0);
         break;
 

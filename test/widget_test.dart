@@ -154,6 +154,7 @@ void main() {
       'Silgi (${controller.eraserType.label})': 'assets/icons/eraser.png',
       'Kement (${controller.lassoSelectionMode.label})':
           'assets/icons/rect_select.png',
+      'Metin Aracı': 'assets/icons/text.png',
     };
     for (final entry in expectedCustomIcons.entries) {
       final toolImage = tester.widget<Image>(

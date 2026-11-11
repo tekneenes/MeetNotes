@@ -147,7 +147,13 @@ class CompactLassoPickerDialog extends StatelessWidget {
         colorBlendMode: BlendMode.srcIn,
       );
     }
-    return Icon(mode.icon, size: size, color: color);
+    return Image.asset(
+      'assets/icons/lasso.png',
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.medium,
+    );
   }
 
   @override

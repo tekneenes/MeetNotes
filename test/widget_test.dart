@@ -165,6 +165,22 @@ void main() {
       expect((toolImage.image as AssetImage).assetName, entry.value);
     }
 
+    // Switching lasso mode to freeform should display assets/icons/lasso.png
+    controller.setLassoSelectionMode(LassoSelectionMode.freeform);
+    await tester.pumpAndSettle();
+    final freeformLassoImage = tester.widget<Image>(
+      find.descendant(
+        of: find.byTooltip('Kement (Serbest Kement)'),
+        matching: find.byType(Image),
+      ),
+    );
+    expect(
+      (freeformLassoImage.image as AssetImage).assetName,
+      'assets/icons/lasso.png',
+    );
+    controller.setLassoSelectionMode(LassoSelectionMode.rectangle);
+    await tester.pumpAndSettle();
+
     // Find the 3-dots button (Icons.more_horiz_rounded)
     final moreButton = find.byIcon(Icons.more_horiz_rounded);
     expect(moreButton, findsOneWidget);
@@ -1385,7 +1401,10 @@ void main() {
         .toList();
     expect(
       dialogRectSelectImages,
-      contains('assets/icons/rect_select.png'),
+      containsAll(<String>[
+        'assets/icons/rect_select.png',
+        'assets/icons/lasso.png',
+      ]),
     );
     expect(find.text('SEÇİM FİLTRELERİ'), findsOneWidget);
     expect(find.text('4/4 Aktif'), findsOneWidget);

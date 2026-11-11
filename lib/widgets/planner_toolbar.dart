@@ -30,6 +30,12 @@ class PlannerToolbar extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
+          // Sol Kısım: Zoom (%100, -, +)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _buildZoomPill(context),
+          ),
+
           // Orta Kısım: Sayfa Geçiş Hapı (Her zaman tam ortalanmış)
           Center(
             child: Container(
@@ -93,7 +99,7 @@ class PlannerToolbar extends StatelessWidget {
             ),
           ),
 
-          // Sağ Kısım: Geri Al / Yinele / Temizle + Zoom + Hızlı Erişim + Ayarlar
+          // Sağ Kısım: Geri Al / Yinele / Temizle + Hızlı Erişim
           Align(
             alignment: Alignment.centerRight,
             child: Row(
@@ -150,11 +156,7 @@ class PlannerToolbar extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
 
-                // Zoom Pill (%100, -, +)
-                _buildZoomPill(context),
-                const SizedBox(width: 8),
-
-                // Hızlı Erişim Butonu (Zoom ile Ayarlar arasına)
+                // Hızlı Erişim Butonu
                 IconButton(
                   tooltip: isQuickAccessOpen ? 'Hızlı Erişimi Kapat' : 'Hızlı Erişim',
                   style: IconButton.styleFrom(

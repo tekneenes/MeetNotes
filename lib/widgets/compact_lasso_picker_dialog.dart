@@ -131,6 +131,25 @@ class CompactLassoPickerDialog extends StatelessWidget {
     );
   }
 
+  static Widget _buildModeIcon(
+    LassoSelectionMode mode, {
+    required double size,
+    required Color color,
+  }) {
+    if (mode == LassoSelectionMode.rectangle) {
+      return Image.asset(
+        'assets/icons/rect_select.png',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.medium,
+        color: color,
+        colorBlendMode: BlendMode.srcIn,
+      );
+    }
+    return Icon(mode.icon, size: size, color: color);
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -184,10 +203,12 @@ class CompactLassoPickerDialog extends StatelessWidget {
                             color: const Color(0xFF007AFF).withValues(alpha: 0.12),
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(
-                            currentMode.icon,
-                            size: 17,
-                            color: const Color(0xFF007AFF),
+                          child: Center(
+                            child: _buildModeIcon(
+                              currentMode,
+                              size: 17,
+                              color: const Color(0xFF007AFF),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -273,8 +294,8 @@ class CompactLassoPickerDialog extends StatelessWidget {
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(
-                                        mode.icon,
+                                      _buildModeIcon(
+                                        mode,
                                         size: 18,
                                         color: isSelected
                                             ? const Color(0xFF007AFF)

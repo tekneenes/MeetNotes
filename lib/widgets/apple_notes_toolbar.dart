@@ -564,6 +564,19 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
     required Color color,
     IconData? overrideIcon,
   }) {
+    if (overrideIcon == null &&
+        tool == DrawingTool.lasso &&
+        widget.controller.lassoSelectionMode == LassoSelectionMode.rectangle) {
+      return Image.asset(
+        'assets/icons/rect_select.png',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.medium,
+        color: color,
+        colorBlendMode: BlendMode.srcIn,
+      );
+    }
     final assetPath = overrideIcon == null ? _customToolAssetPaths[tool] : null;
     if (assetPath != null) {
       return Image.asset(
@@ -704,11 +717,6 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
                         color: isSelected
                             ? const Color(0xFF007AFF)
                             : Colors.grey.shade700,
-                        overrideIcon: tool == DrawingTool.lasso &&
-                                controller.lassoSelectionMode ==
-                                    LassoSelectionMode.rectangle
-                            ? Icons.crop_square_rounded
-                            : null,
                       ),
                     ),
                     if (tool == DrawingTool.lasso && !controller.areAllLassoFiltersEnabled)

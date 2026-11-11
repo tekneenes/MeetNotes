@@ -152,6 +152,8 @@ void main() {
       'Pastel Boya': 'assets/icons/crayon.png',
       'Ezber Bandı': 'assets/icons/tape.png',
       'Silgi (${controller.eraserType.label})': 'assets/icons/eraser.png',
+      'Kement (${controller.lassoSelectionMode.label})':
+          'assets/icons/rect_select.png',
     };
     for (final entry in expectedCustomIcons.entries) {
       final toolImage = tester.widget<Image>(
@@ -1372,6 +1374,19 @@ void main() {
     expect(find.text('Kement ve Alan Seçimi'), findsOneWidget);
     expect(find.text('Kare Seçim'), findsWidgets);
     expect(find.text('Serbest Kement'), findsOneWidget);
+    final dialogRectSelectImages = tester
+        .widgetList<Image>(
+          find.descendant(
+            of: find.byType(CompactLassoPickerDialog),
+            matching: find.byType(Image),
+          ),
+        )
+        .map((img) => (img.image as AssetImage).assetName)
+        .toList();
+    expect(
+      dialogRectSelectImages,
+      contains('assets/icons/rect_select.png'),
+    );
     expect(find.text('SEÇİM FİLTRELERİ'), findsOneWidget);
     expect(find.text('4/4 Aktif'), findsOneWidget);
     expect(find.text('Çizim'), findsOneWidget);

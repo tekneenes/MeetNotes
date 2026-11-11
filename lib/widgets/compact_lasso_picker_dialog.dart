@@ -29,7 +29,7 @@ class CompactLassoPickerDialog extends StatelessWidget {
     final viewInsets = mediaQuery.viewInsets;
 
     const popoverWidth = 295.0;
-    const popoverHeight = 240.0;
+    const popoverHeight = 350.0;
     const clearance = 22.0;
 
     double left;
@@ -145,7 +145,7 @@ class CompactLassoPickerDialog extends StatelessWidget {
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
               width: 295,
-              constraints: const BoxConstraints(maxHeight: 380),
+              constraints: const BoxConstraints(maxHeight: 450),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.95),
@@ -305,7 +305,117 @@ class CompactLassoPickerDialog extends StatelessWidget {
                     const Divider(height: 1),
                     const SizedBox(height: 10),
 
-                    // 3. Template Options Toggle Switch
+                    // 3. Selection Filters Section (Strokes / Texts / Images / Paper Regions)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'SEÇİM FİLTRELERİ',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.6,
+                              color: Colors.grey.shade500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        if (!controller.areAllLassoFiltersEnabled)
+                          GestureDetector(
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              controller.resetAllLassoFilters();
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF007AFF).withValues(alpha: 0.10),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                'Tümünü Aç',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF007AFF),
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          Text(
+                            '4/4 Aktif',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 7),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildFilterTile(
+                            label: 'Çizim',
+                            icon: Icons.gesture_rounded,
+                            isActive: controller.lassoIncludeStrokes,
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              controller.setLassoIncludeStrokes(!controller.lassoIncludeStrokes);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: _buildFilterTile(
+                            label: 'Metin',
+                            icon: Icons.title_rounded,
+                            isActive: controller.lassoIncludeTexts,
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              controller.setLassoIncludeTexts(!controller.lassoIncludeTexts);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildFilterTile(
+                            label: 'Resim',
+                            icon: Icons.image_outlined,
+                            isActive: controller.lassoIncludeImages,
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              controller.setLassoIncludeImages(!controller.lassoIncludeImages);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: _buildFilterTile(
+                            label: 'Şablon',
+                            icon: Icons.grid_view_rounded,
+                            isActive: controller.lassoIncludePaperRegions,
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              controller.setLassoIncludePaperRegions(!controller.lassoIncludePaperRegions);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 12),
+                    const Divider(height: 1),
+                    const SizedBox(height: 10),
+
+                    // 4. Template Options Toggle Switch
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                       decoration: BoxDecoration(
@@ -421,6 +531,69 @@ class CompactLassoPickerDialog extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildFilterTile({
+    required String label,
+    required IconData icon,
+    required bool isActive,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+          decoration: BoxDecoration(
+            color: isActive ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isActive
+                  ? const Color(0xFF007AFF)
+                  : Colors.black.withValues(alpha: 0.07),
+              width: isActive ? 1.3 : 1.0,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                size: 15,
+                color: isActive
+                    ? const Color(0xFF007AFF)
+                    : const Color(0xFF94A3B8),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                    color: isActive
+                        ? const Color(0xFF1E293B)
+                        : const Color(0xFF94A3B8),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Icon(
+                isActive
+                    ? Icons.check_circle_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                size: 14,
+                color: isActive
+                    ? const Color(0xFF007AFF)
+                    : const Color(0xFFCBD5E1),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

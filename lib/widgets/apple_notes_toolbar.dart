@@ -660,15 +660,33 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
                       ? const Color(0xFF007AFF).withValues(alpha: 0.15)
                       : Colors.transparent,
                 ),
-                child: Center(
-                  child: Icon(
-                    tool == DrawingTool.lasso &&
-                            controller.lassoSelectionMode == LassoSelectionMode.rectangle
-                        ? Icons.crop_square_rounded
-                        : tool.icon,
-                    size: 20,
-                    color: isSelected ? const Color(0xFF007AFF) : Colors.grey.shade700,
-                  ),
+                child: Stack(
+                  children: [
+                    Center(
+                      child: Icon(
+                        tool == DrawingTool.lasso &&
+                                controller.lassoSelectionMode == LassoSelectionMode.rectangle
+                            ? Icons.crop_square_rounded
+                            : tool.icon,
+                        size: 20,
+                        color: isSelected ? const Color(0xFF007AFF) : Colors.grey.shade700,
+                      ),
+                    ),
+                    if (tool == DrawingTool.lasso && !controller.areAllLassoFiltersEnabled)
+                      Positioned(
+                        top: 5,
+                        right: 5,
+                        child: Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF59E0B),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 1.2),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),

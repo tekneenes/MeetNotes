@@ -45,6 +45,10 @@ class PlannerController extends ChangeNotifier {
 
   // Lasso Selection, Resize & 2D Rotation State
   LassoSelectionMode _lassoSelectionMode = LassoSelectionMode.rectangle;
+  bool _lassoIncludeStrokes = true;
+  bool _lassoIncludeTexts = true;
+  bool _lassoIncludeImages = true;
+  bool _lassoIncludePaperRegions = true;
   Offset? _lassoStartPoint;
   List<Offset> _lassoPoints = [];
   final Set<int> _selectedStrokeIndices = {};
@@ -156,6 +160,77 @@ class PlannerController extends ChangeNotifier {
   void setLassoSelectionMode(LassoSelectionMode mode) {
     if (_lassoSelectionMode != mode) {
       _lassoSelectionMode = mode;
+      notifyListeners();
+    }
+  }
+
+  bool get lassoIncludeStrokes => _lassoIncludeStrokes;
+  bool get lassoIncludeTexts => _lassoIncludeTexts;
+  bool get lassoIncludeImages => _lassoIncludeImages;
+  bool get lassoIncludePaperRegions => _lassoIncludePaperRegions;
+
+  bool get areAllLassoFiltersEnabled =>
+      _lassoIncludeStrokes &&
+      _lassoIncludeTexts &&
+      _lassoIncludeImages &&
+      _lassoIncludePaperRegions;
+
+  int get activeLassoFilterCount =>
+      (_lassoIncludeStrokes ? 1 : 0) +
+      (_lassoIncludeTexts ? 1 : 0) +
+      (_lassoIncludeImages ? 1 : 0) +
+      (_lassoIncludePaperRegions ? 1 : 0);
+
+  void setLassoIncludeStrokes(bool value) {
+    if (_lassoIncludeStrokes != value) {
+      _lassoIncludeStrokes = value;
+      if (!value && _selectedStrokeIndices.isNotEmpty) {
+        _selectedStrokeIndices.clear();
+        _syncSelectionRotationFromStrokes();
+      }
+      notifyListeners();
+    }
+  }
+
+  void setLassoIncludeTexts(bool value) {
+    if (_lassoIncludeTexts != value) {
+      _lassoIncludeTexts = value;
+      if (!value && _selectedTextIds.isNotEmpty) {
+        _selectedTextIds.clear();
+        _syncSelectionRotationFromStrokes();
+      }
+      notifyListeners();
+    }
+  }
+
+  void setLassoIncludeImages(bool value) {
+    if (_lassoIncludeImages != value) {
+      _lassoIncludeImages = value;
+      if (!value && _selectedImageIds.isNotEmpty) {
+        _selectedImageIds.clear();
+        _syncSelectionRotationFromStrokes();
+      }
+      notifyListeners();
+    }
+  }
+
+  void setLassoIncludePaperRegions(bool value) {
+    if (_lassoIncludePaperRegions != value) {
+      _lassoIncludePaperRegions = value;
+      if (!value && _selectedPaperRegionIds.isNotEmpty) {
+        _selectedPaperRegionIds.clear();
+        _syncSelectionRotationFromStrokes();
+      }
+      notifyListeners();
+    }
+  }
+
+  void resetAllLassoFilters() {
+    if (!areAllLassoFiltersEnabled) {
+      _lassoIncludeStrokes = true;
+      _lassoIncludeTexts = true;
+      _lassoIncludeImages = true;
+      _lassoIncludePaperRegions = true;
       notifyListeners();
     }
   }
@@ -2816,15 +2891,17 @@ class PlannerController extends ChangeNotifier {
         }
       }
 
-      // 3. Check if user directly touched/grabbed an existing stroke, shape, text box, image or paper region
-      final hitIndex = _findStrokeAtPoint(point);
-      final hitText = _findTextAtPoint(point);
-      final hitImage = _findImageAtPoint(point);
+      // 3. Check if user directly touched/grabbed an existing stroke, shape, text box, image or paper region (respecting active Lasso Filters)
+      final hitIndex = _lassoIncludeStrokes ? _findStrokeAtPoint(point) : null;
+      final hitText = _lassoIncludeTexts ? _findTextAtPoint(point) : null;
+      final hitImage = _lassoIncludeImages ? _findImageAtPoint(point) : null;
       int? hitPaperRegionIdx;
-      for (int i = _canvasPaperRegions.length - 1; i >= 0; i--) {
-        if (_canvasPaperRegions[i].rect.contains(point)) {
-          hitPaperRegionIdx = i;
-          break;
+      if (_lassoIncludePaperRegions) {
+        for (int i = _canvasPaperRegions.length - 1; i >= 0; i--) {
+          if (_canvasPaperRegions[i].rect.contains(point)) {
+            hitPaperRegionIdx = i;
+            break;
+          }
         }
       }
 
@@ -4185,11 +4262,13 @@ class PlannerController extends ChangeNotifier {
     _selectedStrokeIndices.clear();
     _selectedTextIds.clear();
     _selectedImageIds.clear();
+    _selectedPaperRegionIds.clear();
 
     final unlockedHits = <int>{};
     final lockedHits = <int>{};
 
-    for (int i = 0; i < _strokes.length; i++) {
+    if (_lassoIncludeStrokes) {
+      for (int i = 0; i < _strokes.length; i++) {
       final stroke = _strokes[i];
       if (stroke.points.isEmpty) continue;
 
@@ -4262,12 +4341,14 @@ class PlannerController extends ChangeNotifier {
           unlockedHits.add(i);
         }
       }
+      }
     }
 
     final unlockedTextHits = <String>{};
     final lockedTextHits = <String>{};
 
-    for (final textItem in _canvasTexts) {
+    if (_lassoIncludeTexts) {
+      for (final textItem in _canvasTexts) {
       final h = textItem.computeHeight();
       final rect = Rect.fromLTWH(
         textItem.position.dx,
@@ -4314,59 +4395,64 @@ class PlannerController extends ChangeNotifier {
           unlockedTextHits.add(textItem.id);
         }
       }
+      }
     }
 
     final unlockedImageHits = <String>{};
     final lockedImageHits = <String>{};
-    for (final img in _canvasImages) {
-      final rect = img.rect;
-      final center = rect.center;
-      final samplePoints = [
-        center,
-        rect.topLeft,
-        rect.topRight,
-        rect.bottomLeft,
-        rect.bottomRight,
-        rect.topCenter,
-        rect.bottomCenter,
-        rect.centerLeft,
-        rect.centerRight,
-      ].map((p) => _rotatePointAround(p, center, img.rotation));
+    if (_lassoIncludeImages) {
+      for (final img in _canvasImages) {
+        final rect = img.rect;
+        final center = rect.center;
+        final samplePoints = [
+          center,
+          rect.topLeft,
+          rect.topRight,
+          rect.bottomLeft,
+          rect.bottomRight,
+          rect.topCenter,
+          rect.bottomCenter,
+          rect.centerLeft,
+          rect.centerRight,
+        ].map((p) => _rotatePointAround(p, center, img.rotation));
 
-      bool isSelected = samplePoints.any(lassoPath.contains);
-      if (!isSelected && lassoBounds.overlaps(rect)) {
-        final intersection = lassoBounds.intersect(rect);
-        if (intersection.width >= rect.width * 0.35 &&
-            intersection.height >= rect.height * 0.35) {
-          isSelected = true;
+        bool isSelected = samplePoints.any(lassoPath.contains);
+        if (!isSelected && lassoBounds.overlaps(rect)) {
+          final intersection = lassoBounds.intersect(rect);
+          if (intersection.width >= rect.width * 0.35 &&
+              intersection.height >= rect.height * 0.35) {
+            isSelected = true;
+          }
         }
-      }
-      if (isSelected) {
-        (img.isLocked ? lockedImageHits : unlockedImageHits).add(img.id);
+        if (isSelected) {
+          (img.isLocked ? lockedImageHits : unlockedImageHits).add(img.id);
+        }
       }
     }
 
     final unlockedPaperRegionHits = <String>{};
     final lockedPaperRegionHits = <String>{};
-    for (final reg in _canvasPaperRegions) {
-      final rect = reg.rect;
-      final samplePoints = [
-        rect.center,
-        rect.topLeft,
-        rect.topRight,
-        rect.bottomLeft,
-        rect.bottomRight,
-      ];
-      bool isSelected = samplePoints.any(lassoPath.contains);
-      if (!isSelected && lassoBounds.overlaps(rect)) {
-        final intersection = lassoBounds.intersect(rect);
-        if (intersection.width >= rect.width * 0.4 &&
-            intersection.height >= rect.height * 0.4) {
-          isSelected = true;
+    if (_lassoIncludePaperRegions) {
+      for (final reg in _canvasPaperRegions) {
+        final rect = reg.rect;
+        final samplePoints = [
+          rect.center,
+          rect.topLeft,
+          rect.topRight,
+          rect.bottomLeft,
+          rect.bottomRight,
+        ];
+        bool isSelected = samplePoints.any(lassoPath.contains);
+        if (!isSelected && lassoBounds.overlaps(rect)) {
+          final intersection = lassoBounds.intersect(rect);
+          if (intersection.width >= rect.width * 0.4 &&
+              intersection.height >= rect.height * 0.4) {
+            isSelected = true;
+          }
         }
-      }
-      if (isSelected) {
-        (reg.isLocked ? lockedPaperRegionHits : unlockedPaperRegionHits).add(reg.id);
+        if (isSelected) {
+          (reg.isLocked ? lockedPaperRegionHits : unlockedPaperRegionHits).add(reg.id);
+        }
       }
     }
 

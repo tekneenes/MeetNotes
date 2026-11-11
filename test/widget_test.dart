@@ -1289,7 +1289,31 @@ void main() {
     expect(find.text('Kement ve Alan Seçimi'), findsOneWidget);
     expect(find.text('Kare Seçim'), findsWidgets);
     expect(find.text('Serbest Kement'), findsOneWidget);
+    expect(find.text('SEÇİM FİLTRELERİ'), findsOneWidget);
+    expect(find.text('4/4 Aktif'), findsOneWidget);
+    expect(find.text('Çizim'), findsOneWidget);
+    expect(find.text('Metin'), findsOneWidget);
+    expect(find.text('Resim'), findsOneWidget);
+    expect(find.text('Şablon'), findsOneWidget);
     expect(find.text('Şablon Seçeneklerini Göster'), findsOneWidget);
+
+    // Toggle Lasso filter tiles in UI
+    expect(controller.areAllLassoFiltersEnabled, isTrue);
+    await tester.tap(find.text('Metin'));
+    await tester.pumpAndSettle();
+    expect(controller.lassoIncludeTexts, isFalse);
+    expect(find.text('Tümünü Aç'), findsOneWidget);
+
+    await tester.tap(find.text('Resim'));
+    await tester.pumpAndSettle();
+    expect(controller.lassoIncludeImages, isFalse);
+    expect(controller.activeLassoFilterCount, 2);
+
+    // Reset all filters via 'Tümünü Aç'
+    await tester.tap(find.text('Tümünü Aç'));
+    await tester.pumpAndSettle();
+    expect(controller.areAllLassoFiltersEnabled, isTrue);
+    expect(find.text('4/4 Aktif'), findsOneWidget);
 
     // Test toggle switch for Şablon Seçeneklerini Göster
     expect(controller.showTemplateSelectionOptions, isFalse);
@@ -1334,6 +1358,123 @@ void main() {
     expect(controller.hasLassoSelection, isFalse);
 
     // Drain debounce save timer
+    await tester.pump(const Duration(milliseconds: 1000));
+  });
+
+  testWidgets('Lasso Selection Filters (Strokes / Texts / Images / Paper Regions) test',
+      (WidgetTester tester) async {
+    final controller = PlannerController();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // 1. Add all 4 object types in overlapping coordinates around (100, 100) - (350, 350)
+    // Stroke
+    controller.setTool(DrawingTool.pen);
+    controller.startStroke(const Offset(100, 100));
+    controller.updateStroke(const Offset(200, 200));
+    controller.endStroke();
+    expect(controller.strokes.length, 1);
+
+    // Text
+    controller.addCanvasText(const Offset(120, 120), 'Filtre Metni');
+    expect(controller.canvasTexts.length, 1);
+
+    // Image
+    const dragData = PdfPageDragData(
+      fileId: 'pdf_filter_test',
+      fileName: 'FilterTest.pdf',
+      pageIndex: 0,
+      previewBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      aspectRatio: 1.0,
+    );
+    await controller.insertPdfPageToCanvas(dragData, targetCenter: const Offset(250, 250));
+    expect(controller.canvasImages.length, 1);
+
+    // Paper Region
+    controller.applyPaperStyleToSelection(
+      PaperStyle.grid,
+      targetRect: const Rect.fromLTWH(80, 80, 260, 260),
+    );
+    expect(controller.canvasPaperRegions.length, 1);
+
+    // Helper to perform a rectangle lasso around everything
+    void performFullLasso() {
+      controller.setTool(DrawingTool.lasso);
+      controller.setLassoSelectionMode(LassoSelectionMode.rectangle);
+      // Deselect first on empty space
+      controller.startStroke(const Offset(10, 10));
+      controller.endStroke();
+      // Drag across everything
+      controller.startStroke(const Offset(30, 30));
+      controller.updateStroke(const Offset(550, 550));
+      controller.endStroke();
+    }
+
+    // 2. Default (4/4 filters enabled): selects ALL 4 types
+    expect(controller.areAllLassoFiltersEnabled, isTrue);
+    performFullLasso();
+    expect(controller.selectedStrokeIndices.length, 1);
+    expect(controller.selectedTextIds.length, 1);
+    expect(controller.selectedImageIds.length, 1);
+    expect(controller.selectedPaperRegionIds.length, 1);
+
+    // 3. Only Çizim (Strokes) enabled
+    controller.setLassoIncludeTexts(false);
+    controller.setLassoIncludeImages(false);
+    controller.setLassoIncludePaperRegions(false);
+    expect(controller.selectedTextIds, isEmpty); // Filtered out immediately
+    expect(controller.selectedImageIds, isEmpty);
+    expect(controller.selectedPaperRegionIds, isEmpty);
+
+    performFullLasso();
+    expect(controller.selectedStrokeIndices.length, 1);
+    expect(controller.selectedTextIds, isEmpty);
+    expect(controller.selectedImageIds, isEmpty);
+    expect(controller.selectedPaperRegionIds, isEmpty);
+
+    // Direct tap inside image/paperRegion should NOT grab them when their filters are OFF
+    controller.startStroke(const Offset(10, 10));
+    controller.endStroke();
+    controller.startStroke(const Offset(300, 300)); // inside paper region & image, away from stroke
+    controller.endStroke();
+    expect(controller.selectedImageIds, isEmpty);
+    expect(controller.selectedPaperRegionIds, isEmpty);
+
+    // 4. Only Metin (Texts) enabled
+    controller.setLassoIncludeStrokes(false);
+    controller.setLassoIncludeTexts(true);
+    performFullLasso();
+    expect(controller.selectedStrokeIndices, isEmpty);
+    expect(controller.selectedTextIds.length, 1);
+    expect(controller.selectedImageIds, isEmpty);
+    expect(controller.selectedPaperRegionIds, isEmpty);
+
+    // 5. Only Resim (Images) enabled
+    controller.setLassoIncludeTexts(false);
+    controller.setLassoIncludeImages(true);
+    performFullLasso();
+    expect(controller.selectedStrokeIndices, isEmpty);
+    expect(controller.selectedTextIds, isEmpty);
+    expect(controller.selectedImageIds.length, 1);
+    expect(controller.selectedPaperRegionIds, isEmpty);
+
+    // 6. Only Şablon (Paper Regions) enabled
+    controller.setLassoIncludeImages(false);
+    controller.setLassoIncludePaperRegions(true);
+    performFullLasso();
+    expect(controller.selectedStrokeIndices, isEmpty);
+    expect(controller.selectedTextIds, isEmpty);
+    expect(controller.selectedImageIds, isEmpty);
+    expect(controller.selectedPaperRegionIds.length, 1);
+
+    // 7. Reset all filters restores 4/4 selection
+    controller.resetAllLassoFilters();
+    expect(controller.areAllLassoFiltersEnabled, isTrue);
+    performFullLasso();
+    expect(controller.selectedStrokeIndices.length, 1);
+    expect(controller.selectedTextIds.length, 1);
+    expect(controller.selectedImageIds.length, 1);
+    expect(controller.selectedPaperRegionIds.length, 1);
+
     await tester.pump(const Duration(milliseconds: 1000));
   });
 

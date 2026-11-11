@@ -687,14 +687,15 @@ class _MiniAppleTimelinePreview extends StatelessWidget {
     final timedEvents = events.where((e) => !e.isAllDay).toList()
       ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
     final hasAllDay = allDayEvents.isNotEmpty;
-    final topPad = hasAllDay ? 54.0 : 40.0;
-    final hourHeight = hasAllDay ? 26.5 : 29.5;
+    final topPad = hasAllDay ? 52.0 : 40.0;
+    final hourHeight = hasAllDay ? 25.5 : 29.5;
 
-    // On Today, anchor around current time (now.hour - 1) so live time stays visible;
-    // on other days, focus on first scheduled event or default 09:00..11:30 window.
+    // On Today, anchor ~45m before current time so the red now-line sits near center
+    // and ongoing/upcoming 1h events fit with full two-line height inside the 3h window;
+    // on other days, focus on first scheduled event or default 09:00..12:00 window.
     int focusHour;
     if (isToday) {
-      focusHour = (now.hour - 1).clamp(0, 21);
+      focusHour = ((nowMinutes - 45) ~/ 60).clamp(0, 21);
     } else if (timedEvents.isNotEmpty) {
       focusHour = (timedEvents.first.startMinutes ~/ 60).clamp(0, 21);
     } else {
@@ -702,7 +703,7 @@ class _MiniAppleTimelinePreview extends StatelessWidget {
     }
 
     final windowStartMinutes = focusHour * 60;
-    final windowEndMinutes = windowStartMinutes + 150;
+    final windowEndMinutes = windowStartMinutes + 180;
     final visibleTimedEvents = timedEvents
         .where(
           (e) =>

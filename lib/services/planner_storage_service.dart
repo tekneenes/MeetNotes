@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/planner_models.dart';
 
@@ -19,7 +20,7 @@ class PlannerStorageService {
   static const Duration _writeDelay = Duration(milliseconds: 600);
   static final Map<String, String Function()> _pendingWrites = {};
   static Timer? _writeTimer;
-  static Future<void> _writeChain = Future.value();
+  static Future<void>? _activeWrite;
 
   static void _scheduleWrite(String key, String Function() encoder) {
     _pendingWrites[key] = encoder; // latest snapshot per key wins
@@ -32,17 +33,34 @@ class PlannerStorageService {
   static Future<void> flushPendingWrites() {
     _writeTimer?.cancel();
     _writeTimer = null;
+    final previous = _activeWrite;
     if (_pendingWrites.isNotEmpty) {
       final items = Map<String, String Function()>.of(_pendingWrites);
       _pendingWrites.clear();
-      _writeChain = _writeChain.then((_) async {
+      late final Future<void> current;
+      current = (previous ?? Future<void>.value()).then((_) async {
         final prefs = await SharedPreferences.getInstance();
         for (final e in items.entries) {
           await prefs.setString(e.key, e.value());
         }
-      }).catchError((Object _) {});
+      }).catchError((Object _) {}).whenComplete(() {
+        if (identical(_activeWrite, current)) {
+          _activeWrite = null;
+        }
+      });
+      _activeWrite = current;
+      return current;
     }
-    return _writeChain;
+    return previous ?? Future<void>.value();
+  }
+
+  /// Clears static debounced write state between isolated tests.
+  @visibleForTesting
+  static void resetForTest() {
+    _writeTimer?.cancel();
+    _writeTimer = null;
+    _pendingWrites.clear();
+    _activeWrite = null;
   }
 
   String _formatWeekKey(DateTime date) {

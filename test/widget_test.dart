@@ -12,16 +12,22 @@ import 'package:meet_notes/widgets/compact_stroke_width_picker.dart';
 import 'package:meet_notes/widgets/compact_lasso_picker_dialog.dart';
 import 'package:meet_notes/widgets/compact_shapes_picker.dart';
 import 'package:meet_notes/widgets/apple_notes_toolbar.dart';
+import 'package:meet_notes/widgets/days_sidebar.dart';
 import 'package:meet_notes/widgets/drawing_workspace.dart';
 import 'package:meet_notes/widgets/paper_settings_dialog.dart';
 import 'package:meet_notes/widgets/compact_paper_region_style_dialog.dart';
+import 'package:meet_notes/services/planner_storage_service.dart';
 import 'package:meet_notes/services/shape_recognition_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUpAll(() async {
-    SharedPreferences.setMockInitialValues({});
     await initializeDateFormatting('tr_TR', null);
+  });
+
+  setUp(() {
+    PlannerStorageService.resetForTest();
+    SharedPreferences.setMockInitialValues({});
   });
 
   testWidgets('MeetNotesApp initial load and Day Card hero expand/shrink test',
@@ -2889,5 +2895,68 @@ void main() {
 
     // Drain timer
     await tester.pump(const Duration(milliseconds: 1000));
+  });
+
+  testWidgets('DaysSidebar week navigation, synchronized collapse, and offscreen spring return test',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(const MeetNotesApp());
+    await tester.pumpAndSettle();
+
+    // 1. Week navigation arrows exist in GÜNLÜK NOTLAR (DaysSidebar) header
+    final sidebarFinder = find.byType(DaysSidebar);
+    final prevWeekBtn = find.descendant(
+      of: sidebarFinder,
+      matching: find.byTooltip('Önceki Hafta'),
+    );
+    final nextWeekBtn = find.descendant(
+      of: sidebarFinder,
+      matching: find.byTooltip('Sonraki Hafta'),
+    );
+    final todayBtn = find.descendant(
+      of: sidebarFinder,
+      matching: find.byTooltip('Bugüne Git'),
+    );
+    expect(prevWeekBtn, findsOneWidget);
+    expect(nextWeekBtn, findsOneWidget);
+    expect(todayBtn, findsOneWidget);
+
+    // Navigate next week and back to today
+    await tester.tap(nextWeekBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(todayBtn);
+    await tester.pumpAndSettle();
+
+    // 2. Toggle sidebar collapse & expand cleanly
+    expect(find.byTooltip('Günlük Notlar Panelini Gizle'), findsOneWidget);
+    await tester.tap(find.byTooltip('Günlük Notlar Panelini Gizle'));
+    await tester.pumpAndSettle();
+    expect(find.text('GÜNLÜK NOTLAR'), findsNothing);
+
+    await tester.tap(find.byTooltip('Günlük Notlar Panelini Göster'));
+    await tester.pumpAndSettle();
+    expect(find.text('GÜNLÜK NOTLAR'), findsOneWidget);
+
+    // 3. Expand Pazartesi -> switch across to Cumartesi / Pazar (scrolled offscreen in sidebar) -> shrink back
+    await tester.tap(find.text('Pazartesi'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+    await tester.pumpAndSettle();
+    expect(find.text('Küçült / Haftaya Dön'), findsOneWidget);
+
+    for (var i = 0; i < 5; i++) {
+      await tester.tap(find.byTooltip('Sonraki Gün (Alt + →)'));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('Cumartesi / Pazar Notları'), findsOneWidget);
+
+    // Close back -> should scroll sidebar to Cumartesi / Pazar slot and complete spring smoothly
+    await tester.tap(find.text('Küçült / Haftaya Dön'));
+    await tester.pumpAndSettle();
+    expect(find.text('Küçült / Haftaya Dön'), findsNothing);
+    expect(find.text('Cumartesi / Pazar'), findsOneWidget);
   });
 }

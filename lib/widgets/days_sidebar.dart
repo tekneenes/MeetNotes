@@ -8,6 +8,7 @@ class DaysSidebar extends StatelessWidget {
   final PlannerController controller;
   final DateTime? activeExpandingDate;
   final Map<String, GlobalKey> cardKeys;
+  final ScrollController? scrollController;
   final void Function(DayScheduleItem day, GlobalKey cardKey)? onDayExpand;
 
   const DaysSidebar({
@@ -15,6 +16,7 @@ class DaysSidebar extends StatelessWidget {
     required this.controller,
     required this.cardKeys,
     this.activeExpandingDate,
+    this.scrollController,
     this.onDayExpand,
   });
 
@@ -41,13 +43,14 @@ class DaysSidebar extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Header / Date Range
+          // Header / Date Range + Week Navigation
           _buildSidebarHeader(context, days, now),
           const Divider(height: 1, thickness: 0.5),
 
           // Day Cards with Ruled Lines
           Expanded(
             child: ListView.separated(
+              controller: scrollController,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               itemCount: days.length,
               separatorBuilder: (_, __) => const SizedBox(height: 10),
@@ -60,14 +63,21 @@ class DaysSidebar extends StatelessWidget {
                 final keyStr = dateKey(day.date);
                 final cardKey = cardKeys.putIfAbsent(keyStr, () => GlobalKey());
 
-                return Opacity(
+                return AnimatedOpacity(
+                  duration: const Duration(milliseconds: 140),
+                  curve: Curves.easeOut,
                   opacity: isExpandingThis ? 0.0 : 1.0,
-                  child: _InteractiveDayCard(
-                    key: cardKey,
-                    day: day,
-                    isToday: isToday,
-                    controller: controller,
-                    onTap: () => onDayExpand?.call(day, cardKey),
+                  child: AnimatedScale(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
+                    scale: isExpandingThis ? 0.96 : 1.0,
+                    child: _InteractiveDayCard(
+                      key: cardKey,
+                      day: day,
+                      isToday: isToday,
+                      controller: controller,
+                      onTap: () => onDayExpand?.call(day, cardKey),
+                    ),
                   ),
                 );
               },
@@ -89,7 +99,7 @@ class DaysSidebar extends StatelessWidget {
     final formattedRange = '${rangeFormatter.format(start)} – ${rangeFormatter.format(end)}';
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 12, 12),
+      padding: const EdgeInsets.fromLTRB(16, 12, 10, 10),
       child: Row(
         children: [
           Expanded(
@@ -99,7 +109,7 @@ class DaysSidebar extends StatelessWidget {
                 Text(
                   'GÜNLÜK NOTLAR',
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 10.5,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.0,
                     color: Colors.grey.shade600,
@@ -109,20 +119,49 @@ class DaysSidebar extends StatelessWidget {
                 Text(
                   formattedRange,
                   style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700,
                     color: Color(0xFF1E293B),
                   ),
                 ),
               ],
             ),
           ),
-          IconButton(
-            tooltip: 'Bugüne Git',
-            icon: const Icon(Icons.today_rounded, size: 20, color: Color(0xFF2563EB)),
-            onPressed: () {
-              controller.goToToday();
-            },
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: Colors.black.withValues(alpha: 0.08),
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: 'Önceki Hafta',
+                  icon: const Icon(Icons.chevron_left_rounded, size: 17, color: Color(0xFF475569)),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                  onPressed: controller.previousWeek,
+                ),
+                IconButton(
+                  tooltip: 'Bugüne Git',
+                  icon: const Icon(Icons.today_rounded, size: 16, color: Color(0xFF2563EB)),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                  onPressed: controller.goToToday,
+                ),
+                IconButton(
+                  tooltip: 'Sonraki Hafta',
+                  icon: const Icon(Icons.chevron_right_rounded, size: 17, color: Color(0xFF475569)),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+                  onPressed: controller.nextWeek,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -204,24 +243,26 @@ class DayCardSurface extends StatelessWidget {
     final hasText = day.text.trim().isNotEmpty;
     final hasDrawing = previewStrokes.isNotEmpty;
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isToday ? const Color(0xFFF8FBFF) : Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isToday
-              ? const Color(0xFF2563EB).withValues(alpha: 0.65)
+              ? const Color(0xFF2563EB).withValues(alpha: isHovered ? 0.80 : 0.55)
               : (isHovered
-                  ? const Color(0xFF2563EB).withValues(alpha: 0.35)
+                  ? const Color(0xFF2563EB).withValues(alpha: 0.42)
                   : Colors.black.withValues(alpha: 0.08)),
           width: isToday ? 1.5 : 1.0,
         ),
         boxShadow: [
           BoxShadow(
             color: isToday
-                ? const Color(0xFF2563EB).withValues(alpha: 0.10)
-                : Colors.black.withValues(alpha: isHovered ? 0.07 : 0.03),
-            blurRadius: isHovered ? 10 : 5,
+                ? const Color(0xFF2563EB).withValues(alpha: isHovered ? 0.14 : 0.09)
+                : Colors.black.withValues(alpha: isHovered ? 0.08 : 0.03),
+            blurRadius: isHovered ? 12 : 5,
             offset: Offset(0, isHovered ? 4 : 2),
           ),
         ],
@@ -311,13 +352,23 @@ class DayCardSurface extends StatelessWidget {
                       color: Colors.grey.shade600,
                     ),
                   ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.open_in_full_rounded,
-                    size: 12,
-                    color: isHovered
-                        ? const Color(0xFF2563EB)
-                        : Colors.grey.shade400,
+                  const SizedBox(width: 5),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: isHovered
+                          ? const Color(0xFFEFF6FF)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(7),
+                    ),
+                    child: Icon(
+                      Icons.open_in_full_rounded,
+                      size: 12,
+                      color: isHovered
+                          ? const Color(0xFF2563EB)
+                          : Colors.grey.shade400,
+                    ),
                   ),
                 ],
               ),

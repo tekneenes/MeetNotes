@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter, lerpDouble;
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../controllers/planner_controller.dart';
@@ -19,17 +21,32 @@ class PlannerScreen extends StatefulWidget {
 }
 
 class _PlannerScreenState extends State<PlannerScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final PlannerController _controller;
   bool _showSidebar = true;
   bool _showTasksSidebar = false;
+  bool _isSidebarHandleHovered = false;
 
-  // --- Expanding Day Card Hero Animation State (Nur İslami Yaşam & Instagram Reel Style) ---
+  late final AnimationController _sidebarController;
+  late final Animation<double> _sidebarAnimation;
+  final ScrollController _sidebarScrollController = ScrollController();
+
+  // --- Expanding Day Card Hero Container-Transform State (Spring Physics) ---
   final GlobalKey _rootStackKey = GlobalKey();
   final Map<String, GlobalKey> _dayCardKeys = {};
 
+  static const SpringDescription _openSpring = SpringDescription(
+    mass: 1.0,
+    stiffness: 360.0,
+    damping: 35.0,
+  );
+  static const SpringDescription _closeSpring = SpringDescription(
+    mass: 1.0,
+    stiffness: 420.0,
+    damping: 39.0,
+  );
+
   late final AnimationController _dayExpandController;
-  late final Animation<double> _dayExpandAnimation;
 
   DayScheduleItem? _activeExpandedDay;
   PlannerController? _activeDayCanvasController;
@@ -43,26 +60,50 @@ class _PlannerScreenState extends State<PlannerScreen>
     super.initState();
     _controller = PlannerController();
 
-    _dayExpandController = AnimationController(
+    _sidebarController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 420),
-      reverseDuration: const Duration(milliseconds: 360),
+      value: 1.0,
+      duration: const Duration(milliseconds: 280),
+      reverseDuration: const Duration(milliseconds: 240),
     );
-
-    _dayExpandAnimation = CurvedAnimation(
-      parent: _dayExpandController,
+    _sidebarAnimation = CurvedAnimation(
+      parent: _sidebarController,
       curve: Curves.easeOutCubic,
       reverseCurve: Curves.easeInCubic,
+    );
+
+    _dayExpandController = AnimationController.unbounded(
+      vsync: this,
+      value: 0.0,
     );
   }
 
   @override
   void dispose() {
+    _sidebarController.dispose();
+    _sidebarScrollController.dispose();
     _dayExpandController.dispose();
     _activeDayCanvasController?.dispose();
     _activeDayNoteTextController?.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _toggleLeftSidebar() {
+    setState(() {
+      _showSidebar = !_showSidebar;
+    });
+    if (_showSidebar) {
+      _sidebarController.forward();
+    } else {
+      _sidebarController.reverse();
+    }
+  }
+
+  TickerFuture _animateExpandTo(double target, {double velocity = 0.0}) {
+    final spring = target > 0.5 ? _openSpring : _closeSpring;
+    final sim = SpringSimulation(spring, _dayExpandController.value, target, velocity);
+    return _dayExpandController.animateWith(sim);
   }
 
   Rect? _computeCardRectInStack(GlobalKey? cardKey) {
@@ -74,6 +115,40 @@ class _PlannerScreenState extends State<PlannerScreen>
       return Rect.fromLTWH(pos.dx, pos.dy, cardBox.size.width, cardBox.size.height);
     }
     return null;
+  }
+
+  Future<Rect?> _ensureCardVisibleAndMeasure(DateTime date) async {
+    final keyStr = DaysSidebar.dateKey(date);
+    final stackBox = _rootStackKey.currentContext?.findRenderObject() as RenderBox?;
+    final stackH = (stackBox != null && stackBox.hasSize) ? stackBox.size.height : 800.0;
+
+    final existing = _computeCardRectInStack(_dayCardKeys[keyStr]);
+    final isInVisibleViewport = existing != null &&
+        existing.top >= 64.0 &&
+        existing.bottom <= stackH - 8.0;
+    if (isInVisibleViewport) return existing;
+
+    final days = _controller.currentWeekDays;
+    final idx = days.indexWhere((d) =>
+        d.date.year == date.year &&
+        d.date.month == date.month &&
+        d.date.day == date.day);
+    if (idx != -1 && _sidebarScrollController.hasClients) {
+      final pos = _sidebarScrollController.position;
+      // Estimate slot (~162px/card) and bring the target card cleanly into viewport center
+      final estimatedCardTop = idx * 162.0;
+      final viewportH = pos.viewportDimension;
+      final targetOffset = (estimatedCardTop - (viewportH - 152.0) * 0.5)
+          .clamp(0.0, pos.maxScrollExtent);
+      if ((pos.pixels - targetOffset).abs() > 1.0) {
+        _sidebarScrollController.jumpTo(targetOffset);
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return null;
+      }
+      final afterScroll = _computeCardRectInStack(_dayCardKeys[keyStr]);
+      if (afterScroll != null) return afterScroll;
+    }
+    return existing;
   }
 
   void _openDayExpandedOverlay(DayScheduleItem day, GlobalKey cardKey) {
@@ -101,7 +176,8 @@ class _PlannerScreenState extends State<PlannerScreen>
       _isDraggingReel = false;
     });
 
-    _dayExpandController.forward(from: 0.0);
+    _dayExpandController.value = 0.0;
+    _animateExpandTo(1.0, velocity: 0.6);
   }
 
   void _switchExpandedDay(int dayOffset) {
@@ -137,24 +213,25 @@ class _PlannerScreenState extends State<PlannerScreen>
     });
   }
 
-  Future<void> _closeDayExpandedOverlay() async {
+  Future<void> _closeDayExpandedOverlay({double initialVelocity = 0.0}) async {
     if (_activeExpandedDay == null) return;
     FocusScope.of(context).unfocus();
 
     final dayDate = _activeExpandedDay!.date;
-    final cardKey = _dayCardKeys[DaysSidebar.dateKey(dayDate)];
-    final updatedRect = _computeCardRectInStack(cardKey);
-    if (mounted) {
-      setState(() {
-        if (updatedRect != null) {
-          _originCardRect = updatedRect;
-        }
-        _dragOffset = Offset.zero;
-        _isDraggingReel = false;
-      });
-    }
+    final updatedRect = _showSidebar
+        ? await _ensureCardVisibleAndMeasure(dayDate)
+        : const Rect.fromLTWH(-260, 140, 252, 130);
+    if (!mounted) return;
 
-    await _dayExpandController.reverse();
+    setState(() {
+      if (updatedRect != null) {
+        _originCardRect = updatedRect;
+      }
+      _dragOffset = Offset.zero;
+      _isDraggingReel = false;
+    });
+
+    await _animateExpandTo(0.0, velocity: initialVelocity);
     await _controller.refreshDayPreview(dayDate);
 
     if (mounted) {
@@ -168,30 +245,31 @@ class _PlannerScreenState extends State<PlannerScreen>
     }
   }
 
+  double get _effectivePullDistance =>
+      (_dragOffset.dy.clamp(0.0, 500.0)) +
+      (_dragOffset.dx.clamp(0.0, 500.0) * 0.7);
+
   void _handleReelDragUpdate(Offset delta) {
     setState(() {
       _isDraggingReel = true;
       _dragOffset += delta;
     });
     // Pulling down (dy > 0) or swiping right (dx > 0) interactively shrinks the view toward the card
-    final effectivePull = (_dragOffset.dy.clamp(0.0, 500.0)) +
-        (_dragOffset.dx.clamp(0.0, 500.0) * 0.7);
-    final progress = (effectivePull / 320.0).clamp(0.0, 0.82);
-    _dayExpandController.value = (1.0 - progress).clamp(0.18, 1.0);
+    final progress = (_effectivePullDistance / 340.0).clamp(0.0, 0.85);
+    _dayExpandController.value = (1.0 - progress).clamp(0.15, 1.0);
   }
 
   void _handleReelDragEnd(Velocity velocity) {
-    final effectivePull = (_dragOffset.dy.clamp(0.0, 500.0)) +
-        (_dragOffset.dx.clamp(0.0, 500.0) * 0.7);
     final vMag = velocity.pixelsPerSecond.dy + (velocity.pixelsPerSecond.dx * 0.7);
-    if (effectivePull > 65.0 || vMag > 280.0) {
-      _closeDayExpandedOverlay();
+    if (_effectivePullDistance > 65.0 || vMag > 280.0) {
+      final releaseVel = -(vMag / 1400.0).clamp(-4.0, 4.0);
+      _closeDayExpandedOverlay(initialVelocity: releaseVel);
     } else {
       setState(() {
         _dragOffset = Offset.zero;
         _isDraggingReel = false;
       });
-      _dayExpandController.forward();
+      _animateExpandTo(1.0, velocity: 1.5);
     }
   }
 
@@ -230,30 +308,59 @@ class _PlannerScreenState extends State<PlannerScreen>
           child: Stack(
             key: _rootStackKey,
             children: [
-              // 1. Base Split Planner Screen
-              Scaffold(
-                backgroundColor: const Color(0xFFF1F5F9),
-                body: SafeArea(
-                  child: Stack(
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Left Days Sidebar (Starts at the top, full height of workspace)
-                          AnimatedSize(
-                            duration: const Duration(milliseconds: 240),
-                            curve: Curves.easeOutCubic,
-                            alignment: Alignment.centerLeft,
-                            child: _showSidebar
-                                ? DaysSidebar(
-                                    controller: _controller,
-                                    cardKeys: _dayCardKeys,
-                                    activeExpandingDate: _activeExpandedDay?.date,
-                                    onDayExpand: (day, cardKey) =>
-                                        _openDayExpandedOverlay(day, cardKey),
-                                  )
-                                : const SizedBox.shrink(),
-                          ),
+              // 1. Base Split Planner Screen (Subtle depth push-back while day card expands)
+              AnimatedBuilder(
+                animation: _dayExpandController,
+                builder: (context, child) {
+                  final depthT = _activeExpandedDay != null
+                      ? _dayExpandController.value.clamp(0.0, 1.0)
+                      : 0.0;
+                  // Keep Transform.scale unconditionally in tree so Scaffold & ScrollState never unmount
+                  return Transform.scale(
+                    scale: 1.0 - 0.025 * depthT,
+                    alignment: Alignment.center,
+                    child: child,
+                  );
+                },
+                child: Scaffold(
+                  backgroundColor: const Color(0xFFF1F5F9),
+                  body: SafeArea(
+                    child: Stack(
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Left Days Sidebar (Synchronized width + scroll preserved across collapses)
+                            AnimatedBuilder(
+                              animation: _sidebarAnimation,
+                              builder: (context, child) {
+                                final factor = _sidebarAnimation.value.clamp(0.0, 1.0);
+                                return ClipRect(
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    widthFactor: factor,
+                                    child: Offstage(
+                                      offstage: factor <= 0.001,
+                                      child: Opacity(
+                                        opacity: (factor * 1.15).clamp(0.0, 1.0),
+                                        child: IgnorePointer(
+                                          ignoring: !_showSidebar,
+                                          child: child,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                              child: DaysSidebar(
+                                controller: _controller,
+                                cardKeys: _dayCardKeys,
+                                scrollController: _sidebarScrollController,
+                                activeExpandingDate: _activeExpandedDay?.date,
+                                onDayExpand: (day, cardKey) =>
+                                    _openDayExpandedOverlay(day, cardKey),
+                              ),
+                            ),
 
                           // Center/Right Workspace Column (Top Toolbar + Canvas expand/shrink with sidebars)
                           Expanded(
@@ -304,62 +411,87 @@ class _PlannerScreenState extends State<PlannerScreen>
                         ],
                       ),
 
-                      // Sol Kenar Çubuğu Açma/Kapama Bütünleşik Dil Butonu
-                      AnimatedPositioned(
-                        duration: const Duration(milliseconds: 240),
-                        curve: Curves.easeOutCubic,
-                        left: _showSidebar ? 280 : 0,
-                        top: 0,
-                        bottom: 0,
-                        child: Center(
-                          child: GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _showSidebar = !_showSidebar;
-                              });
-                            },
-                            child: Container(
-                              width: 18,
-                              height: 52,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFAF9F6),
-                                borderRadius: const BorderRadius.only(
-                                  topRight: Radius.circular(10),
-                                  bottomRight: Radius.circular(10),
+                      // Sol Kenar Çubuğu Açma/Kapama Bütünleşik Dil Butonu (Panel ile 1:1 senkron)
+                      AnimatedBuilder(
+                        animation: _sidebarAnimation,
+                        builder: (context, _) {
+                          final leftPos = 280.0 * _sidebarAnimation.value.clamp(0.0, 1.0);
+                          return Positioned(
+                            left: leftPos,
+                            top: 0,
+                            bottom: 0,
+                            child: Center(
+                              child: Tooltip(
+                                message: _showSidebar
+                                    ? 'Günlük Notlar Panelini Gizle'
+                                    : 'Günlük Notlar Panelini Göster',
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  onEnter: (_) =>
+                                      setState(() => _isSidebarHandleHovered = true),
+                                  onExit: (_) =>
+                                      setState(() => _isSidebarHandleHovered = false),
+                                  child: GestureDetector(
+                                    onTap: _toggleLeftSidebar,
+                                    child: AnimatedContainer(
+                                      duration: const Duration(milliseconds: 160),
+                                      width: _isSidebarHandleHovered ? 22 : 18,
+                                      height: 56,
+                                      decoration: BoxDecoration(
+                                        color: _isSidebarHandleHovered
+                                            ? const Color(0xFFEFF6FF)
+                                            : const Color(0xFFFAF9F6),
+                                        borderRadius: const BorderRadius.only(
+                                          topRight: Radius.circular(10),
+                                          bottomRight: Radius.circular(10),
+                                        ),
+                                        border: Border(
+                                          top: BorderSide(
+                                            color: _isSidebarHandleHovered
+                                                ? const Color(0xFF2563EB).withValues(alpha: 0.35)
+                                                : Colors.black.withValues(alpha: 0.1),
+                                            width: 1.0,
+                                          ),
+                                          right: BorderSide(
+                                            color: _isSidebarHandleHovered
+                                                ? const Color(0xFF2563EB).withValues(alpha: 0.35)
+                                                : Colors.black.withValues(alpha: 0.1),
+                                            width: 1.0,
+                                          ),
+                                          bottom: BorderSide(
+                                            color: _isSidebarHandleHovered
+                                                ? const Color(0xFF2563EB).withValues(alpha: 0.35)
+                                                : Colors.black.withValues(alpha: 0.1),
+                                            width: 1.0,
+                                          ),
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withValues(
+                                              alpha: _isSidebarHandleHovered ? 0.08 : 0.04,
+                                            ),
+                                            blurRadius: _isSidebarHandleHovered ? 8 : 4,
+                                            offset: const Offset(2, 0),
+                                          ),
+                                        ],
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: Icon(
+                                        _showSidebar
+                                            ? Icons.chevron_left_rounded
+                                            : Icons.chevron_right_rounded,
+                                        size: 16,
+                                        color: _isSidebarHandleHovered
+                                            ? const Color(0xFF2563EB)
+                                            : const Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                                border: Border(
-                                  top: BorderSide(
-                                    color: Colors.black.withValues(alpha: 0.1),
-                                    width: 1.0,
-                                  ),
-                                  right: BorderSide(
-                                    color: Colors.black.withValues(alpha: 0.1),
-                                    width: 1.0,
-                                  ),
-                                  bottom: BorderSide(
-                                    color: Colors.black.withValues(alpha: 0.1),
-                                    width: 1.0,
-                                  ),
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.04),
-                                    blurRadius: 4,
-                                    offset: const Offset(2, 0),
-                                  ),
-                                ],
-                              ),
-                              alignment: Alignment.center,
-                              child: Icon(
-                                _showSidebar
-                                    ? Icons.chevron_left_rounded
-                                    : Icons.chevron_right_rounded,
-                                size: 16,
-                                color: const Color(0xFF64748B),
                               ),
                             ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
 
                       // Sağ Görevler Çubuğu Açma/Kapama Bütünleşik Dil Butonu
@@ -420,12 +552,13 @@ class _PlannerScreenState extends State<PlannerScreen>
                           ),
                         ),
                       ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
 
-              // 2. Instagram Reel / Nur İslami Yaşam Style Expanding & Shrinking Day Overlay
+              // 2. Spring-Physics Container-Transform Day Overlay
               if (_activeExpandedDay != null)
                 _buildExpandingDayOverlay(context, _activeExpandedDay!),
             ],
@@ -3141,39 +3274,62 @@ class _PlannerScreenState extends State<PlannerScreen>
         day.date.day == now.day;
 
     return AnimatedBuilder(
-      animation: _dayExpandAnimation,
+      animation: _dayExpandController,
       builder: (context, _) {
-        final t = _dayExpandAnimation.value.clamp(0.0, 1.0);
+        final rawT = _dayExpandController.value;
+        final t = rawT.clamp(0.0, 1.0);
+        final tGeom = rawT.clamp(-0.02, 1.02);
 
         final cardTop = _originCardRect.top;
         final cardLeft = _originCardRect.left;
         final cardRight = _originCardRect.right;
         final cardBottom = _originCardRect.bottom;
 
-        // Smooth interpolation from exact sidebar card rect -> full screen (0, 0, screenW, screenH)
-        final fingerDx = _isDraggingReel ? (_dragOffset.dx * 0.22 * t) : 0.0;
-        final fingerDy = _isDraggingReel ? (_dragOffset.dy * 0.22 * t) : 0.0;
-        final top = cardTop * (1.0 - t) + fingerDy;
-        final left = cardLeft * (1.0 - t) + fingerDx;
-        final right = (screenW - cardRight) * (1.0 - t) - fingerDx;
-        final bottom = (screenH - cardBottom) * (1.0 - t) - fingerDy;
-        final borderRadius = 14.0 * (1.0 - t);
+        // Spring-driven container transform from exact sidebar card rect -> full screen
+        final fingerDx = _isDraggingReel ? (_dragOffset.dx * 0.24 * t) : 0.0;
+        final fingerDy = _isDraggingReel ? (_dragOffset.dy * 0.24 * t) : 0.0;
+        final top = (cardTop * (1.0 - tGeom) + fingerDy).clamp(0.0, screenH);
+        final left = (cardLeft * (1.0 - tGeom) + fingerDx).clamp(-screenW, screenW);
+        final right =
+            ((screenW - cardRight) * (1.0 - tGeom) - fingerDx).clamp(-screenW, screenW);
+        final bottom =
+            ((screenH - cardBottom) * (1.0 - tGeom) - fingerDy).clamp(0.0, screenH);
 
-        // Cross-fade opacities between compact card surface and full-screen workspace
-        final fullViewOpacity = ((t - 0.18) / 0.35).clamp(0.0, 1.0);
-        final cardPreviewOpacity = (1.0 - (t / 0.38)).clamp(0.0, 1.0);
+        final dragPullFraction = _isDraggingReel ? (1.0 - t).clamp(0.0, 1.0) : 0.0;
+        final borderRadius =
+            (14.0 * (1.0 - t) + 12.0 * dragPullFraction).clamp(0.0, 26.0);
+
+        // Eased cross-fade + content unfold scale so there is no cropped jump
+        final revealT = Curves.easeOutCubic.transform(((t - 0.14) / 0.44).clamp(0.0, 1.0));
+        final fullViewOpacity = ((t - 0.14) / 0.34).clamp(0.0, 1.0);
+        final contentScale = lerpDouble(0.88, 1.0, revealT)!;
+        final contentSlideY = 14.0 * (1.0 - revealT);
+
+        final cardPreviewOpacity = (1.0 - (t / 0.34)).clamp(0.0, 1.0);
+        final boxW = math.max(1.0, screenW - left - right);
+        final cardScale = (boxW / math.max(1.0, _originCardRect.width)).clamp(0.92, 1.55);
 
         final updatedDay = day.copyWith(text: _controller.getDayNote(day.date));
 
         return Stack(
           children: [
-            // Backdrop dim scrim (tappable to shrink back to card!)
+            // Backdrop blur + dim scrim (tappable to shrink back to card)
             Positioned.fill(
               child: GestureDetector(
                 onTap: _closeDayExpandedOverlay,
-                child: Container(
-                  color: Colors.black.withValues(alpha: 0.38 * t),
-                ),
+                child: t > 0.02
+                    ? BackdropFilter(
+                        filter: ImageFilter.blur(
+                          sigmaX: 5.0 * t,
+                          sigmaY: 5.0 * t,
+                        ),
+                        child: Container(
+                          color: Colors.black.withValues(alpha: 0.30 * t),
+                        ),
+                      )
+                    : Container(
+                        color: Colors.black.withValues(alpha: 0.30 * t),
+                      ),
               ),
             ),
 
@@ -3189,17 +3345,20 @@ class _PlannerScreenState extends State<PlannerScreen>
                   decoration: BoxDecoration(
                     color: const Color(0xFFFAF9F6),
                     borderRadius: BorderRadius.circular(borderRadius),
-                    border: t < 0.98
+                    border: t < 0.98 || _isDraggingReel
                         ? Border.all(
-                            color: const Color(0xFF2563EB)
-                                .withValues(alpha: 0.45 * (1.0 - t)),
+                            color: const Color(0xFF2563EB).withValues(
+                              alpha: _isDraggingReel
+                                  ? 0.25
+                                  : (0.45 * (1.0 - t)).clamp(0.0, 1.0),
+                            ),
                             width: 1.5,
                           )
                         : null,
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.22 * t + 0.05),
-                        blurRadius: 28 * t + 6,
+                        blurRadius: 30 * t + 8,
                         offset: Offset(0, 10 * t + 2),
                       ),
                     ],
@@ -3208,33 +3367,40 @@ class _PlannerScreenState extends State<PlannerScreen>
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      // Full-Screen Day Detail & Drawing Workspace (fades in as card expands)
+                      // Full-Screen Day Detail & Drawing Workspace (unfolds & scales in)
                       if (t > 0.12 && _activeDayCanvasController != null)
                         Opacity(
                           opacity: fullViewOpacity,
                           child: IgnorePointer(
                             ignoring: t < 0.7,
-                            child: OverflowBox(
-                              minWidth: screenW,
-                              maxWidth: screenW,
-                              minHeight: screenH,
-                              maxHeight: screenH,
-                              alignment: Alignment.topLeft,
-                              child: SizedBox(
-                                width: screenW,
-                                height: screenH,
-                                child: _buildFullDayWorkspace(
-                                  context,
-                                  updatedDay,
-                                  isToday,
-                                  _activeDayCanvasController!,
+                            child: Transform.translate(
+                              offset: Offset(0, contentSlideY),
+                              child: Transform.scale(
+                                scale: contentScale,
+                                alignment: Alignment.topCenter,
+                                child: OverflowBox(
+                                  minWidth: screenW,
+                                  maxWidth: screenW,
+                                  minHeight: screenH,
+                                  maxHeight: screenH,
+                                  alignment: Alignment.topLeft,
+                                  child: SizedBox(
+                                    width: screenW,
+                                    height: screenH,
+                                    child: _buildFullDayWorkspace(
+                                      context,
+                                      updatedDay,
+                                      isToday,
+                                      _activeDayCanvasController!,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
 
-                      // Compact Day Card Surface (visible at start of expand & end of shrink)
+                      // Compact Day Card Surface (smoothly scales as container lifts/docks)
                       if (cardPreviewOpacity > 0.01)
                         Opacity(
                           opacity: cardPreviewOpacity,
@@ -3245,14 +3411,18 @@ class _PlannerScreenState extends State<PlannerScreen>
                               minHeight: _originCardRect.height,
                               maxHeight: _originCardRect.height,
                               alignment: Alignment.topLeft,
-                              child: SizedBox(
-                                width: _originCardRect.width,
-                                height: _originCardRect.height,
-                                child: DayCardSurface(
-                                  day: updatedDay,
-                                  isToday: isToday,
-                                  previewStrokes:
-                                      _controller.getDayPreviewStrokes(day.date),
+                              child: Transform.scale(
+                                scale: cardScale,
+                                alignment: Alignment.topLeft,
+                                child: SizedBox(
+                                  width: _originCardRect.width,
+                                  height: _originCardRect.height,
+                                  child: DayCardSurface(
+                                    day: updatedDay,
+                                    isToday: isToday,
+                                    previewStrokes:
+                                        _controller.getDayPreviewStrokes(day.date),
+                                  ),
                                 ),
                               ),
                             ),
@@ -3276,6 +3446,7 @@ class _PlannerScreenState extends State<PlannerScreen>
     PlannerController dayCanvasController,
   ) {
     final fullDateStr = DateFormat('d MMMM yyyy', 'tr_TR').format(day.date);
+    final isReadyToDismiss = _isDraggingReel && _effectivePullDistance > 65.0;
 
     return ListenableBuilder(
       listenable: dayCanvasController,
@@ -3284,7 +3455,7 @@ class _PlannerScreenState extends State<PlannerScreen>
           children: [
             Column(
               children: [
-                // 1. Top Interactive Header Bar (Draggable down/right like Instagram Reel to shrink!)
+                // 1. Top Interactive Header Bar (Draggable down/right to shrink back to card!)
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onPanUpdate: (details) => _handleReelDragUpdate(details.delta),
@@ -3302,23 +3473,27 @@ class _PlannerScreenState extends State<PlannerScreen>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Instagram Reel / Sheet Pull-Down Handle Pill
-                        Container(
-                          width: 42,
+                        // Pull-Down Handle Pill with threshold highlight
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 140),
+                          width: isReadyToDismiss ? 56 : 42,
                           height: 4.5,
                           margin: const EdgeInsets.only(bottom: 8),
                           decoration: BoxDecoration(
-                            color: Colors.grey.shade300,
+                            color: isReadyToDismiss
+                                ? const Color(0xFF2563EB)
+                                : Colors.grey.shade300,
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        Stack(
-                          alignment: Alignment.center,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             // Sol Kısım: Küçült / Haftaya Dön ve Gün Başlığı
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Row(
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   InkWell(
@@ -3384,6 +3559,10 @@ class _PlannerScreenState extends State<PlannerScreen>
                                               color: Color(0xFF1E293B),
                                             ),
                                             padding: EdgeInsets.zero,
+                                            style: IconButton.styleFrom(
+                                              tapTargetSize:
+                                                  MaterialTapTargetSize.shrinkWrap,
+                                            ),
                                             constraints: const BoxConstraints(
                                               minWidth: 26,
                                               minHeight: 26,
@@ -3439,6 +3618,10 @@ class _PlannerScreenState extends State<PlannerScreen>
                                               color: Color(0xFF1E293B),
                                             ),
                                             padding: EdgeInsets.zero,
+                                            style: IconButton.styleFrom(
+                                              tapTargetSize:
+                                                  MaterialTapTargetSize.shrinkWrap,
+                                            ),
                                             constraints: const BoxConstraints(
                                               minWidth: 26,
                                               minHeight: 26,
@@ -3451,11 +3634,12 @@ class _PlannerScreenState extends State<PlannerScreen>
                                   ),
                                 ],
                               ),
+                              ),
                             ),
+                            const SizedBox(width: 8),
 
                             // Orta Kısım: Sayfa Geçiş Hapı (Tam Ortalanmış)
-                            Center(
-                              child: Container(
+                            Container(
                                 decoration: BoxDecoration(
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(10),
@@ -3543,11 +3727,11 @@ class _PlannerScreenState extends State<PlannerScreen>
                                   ],
                                 ),
                               ),
-                            ),
+                            const SizedBox(width: 8),
 
                             // Sağ Kısım: İleri/Geri/Temizle + Yakınlaştırma ve Ayarlar İkonu
-                            Align(
-                              alignment: Alignment.centerRight,
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [

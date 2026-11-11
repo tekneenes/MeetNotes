@@ -141,27 +141,21 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Tükenmez Kalem and Kurşun Kalem use the custom PNG icon assets
-    final penImage = tester.widget<Image>(
-      find.descendant(
-        of: find.byTooltip('Tükenmez Kalem'),
-        matching: find.byType(Image),
-      ),
-    );
-    expect(
-      (penImage.image as AssetImage).assetName,
-      'assets/icons/pen.png',
-    );
-    final pencilImage = tester.widget<Image>(
-      find.descendant(
-        of: find.byTooltip('Kurşun Kalem'),
-        matching: find.byType(Image),
-      ),
-    );
-    expect(
-      (pencilImage.image as AssetImage).assetName,
-      'assets/icons/pencil.png',
-    );
+    // Tükenmez Kalem, Dolma Kalem, and Kurşun Kalem use the custom PNG icon assets
+    const expectedCustomIcons = <String, String>{
+      'Tükenmez Kalem': 'assets/icons/pen.png',
+      'Dolma Kalem': 'assets/icons/fountain.png',
+      'Kurşun Kalem': 'assets/icons/pencil.png',
+    };
+    for (final entry in expectedCustomIcons.entries) {
+      final toolImage = tester.widget<Image>(
+        find.descendant(
+          of: find.byTooltip(entry.key),
+          matching: find.byType(Image),
+        ),
+      );
+      expect((toolImage.image as AssetImage).assetName, entry.value);
+    }
 
     // Find the 3-dots button (Icons.more_horiz_rounded)
     final moreButton = find.byIcon(Icons.more_horiz_rounded);

@@ -548,6 +548,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
 
   static const Map<DrawingTool, String> _customToolAssetPaths = {
     DrawingTool.pen: 'assets/icons/pen.png',
+    DrawingTool.fountain: 'assets/icons/fountain.png',
     DrawingTool.pencil: 'assets/icons/pencil.png',
   };
 

@@ -1705,6 +1705,44 @@ void main() {
     controller.redo();
     expect(controller.strokes.first.eraserMasks.length, 1);
 
+    // 8. Test Lasso Active Point Filtering on Masked Stroke:
+    // Erase the right half of the stroke from (250, 100) to (400, 100)
+    controller.setTool(DrawingTool.eraser);
+    controller.setEraserType(EraserType.pixel);
+    controller.setEraserSize(40.0); // radius 20
+    controller.startStroke(const Offset(250, 100));
+    controller.updateStroke(const Offset(400, 100));
+    controller.endStroke();
+
+    // Select the stroke with Lasso around the visible part
+    controller.setTool(DrawingTool.lasso);
+    controller.startStroke(const Offset(80, 80));
+    controller.updateStroke(const Offset(230, 80));
+    controller.updateStroke(const Offset(230, 120));
+    controller.updateStroke(const Offset(80, 120));
+    controller.endStroke();
+
+    expect(controller.selectedStrokeIndices, contains(0));
+    final bounds = controller.selectionBounds;
+    expect(bounds, isNotNull);
+    // The selection box hugs the visible portion only (~100 to ~250),
+    // and does NOT extend to the erased original tail at 400!
+    expect(bounds!.right, lessThan(300.0));
+
+    // Deselect
+    controller.clearLassoSelection();
+    expect(controller.hasLassoSelection, isFalse);
+
+    // Lasso strictly around the empty erased space (from 320,80 to 390,120)
+    controller.startStroke(const Offset(320, 80));
+    controller.updateStroke(const Offset(390, 80));
+    controller.updateStroke(const Offset(390, 120));
+    controller.updateStroke(const Offset(320, 120));
+    controller.endStroke();
+
+    // The stroke should NOT be selected because all points inside this lasso are masked/erased!
+    expect(controller.selectedStrokeIndices.isEmpty, isTrue);
+
     await tester.pump(const Duration(milliseconds: 1000));
   });
 

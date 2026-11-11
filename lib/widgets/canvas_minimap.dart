@@ -320,20 +320,50 @@ class CanvasMinimapOverlay extends StatelessWidget {
       math.max(visibleRect.height, 840.0),
     );
 
-    var unionRect = homeRect.expandToInclude(visibleRect);
+    // Pre-allocated wide playable canvas arena matching the 248:154 minimap aspect ratio
+    // so left/right/top/bottom canvas space is visible up front without progressive stretching.
+    const baseWorld = Rect.fromLTRB(-1600.0, -700.0, 3200.0, 2280.0);
+    var unionRect = baseWorld.expandToInclude(homeRect).expandToInclude(visibleRect);
     if (content != null) {
       unionRect = unionRect.expandToInclude(content!);
     }
 
-    final padX = math.max(160.0, unionRect.width * 0.08);
-    final padY = math.max(140.0, unionRect.height * 0.08);
-    return (
-      worldBounds: Rect.fromLTRB(
+    if (unionRect != baseWorld) {
+      final padX = math.max(160.0, unionRect.width * 0.06);
+      final padY = math.max(120.0, unionRect.height * 0.06);
+      unionRect = Rect.fromLTRB(
         unionRect.left - padX,
         unionRect.top - padY,
         unionRect.right + padX,
         unionRect.bottom + padY,
-      ),
+      );
+    }
+
+    // Pad shorter axis to match minimap aspect ratio (eliminates dead side margins)
+    const targetAspect = _mapWidth / _mapHeight;
+    final currentAspect = unionRect.width / unionRect.height;
+    if (currentAspect < targetAspect) {
+      final targetWidth = unionRect.height * targetAspect;
+      final extraW = (targetWidth - unionRect.width) / 2.0;
+      unionRect = Rect.fromLTRB(
+        unionRect.left - extraW,
+        unionRect.top,
+        unionRect.right + extraW,
+        unionRect.bottom,
+      );
+    } else if (currentAspect > targetAspect) {
+      final targetHeight = unionRect.width / targetAspect;
+      final extraH = (targetHeight - unionRect.height) / 2.0;
+      unionRect = Rect.fromLTRB(
+        unionRect.left,
+        unionRect.top - extraH,
+        unionRect.right,
+        unionRect.bottom + extraH,
+      );
+    }
+
+    return (
+      worldBounds: unionRect,
       contentBounds: content,
       homeRect: homeRect,
     );

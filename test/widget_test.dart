@@ -52,11 +52,37 @@ void main() {
     expect(find.byType(AppleDayCalendarPanel), findsOneWidget);
     expect(find.text('tam gün'), findsOneWidget);
 
-    // Add a calendar event via AppleDayCalendarPanel '+' button
+    // Add a calendar event inline inside AppleDayCalendarPanel (no AlertDialog)
+    await tester.tap(find.byTooltip('Etkinlik Ekle'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(AppleDayCalendarPanel),
+        matching: find.text('Kaydet'),
+      ),
+      findsOneWidget,
+    );
+
+    // Tapping Kaydet with blank title defaults cleanly to 'Yeni Etkinlik'
+    await tester.tap(find.text('Kaydet'));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(AppleDayCalendarPanel),
+        matching: find.text('Yeni Etkinlik'),
+      ),
+      findsOneWidget,
+    );
+
+    // Add a named event inline as well
     await tester.tap(find.byTooltip('Etkinlik Ekle'));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.byType(TextField).first,
+      find.descendant(
+        of: find.byType(AppleDayCalendarPanel),
+        matching: find.byType(TextField),
+      ).first,
       'Ürün Toplantısı',
     );
     await tester.tap(find.text('Kaydet'));

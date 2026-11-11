@@ -33,6 +33,16 @@ class _AppleDayCalendarPanelState extends State<AppleDayCalendarPanel> {
   int? _previewEndMinutes;
   double _dragAccumDy = 0.0;
 
+  // Inline left-panel event composer/editor state (replaces modal AlertDialog).
+  bool _isComposerOpen = false;
+  DayCalendarEvent? _editingEvent;
+  final TextEditingController _titleCtrl = TextEditingController();
+  final TextEditingController _notesCtrl = TextEditingController();
+  bool _draftAllDay = false;
+  int _draftStartMinutes = 540;
+  int _draftEndMinutes = 600;
+  int _draftColorValue = DayCalendarEvent.palette.first;
+
   @override
   void initState() {
     super.initState();
@@ -49,6 +59,8 @@ class _AppleDayCalendarPanelState extends State<AppleDayCalendarPanel> {
       _previewStartMinutes = null;
       _previewEndMinutes = null;
       _dragAccumDy = 0.0;
+      _isComposerOpen = false;
+      _editingEvent = null;
       if (_timelineScrollController.hasClients) {
         final target = _computeInitialScrollOffset();
         _timelineScrollController.jumpTo(
@@ -61,6 +73,8 @@ class _AppleDayCalendarPanelState extends State<AppleDayCalendarPanel> {
   @override
   void dispose() {
     _timelineScrollController.dispose();
+    _titleCtrl.dispose();
+    _notesCtrl.dispose();
     super.dispose();
   }
 
@@ -71,9 +85,7 @@ class _AppleDayCalendarPanelState extends State<AppleDayCalendarPanel> {
         .toList();
     double startHour = 7.5;
     if (events.isNotEmpty) {
-      final earliestStart = events
-          .map((e) => e.startMinutes)
-          .reduce(math.min);
+      final earliestStart = events.map((e) => e.startMinutes).reduce(math.min);
       startHour = math.max(0.0, (earliestStart / 60.0) - 1.0);
     } else if (widget.isToday) {
       final now = DateTime.now();
@@ -86,60 +98,81 @@ class _AppleDayCalendarPanelState extends State<AppleDayCalendarPanel> {
     return ((minutes / 15.0).round() * 15).clamp(0, 1440);
   }
 
-  Future<void> _openEventDialog({
+  void _openInlineComposer({
     DayCalendarEvent? existing,
     bool initialAllDay = false,
     int initialStartMinutes = 540,
-  }) async {
+  }) {
     final start = existing?.startMinutes ?? initialStartMinutes.clamp(0, 1380);
     final end = existing?.endMinutes ?? math.min(1440, start + 60);
 
-    final result = await showDialog<_EventDialogResult>(
-      context: context,
-      builder: (ctx) => _AppleEventEditorDialog(
-        initialTitle: existing?.title ?? '',
-        initialAllDay: existing?.isAllDay ?? initialAllDay,
-        initialStartMinutes: start,
-        initialEndMinutes: end,
-        initialColorValue: existing?.colorValue ?? DayCalendarEvent.palette.first,
-        initialNotes: existing?.notes ?? '',
-        isEditing: existing != null,
-      ),
-    );
-    if (!mounted || result == null) return;
+    _titleCtrl.text = existing?.title ?? '';
+    _notesCtrl.text = existing?.notes ?? '';
+    setState(() {
+      _editingEvent = existing;
+      _draftAllDay = existing?.isAllDay ?? initialAllDay;
+      _draftStartMinutes = start;
+      _draftEndMinutes = end;
+      _draftColorValue =
+          existing?.colorValue ?? DayCalendarEvent.palette.first;
+      _isComposerOpen = true;
+    });
+  }
 
-    if (result.deleted && existing != null) {
-      widget.controller.deleteDayEvent(widget.day.date, existing.id);
-      return;
-    }
+  void _closeInlineComposer() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _isComposerOpen = false;
+      _editingEvent = null;
+    });
+  }
+
+  void _saveInlineEvent() {
+    final rawTitle = _titleCtrl.text.trim();
+    // Never silently fail on empty input; default to Apple Calendar's standard title.
+    final title = rawTitle.isEmpty ? 'Yeni Etkinlik' : rawTitle;
+    final notes = _notesCtrl.text.trim();
+    final existing = _editingEvent;
 
     if (existing != null) {
       widget.controller.updateDayEvent(
         widget.day.date,
         existing.copyWith(
-          title: result.title,
-          isAllDay: result.isAllDay,
-          startMinutes: result.startMinutes,
-          endMinutes: result.endMinutes,
-          colorValue: result.colorValue,
-          notes: result.notes,
+          title: title,
+          isAllDay: _draftAllDay,
+          startMinutes: _draftStartMinutes,
+          endMinutes: _draftEndMinutes,
+          colorValue: _draftColorValue,
+          notes: notes,
         ),
       );
     } else {
       final newEvent = DayCalendarEvent(
         id: 'evt_${DateTime.now().microsecondsSinceEpoch}',
-        title: result.title,
-        isAllDay: result.isAllDay,
-        startMinutes: result.startMinutes,
-        endMinutes: result.endMinutes,
-        colorValue: result.colorValue,
-        notes: result.notes,
+        title: title,
+        isAllDay: _draftAllDay,
+        startMinutes: _draftStartMinutes,
+        endMinutes: _draftEndMinutes,
+        colorValue: _draftColorValue,
+        notes: notes,
       );
       widget.controller.addDayEvent(widget.day.date, newEvent);
     }
+
+    _closeInlineComposer();
   }
 
-  List<_PositionedCalendarEvent> _layoutTimedEvents(List<DayCalendarEvent> events) {
+  void _deleteEditingEvent() {
+    final existing = _editingEvent;
+    if (existing != null) {
+      widget.controller.deleteDayEvent(widget.day.date, existing.id);
+    }
+    _closeInlineComposer();
+  }
+
+  List<_PositionedCalendarEvent> _layoutTimedEvents(
+    List<DayCalendarEvent> events,
+  ) {
     if (events.isEmpty) return const [];
 
     final sorted = List<DayCalendarEvent>.of(events)
@@ -217,15 +250,9 @@ class _AppleDayCalendarPanelState extends State<AppleDayCalendarPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final allEvents = widget.controller.getDayEvents(widget.day.date);
-    final allDayEvents = allEvents.where((e) => e.isAllDay).toList();
-    final timedEvents = allEvents.where((e) => !e.isAllDay).toList();
-    final positionedEvents = _layoutTimedEvents(timedEvents);
-
     final dayMonth = DateFormat('d MMMM', 'tr_TR').format(widget.day.date);
     final yearStr = DateFormat('yyyy', 'tr_TR').format(widget.day.date);
     final now = DateTime.now();
-    final nowMinutes = now.hour * 60 + now.minute;
 
     return Container(
       width: 320,
@@ -314,251 +341,605 @@ class _AppleDayCalendarPanelState extends State<AppleDayCalendarPanel> {
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Etkinlik Ekle',
-                  icon: const Icon(
-                    Icons.add_rounded,
+                  tooltip: _isComposerOpen ? 'Kapat' : 'Etkinlik Ekle',
+                  icon: Icon(
+                    _isComposerOpen ? Icons.close_rounded : Icons.add_rounded,
                     size: 20,
-                    color: Color(0xFF0A84FF),
+                    color: _isComposerOpen
+                        ? const Color(0xFF475569)
+                        : const Color(0xFF0A84FF),
                   ),
                   style: IconButton.styleFrom(
-                    backgroundColor: const Color(0xFF0A84FF).withValues(alpha: 0.10),
+                    backgroundColor: _isComposerOpen
+                        ? Colors.black.withValues(alpha: 0.06)
+                        : const Color(0xFF0A84FF).withValues(alpha: 0.10),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
                   padding: EdgeInsets.zero,
                   onPressed: () {
-                    final nextHour = ((now.hour + 1) % 24) * 60;
-                    _openEventDialog(initialStartMinutes: nextHour);
+                    if (_isComposerOpen) {
+                      _closeInlineComposer();
+                    } else {
+                      final nextHour = ((now.hour + 1) % 24) * 60;
+                      _openInlineComposer(initialStartMinutes: nextHour);
+                    }
                   },
                 ),
               ],
             ),
           ),
-          Divider(height: 1, thickness: 1, color: Colors.black.withValues(alpha: 0.08)),
+          Divider(
+            height: 1,
+            thickness: 1,
+            color: Colors.black.withValues(alpha: 0.08),
+          ),
 
-          // 2. "tam gün" (All-Day) Strip
-          InkWell(
-            onTap: () => _openEventDialog(initialAllDay: true),
-            child: Container(
-              constraints: const BoxConstraints(minHeight: 30),
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.65),
-                border: Border(
-                  bottom: BorderSide(
-                    color: Colors.black.withValues(alpha: 0.10),
-                  ),
+          // 2. Switch cleanly inside the left panel between 24h timeline and inline composer
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              child: _isComposerOpen
+                  ? _buildInlineComposerView(context)
+                  : _buildTimelineView(context, now),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimelineView(BuildContext context, DateTime now) {
+    final allEvents = widget.controller.getDayEvents(widget.day.date);
+    final allDayEvents = allEvents.where((e) => e.isAllDay).toList();
+    final timedEvents = allEvents.where((e) => !e.isAllDay).toList();
+    final positionedEvents = _layoutTimedEvents(timedEvents);
+    final nowMinutes = now.hour * 60 + now.minute;
+
+    return Column(
+      key: const ValueKey('timeline_view'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // "tam gün" (All-Day) Strip
+        InkWell(
+          onTap: () => _openInlineComposer(initialAllDay: true),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 30),
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.65),
+              border: Border(
+                bottom: BorderSide(
+                  color: Colors.black.withValues(alpha: 0.10),
                 ),
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: _gutterWidth,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: Text(
-                        'tam gün',
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey.shade600,
-                        ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: _gutterWidth,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: Text(
+                      'tam gün',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey.shade600,
                       ),
                     ),
                   ),
-                  Container(
-                    width: 1,
-                    height: 18,
-                    color: Colors.black.withValues(alpha: 0.06),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: allDayEvents.isEmpty
-                        ? Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2),
-                            child: Text(
-                              'Tam gün etkinlik ekle...',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey.shade400,
-                              ),
+                ),
+                Container(
+                  width: 1,
+                  height: 18,
+                  color: Colors.black.withValues(alpha: 0.06),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: allDayEvents.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Text(
+                            'Tam gün etkinlik ekle...',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade400,
                             ),
-                          )
-                        : Wrap(
-                            spacing: 4,
-                            runSpacing: 4,
-                            children: [
-                              for (final ev in allDayEvents)
-                                GestureDetector(
-                                  onTap: () => _openEventDialog(existing: ev),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 3,
+                          ),
+                        )
+                      : Wrap(
+                          spacing: 4,
+                          runSpacing: 4,
+                          children: [
+                            for (final ev in allDayEvents)
+                              GestureDetector(
+                                onTap: () => _openInlineComposer(existing: ev),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Color(ev.colorValue),
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                  child: Text(
+                                    ev.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
                                     ),
-                                    decoration: BoxDecoration(
-                                      color: Color(ev.colorValue),
-                                      borderRadius: BorderRadius.circular(5),
-                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                ),
+                const SizedBox(width: 8),
+              ],
+            ),
+          ),
+        ),
+
+        // 24-Hour Scrollable Apple Calendar Timeline
+        Expanded(
+          child: Container(
+            color: Colors.white,
+            child: SingleChildScrollView(
+              controller: _timelineScrollController,
+              child: SizedBox(
+                height: 24 * _hourHeight + _verticalPad * 2,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final totalW = constraints.maxWidth;
+                    final trackLeft = _gutterWidth + 6.0;
+                    final trackWidth = math.max(40.0, totalW - trackLeft - 6.0);
+
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        // Hour labels + hairline grid rows (00:00 .. 23:00)
+                        for (int hour = 0; hour <= 23; hour++)
+                          Positioned(
+                            top: _verticalPad + hour * _hourHeight - 7,
+                            left: 0,
+                            right: 0,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: _gutterWidth,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 6),
                                     child: Text(
-                                      ev.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.white,
+                                      '${hour.toString().padLeft(2, '0')}:00',
+                                      textAlign: TextAlign.right,
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.grey.shade500,
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures(),
+                                        ],
                                       ),
                                     ),
                                   ),
                                 ),
-                            ],
+                                Expanded(
+                                  child: Container(
+                                    height: 1,
+                                    color: Colors.black.withValues(alpha: 0.08),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-              ),
-            ),
-          ),
 
-          // 3. 24-Hour Scrollable Apple Calendar Timeline
-          Expanded(
-            child: Container(
-              color: Colors.white,
-              child: SingleChildScrollView(
-                controller: _timelineScrollController,
-                child: SizedBox(
-                  height: 24 * _hourHeight + _verticalPad * 2,
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final totalW = constraints.maxWidth;
-                      final trackLeft = _gutterWidth + 6.0;
-                      final trackWidth = math.max(40.0, totalW - trackLeft - 6.0);
+                        // Subtle half-hour dividers
+                        for (int hour = 0; hour < 24; hour++)
+                          Positioned(
+                            top: _verticalPad + (hour + 0.5) * _hourHeight,
+                            left: _gutterWidth,
+                            right: 0,
+                            child: Container(
+                              height: 0.6,
+                              color: Colors.black.withValues(alpha: 0.03),
+                            ),
+                          ),
 
-                      return Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          // Hour labels + hairline grid rows (00:00 .. 23:00)
-                          for (int hour = 0; hour <= 23; hour++)
-                            Positioned(
-                              top: _verticalPad + hour * _hourHeight - 7,
-                              left: 0,
-                              right: 0,
+                        // Vertical gutter separator line
+                        Positioned(
+                          top: 0,
+                          bottom: 0,
+                          left: _gutterWidth,
+                          child: Container(
+                            width: 1,
+                            color: Colors.black.withValues(alpha: 0.06),
+                          ),
+                        ),
+
+                        // Tap on empty timeline slot to open inline composer at clicked half-hour
+                        Positioned(
+                          top: _verticalPad,
+                          left: _gutterWidth,
+                          right: 0,
+                          height: 24 * _hourHeight,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onTapUp: (details) {
+                              final rawMinutes =
+                                  (details.localPosition.dy / _hourHeight) *
+                                      60.0;
+                              final snapped =
+                                  ((rawMinutes ~/ 30) * 30).clamp(0, 1380);
+                              _openInlineComposer(initialStartMinutes: snapped);
+                            },
+                          ),
+                        ),
+
+                        // Current time red line indicator if viewing Today
+                        if (widget.isToday)
+                          Positioned(
+                            top: _verticalPad +
+                                (nowMinutes / 60.0) * _hourHeight -
+                                4,
+                            left: _gutterWidth - 4,
+                            right: 0,
+                            child: IgnorePointer(
                               child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  SizedBox(
-                                    width: _gutterWidth,
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(right: 6),
-                                      child: Text(
-                                        '${hour.toString().padLeft(2, '0')}:00',
-                                        textAlign: TextAlign.right,
-                                        style: TextStyle(
-                                          fontSize: 10.5,
-                                          fontWeight: FontWeight.w500,
-                                          color: Colors.grey.shade500,
-                                          fontFeatures: const [
-                                            FontFeature.tabularFigures(),
-                                          ],
-                                        ),
-                                      ),
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFFEF4444),
+                                      shape: BoxShape.circle,
                                     ),
                                   ),
                                   Expanded(
                                     child: Container(
-                                      height: 1,
-                                      color: Colors.black.withValues(alpha: 0.08),
+                                      height: 1.5,
+                                      color: const Color(0xFFEF4444),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-
-                          // Subtle half-hour dividers
-                          for (int hour = 0; hour < 24; hour++)
-                            Positioned(
-                              top: _verticalPad + (hour + 0.5) * _hourHeight,
-                              left: _gutterWidth,
-                              right: 0,
-                              child: Container(
-                                height: 0.6,
-                                color: Colors.black.withValues(alpha: 0.03),
-                              ),
-                            ),
-
-                          // Vertical gutter separator line
-                          Positioned(
-                            top: 0,
-                            bottom: 0,
-                            left: _gutterWidth,
-                            child: Container(
-                              width: 1,
-                              color: Colors.black.withValues(alpha: 0.06),
-                            ),
                           ),
 
-                          // Tap on empty timeline slot to create event at clicked half-hour
-                          Positioned(
-                            top: _verticalPad,
-                            left: _gutterWidth,
-                            right: 0,
-                            height: 24 * _hourHeight,
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.translucent,
-                              onTapUp: (details) {
-                                final rawMinutes =
-                                    (details.localPosition.dy / _hourHeight) * 60.0;
-                                final snapped =
-                                    ((rawMinutes ~/ 30) * 30).clamp(0, 1380);
-                                _openEventDialog(initialStartMinutes: snapped);
-                              },
-                            ),
+                        // Positioned Calendar Event Cards (overlap-aware columns)
+                        for (final item in positionedEvents)
+                          _buildTimedEventBlock(
+                            item,
+                            trackLeft: trackLeft,
+                            trackWidth: trackWidth,
                           ),
-
-                          // Current time red line indicator if viewing Today
-                          if (widget.isToday)
-                            Positioned(
-                              top: _verticalPad + (nowMinutes / 60.0) * _hourHeight - 4,
-                              left: _gutterWidth - 4,
-                              right: 0,
-                              child: IgnorePointer(
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: const BoxDecoration(
-                                        color: Color(0xFFEF4444),
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Container(
-                                        height: 1.5,
-                                        color: const Color(0xFFEF4444),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-
-                          // Positioned Calendar Event Cards (overlap-aware columns)
-                          for (final item in positionedEvents)
-                            _buildTimedEventBlock(
-                              item,
-                              trackLeft: trackLeft,
-                              trackWidth: trackWidth,
-                            ),
-                        ],
-                      );
-                    },
-                  ),
+                      ],
+                    );
+                  },
                 ),
               ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInlineComposerView(BuildContext context) {
+    final isEditing = _editingEvent != null;
+    final timeOptions = <int>[for (int m = 0; m < 1440; m += 30) m];
+    final endOptions = <int>[
+      for (int m = _draftStartMinutes + 30; m <= 1440; m += 30) m,
+    ];
+    if (!timeOptions.contains(_draftStartMinutes)) {
+      timeOptions.add(_draftStartMinutes);
+      timeOptions.sort();
+    }
+    if (!endOptions.contains(_draftEndMinutes)) {
+      endOptions.add(_draftEndMinutes);
+      endOptions.sort();
+    }
+
+    return Container(
+      key: const ValueKey('inline_composer_view'),
+      color: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Top subheader with Back button
+          Container(
+            padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              border: Border(
+                bottom: BorderSide(color: Colors.black.withValues(alpha: 0.08)),
+              ),
+            ),
+            child: Row(
+              children: [
+                TextButton.icon(
+                  onPressed: _closeInlineComposer,
+                  icon: const Icon(Icons.chevron_left_rounded, size: 18),
+                  label: const Text(
+                    'Takvim',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  isEditing ? 'Etkinliği Düzenle' : 'Yeni Etkinlik',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Scrollable form body inside left 320px panel
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: _titleCtrl,
+                    autofocus: true,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _saveInlineEvent(),
+                    decoration: InputDecoration(
+                      labelText: 'Etkinlik adı',
+                      hintText: 'Yeni Etkinlik',
+                      isDense: true,
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: Colors.black.withValues(alpha: 0.10),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: Colors.black.withValues(alpha: 0.10),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Colors.black.withValues(alpha: 0.08),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Tam gün',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF334155),
+                            ),
+                          ),
+                        ),
+                        Switch.adaptive(
+                          value: _draftAllDay,
+                          activeTrackColor: const Color(0xFF0A84FF),
+                          onChanged: (v) => setState(() => _draftAllDay = v),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!_draftAllDay) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<int>(
+                            initialValue: _draftStartMinutes,
+                            isDense: true,
+                            decoration: InputDecoration(
+                              labelText: 'Başlangıç',
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 9,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            items: [
+                              for (final m in timeOptions)
+                                DropdownMenuItem(
+                                  value: m,
+                                  child: Text(
+                                    DayCalendarEvent.formatMinutes(m),
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
+                                ),
+                            ],
+                            onChanged: (val) {
+                              if (val == null) return;
+                              setState(() {
+                                final prevDuration = math.max(
+                                  30,
+                                  _draftEndMinutes - _draftStartMinutes,
+                                );
+                                _draftStartMinutes = val;
+                                _draftEndMinutes =
+                                    math.min(1440, val + prevDuration);
+                                if (_draftEndMinutes <= _draftStartMinutes) {
+                                  _draftEndMinutes =
+                                      math.min(1440, _draftStartMinutes + 30);
+                                }
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: DropdownButtonFormField<int>(
+                            initialValue: _draftEndMinutes,
+                            isDense: true,
+                            decoration: InputDecoration(
+                              labelText: 'Bitiş',
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 9,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            items: [
+                              for (final m in endOptions)
+                                DropdownMenuItem(
+                                  value: m,
+                                  child: Text(
+                                    DayCalendarEvent.formatMinutes(m),
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
+                                ),
+                            ],
+                            onChanged: (val) {
+                              if (val == null) return;
+                              setState(() => _draftEndMinutes = val);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Text(
+                        'Renk:',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      for (final hex in DayCalendarEvent.palette) ...[
+                        GestureDetector(
+                          onTap: () => setState(() => _draftColorValue = hex),
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: Color(hex),
+                              shape: BoxShape.circle,
+                              border: _draftColorValue == hex
+                                  ? Border.all(
+                                      color: const Color(0xFF0F172A),
+                                      width: 2,
+                                    )
+                                  : null,
+                            ),
+                            child: _draftColorValue == hex
+                                ? const Icon(
+                                    Icons.check_rounded,
+                                    size: 14,
+                                    color: Colors.white,
+                                  )
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: _notesCtrl,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      hintText: 'Kısa not veya konum (opsiyonel)',
+                      isDense: true,
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: Colors.black.withValues(alpha: 0.10),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: Colors.black.withValues(alpha: 0.10),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Sticky Footer Buttons (Sil / İptal / Kaydet)
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              border: Border(
+                top: BorderSide(color: Colors.black.withValues(alpha: 0.08)),
+              ),
+            ),
+            child: Row(
+              children: [
+                if (isEditing)
+                  TextButton(
+                    onPressed: _deleteEditingEvent,
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFFEF4444),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                    ),
+                    child: const Text('Sil'),
+                  ),
+                const Spacer(),
+                TextButton(
+                  onPressed: _closeInlineComposer,
+                  child: const Text('İptal'),
+                ),
+                const SizedBox(width: 6),
+                FilledButton(
+                  onPressed: _saveInlineEvent,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF0A84FF),
+                  ),
+                  child: const Text('Kaydet'),
+                ),
+              ],
             ),
           ),
         ],
@@ -588,7 +969,7 @@ class _AppleDayCalendarPanelState extends State<AppleDayCalendarPanel> {
       width: width,
       height: height,
       child: GestureDetector(
-        onTap: () => _openEventDialog(existing: ev),
+        onTap: () => _openInlineComposer(existing: ev),
         onVerticalDragStart: (_) {
           setState(() {
             _draggingEventId = ev.id;
@@ -793,321 +1174,4 @@ class _PositionedCalendarEvent {
     required this.column,
     required this.columnCount,
   });
-}
-
-class _EventDialogResult {
-  final String title;
-  final bool isAllDay;
-  final int startMinutes;
-  final int endMinutes;
-  final int colorValue;
-  final String notes;
-  final bool deleted;
-
-  const _EventDialogResult({
-    required this.title,
-    required this.isAllDay,
-    required this.startMinutes,
-    required this.endMinutes,
-    required this.colorValue,
-    required this.notes,
-  }) : deleted = false;
-
-  const _EventDialogResult.deleted()
-      : title = '',
-        isAllDay = false,
-        startMinutes = 540,
-        endMinutes = 600,
-        colorValue = 0xFF0A84FF,
-        notes = '',
-        deleted = true;
-}
-
-class _AppleEventEditorDialog extends StatefulWidget {
-  final String initialTitle;
-  final bool initialAllDay;
-  final int initialStartMinutes;
-  final int initialEndMinutes;
-  final int initialColorValue;
-  final String initialNotes;
-  final bool isEditing;
-
-  const _AppleEventEditorDialog({
-    required this.initialTitle,
-    required this.initialAllDay,
-    required this.initialStartMinutes,
-    required this.initialEndMinutes,
-    required this.initialColorValue,
-    required this.initialNotes,
-    required this.isEditing,
-  });
-
-  @override
-  State<_AppleEventEditorDialog> createState() => _AppleEventEditorDialogState();
-}
-
-class _AppleEventEditorDialogState extends State<_AppleEventEditorDialog> {
-  late final TextEditingController _titleCtrl;
-  late final TextEditingController _notesCtrl;
-  late bool _isAllDay;
-  late int _startMinutes;
-  late int _endMinutes;
-  late int _colorValue;
-
-  @override
-  void initState() {
-    super.initState();
-    _titleCtrl = TextEditingController(text: widget.initialTitle);
-    _notesCtrl = TextEditingController(text: widget.initialNotes);
-    _isAllDay = widget.initialAllDay;
-    _startMinutes = widget.initialStartMinutes;
-    _endMinutes = widget.initialEndMinutes;
-    _colorValue = widget.initialColorValue;
-  }
-
-  @override
-  void dispose() {
-    _titleCtrl.dispose();
-    _notesCtrl.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final trimmed = _titleCtrl.text.trim();
-    if (trimmed.isEmpty) return;
-    Navigator.of(context).pop(
-      _EventDialogResult(
-        title: trimmed,
-        isAllDay: _isAllDay,
-        startMinutes: _startMinutes,
-        endMinutes: _endMinutes,
-        colorValue: _colorValue,
-        notes: _notesCtrl.text.trim(),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final timeOptions = <int>[for (int m = 0; m < 1440; m += 30) m];
-    final endOptions = <int>[
-      for (int m = _startMinutes + 30; m <= 1440; m += 30) m,
-    ];
-    if (!timeOptions.contains(_startMinutes)) {
-      timeOptions.add(_startMinutes);
-      timeOptions.sort();
-    }
-    if (!endOptions.contains(_endMinutes)) {
-      endOptions.add(_endMinutes);
-      endOptions.sort();
-    }
-
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      backgroundColor: Colors.white,
-      titlePadding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
-      contentPadding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
-      actionsPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-      title: Text(
-        widget.isEditing ? 'Etkinliği Düzenle' : 'Yeni Etkinlik',
-        style: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF0F172A),
-        ),
-      ),
-      content: SizedBox(
-        width: 300,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              controller: _titleCtrl,
-              autofocus: true,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _submit(),
-              decoration: InputDecoration(
-                hintText: 'Etkinlik adı (ör. Ürün Toplantısı)',
-                isDense: true,
-                filled: true,
-                fillColor: const Color(0xFFF8FAFC),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.10)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.10)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Tam gün',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF334155),
-                    ),
-                  ),
-                ),
-                Switch.adaptive(
-                  value: _isAllDay,
-                  activeTrackColor: const Color(0xFF0A84FF),
-                  onChanged: (v) => setState(() => _isAllDay = v),
-                ),
-              ],
-            ),
-            if (!_isAllDay) ...[
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<int>(
-                      initialValue: _startMinutes,
-                      isDense: true,
-                      decoration: InputDecoration(
-                        labelText: 'Başlangıç',
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      items: [
-                        for (final m in timeOptions)
-                          DropdownMenuItem(
-                            value: m,
-                            child: Text(DayCalendarEvent.formatMinutes(m)),
-                          ),
-                      ],
-                      onChanged: (val) {
-                        if (val == null) return;
-                        setState(() {
-                          final prevDuration =
-                              math.max(30, _endMinutes - _startMinutes);
-                          _startMinutes = val;
-                          _endMinutes = math.min(1440, val + prevDuration);
-                          if (_endMinutes <= _startMinutes) {
-                            _endMinutes = math.min(1440, _startMinutes + 30);
-                          }
-                        });
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: DropdownButtonFormField<int>(
-                      initialValue: _endMinutes,
-                      isDense: true,
-                      decoration: InputDecoration(
-                        labelText: 'Bitiş',
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      items: [
-                        for (final m in endOptions)
-                          DropdownMenuItem(
-                            value: m,
-                            child: Text(DayCalendarEvent.formatMinutes(m)),
-                          ),
-                      ],
-                      onChanged: (val) {
-                        if (val == null) return;
-                        setState(() => _endMinutes = val);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Text(
-                  'Renk:',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                for (final hex in DayCalendarEvent.palette) ...[
-                  GestureDetector(
-                    onTap: () => setState(() => _colorValue = hex),
-                    child: Container(
-                      width: 22,
-                      height: 22,
-                      decoration: BoxDecoration(
-                        color: Color(hex),
-                        shape: BoxShape.circle,
-                        border: _colorValue == hex
-                            ? Border.all(color: const Color(0xFF0F172A), width: 2)
-                            : null,
-                      ),
-                      child: _colorValue == hex
-                          ? const Icon(Icons.check_rounded, size: 13, color: Colors.white)
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-              ],
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _notesCtrl,
-              maxLines: 2,
-              decoration: InputDecoration(
-                hintText: 'Kısa not veya konum (opsiyonel)',
-                isDense: true,
-                filled: true,
-                fillColor: const Color(0xFFF8FAFC),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.10)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.10)),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        if (widget.isEditing)
-          TextButton(
-            onPressed: () =>
-                Navigator.of(context).pop(const _EventDialogResult.deleted()),
-            style: TextButton.styleFrom(foregroundColor: const Color(0xFFEF4444)),
-            child: const Text('Sil'),
-          ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('İptal'),
-        ),
-        FilledButton(
-          onPressed: _submit,
-          style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFF0A84FF),
-          ),
-          child: const Text('Kaydet'),
-        ),
-      ],
-    );
-  }
 }

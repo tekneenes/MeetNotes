@@ -1,7 +1,6 @@
 import Cocoa
 import FlutterMacOS
 import PDFKit
-import Vision
 
 class MainFlutterWindow: NSWindow {
   override func awakeFromNib() {
@@ -13,65 +12,8 @@ class MainFlutterWindow: NSWindow {
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     setupPdfChannel(messenger: flutterViewController.engine.binaryMessenger)
-    setupOcrChannel(messenger: flutterViewController.engine.binaryMessenger)
 
     super.awakeFromNib()
-  }
-
-  private func setupOcrChannel(messenger: FlutterBinaryMessenger) {
-    let channel = FlutterMethodChannel(name: "meet_notes/ocr", binaryMessenger: messenger)
-    channel.setMethodCallHandler { (call: FlutterMethodCall, result: @escaping FlutterResult) in
-      if call.method == "recognizeHandwriting" {
-        guard let args = call.arguments as? [String: Any],
-              let pngData = (args["pngBytes"] as? FlutterStandardTypedData)?.data else {
-          result(FlutterError(code: "INVALID_ARGS", message: "pngBytes required", details: nil))
-          return
-        }
-        guard let nsImage = NSImage(data: pngData),
-              let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-          result(FlutterError(code: "DECODE_FAILED", message: "Could not decode PNG image", details: nil))
-          return
-        }
-        let language = (args["language"] as? String) ?? "tr-TR"
-        DispatchQueue.global(qos: .userInitiated).async {
-          let request = VNRecognizeTextRequest { req, error in
-            if let error = error {
-              DispatchQueue.main.async {
-                result(FlutterError(code: "OCR_ERROR", message: error.localizedDescription, details: nil))
-              }
-              return
-            }
-            let observations = (req.results as? [VNRecognizedTextObservation]) ?? []
-            let lines = observations.compactMap { $0.topCandidates(1).first?.string }
-            DispatchQueue.main.async {
-              result([
-                "text": lines.joined(separator: "\n"),
-                "engine": "Apple Vision",
-              ])
-            }
-          }
-          request.recognitionLevel = .accurate
-          request.usesLanguageCorrection = true
-          if #available(macOS 13.0, *) {
-            request.revision = VNRecognizeTextRequestRevision3
-            request.recognitionLanguages = [language, "en-US"]
-          } else {
-            request.recognitionLanguages = ["en-US"]
-          }
-
-          let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-          do {
-            try handler.perform([request])
-          } catch {
-            DispatchQueue.main.async {
-              result(FlutterError(code: "OCR_PERFORM_FAILED", message: error.localizedDescription, details: nil))
-            }
-          }
-        }
-      } else {
-        result(FlutterMethodNotImplemented)
-      }
-    }
   }
 
   private func setupPdfChannel(messenger: FlutterBinaryMessenger) {

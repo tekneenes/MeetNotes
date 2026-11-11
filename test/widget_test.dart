@@ -15,7 +15,6 @@ import 'package:meet_notes/widgets/apple_notes_toolbar.dart';
 import 'package:meet_notes/widgets/drawing_workspace.dart';
 import 'package:meet_notes/widgets/paper_settings_dialog.dart';
 import 'package:meet_notes/widgets/compact_paper_region_style_dialog.dart';
-import 'package:meet_notes/services/handwriting_ocr_service.dart';
 import 'package:meet_notes/services/shape_recognition_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -2889,114 +2888,6 @@ void main() {
     expect(find.text('Çizgi Kalınlığı'), findsNothing);
 
     // Drain timer
-    await tester.pump(const Duration(milliseconds: 1000));
-  });
-
-  testWidgets('Handwriting-to-Text (El Yazısını Metne Çevir) OCR normalization & UI conversion test',
-      (WidgetTester tester) async {
-    tester.view.physicalSize = const Size(1280, 800);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-
-    final controller = PlannerController();
-    await tester.pump(const Duration(milliseconds: 100));
-
-    // 1. Create a pen handwriting stroke + a highlighter stroke + a tape stroke
-    controller.setColor(const Color(0xFF2563EB));
-    controller.setTool(DrawingTool.pen);
-    controller.startStroke(const Offset(120, 180));
-    controller.updateStroke(const Offset(220, 180));
-    controller.updateStroke(const Offset(260, 210));
-    controller.endStroke();
-
-    controller.setTool(DrawingTool.marker);
-    controller.startStroke(const Offset(120, 195));
-    controller.updateStroke(const Offset(260, 195));
-    controller.endStroke();
-
-    controller.setTool(DrawingTool.tape);
-    controller.startStroke(const Offset(400, 400));
-    controller.updateStroke(const Offset(500, 400));
-    controller.endStroke();
-    expect(controller.strokes.length, 3);
-
-    // Verify tape-only selection does NOT allow OCR conversion
-    controller.setTool(DrawingTool.lasso);
-    controller.setLassoSelectionMode(LassoSelectionMode.rectangle);
-    controller.startStroke(const Offset(390, 380));
-    controller.updateStroke(const Offset(510, 420));
-    controller.endStroke();
-    expect(controller.canConvertSelectedStrokesToText, isFalse);
-
-    // Select pen + marker strokes together
-    controller.startStroke(const Offset(100, 160));
-    controller.updateStroke(const Offset(280, 230));
-    controller.endStroke();
-    expect(controller.selectedStrokeIndices.length, 2);
-    expect(controller.canConvertSelectedStrokesToText, isTrue);
-
-    // Verify extractHandwritingStrokes ignores highlighter/marker when pen ink exists
-    final filteredInk = HandwritingOcrService.extractHandwritingStrokes(controller.selectedStrokesList);
-    expect(filteredInk.length, 1);
-    expect(filteredInk.first.tool, DrawingTool.pen);
-
-    // Verify Android Digital Ink normalized polyline payload has monotonic timestamps
-    final inkPayload = HandwritingOcrService.buildNormalizedInkPayload(filteredInk);
-    expect(inkPayload.length, 1);
-    expect(inkPayload.first.length, 3);
-    expect(inkPayload.first[0]['t'], 0.0);
-    expect(inkPayload.first[1]['t'], 16.0);
-    expect(inkPayload.first[2]['t'], 32.0);
-    expect(inkPayload.first[0]['x']! >= 0.0, isTrue);
-    expect(inkPayload.first[0]['y']! >= 0.0, isTrue);
-
-    // Verify offscreen PNG rendering produces valid PNG bytes
-    final pngBytes = await tester.runAsync(
-      () => HandwritingOcrService.renderNormalizedPng(filteredInk),
-    );
-    expect(pngBytes, isNotNull);
-    expect(pngBytes!.length, greaterThan(20));
-    // PNG magic header: 137 80 78 71
-    expect(pngBytes.sublist(0, 4), [137, 80, 78, 71]);
-
-    // 2. Test DrawingWorkspace UI floating pill -> 'Metne Çevir' -> Preview -> 'Metne Dönüştür'
-    HandwritingOcrService.debugRecognizeOverride = (strokes) async {
-      return const HandwritingOcrResult(
-        text: 'Türkçe Notlar 123',
-        engineName: 'Apple Vision / ML Kit',
-        isSupported: true,
-      );
-    };
-    addTearDown(() => HandwritingOcrService.debugRecognizeOverride = null);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: DrawingWorkspace(controller: controller),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Metne Çevir'), findsOneWidget);
-    await tester.tap(find.text('Metne Çevir'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('El Yazısını Metne Çevir'), findsOneWidget);
-    expect(find.text('Apple Vision / ML Kit'), findsOneWidget);
-    expect(find.text('Türkçe Notlar 123'), findsOneWidget);
-
-    // Tap 'Metne Dönüştür' -> removes the 2 selected strokes (leaving tape) and adds CanvasTextItem
-    await tester.tap(find.text('Metne Dönüştür'));
-    await tester.pumpAndSettle();
-
-    expect(controller.strokes.length, 1); // Only unselected tape remains
-    expect(controller.strokes.first.tool, DrawingTool.tape);
-    expect(controller.canvasTexts.length, 1);
-    expect(controller.canvasTexts.first.text, 'Türkçe Notlar 123');
-    expect(controller.canvasTexts.first.color, const Color(0xFF2563EB));
-    expect(controller.selectedTextIds, contains(controller.canvasTexts.first.id));
-
     await tester.pump(const Duration(milliseconds: 1000));
   });
 }

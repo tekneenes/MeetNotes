@@ -42,8 +42,3 @@ android {
 flutter {
     source = "../.."
 }
-
-dependencies {
-    implementation("com.google.mlkit:digital-ink-recognition:18.1.0")
-    implementation("com.google.mlkit:text-recognition:16.0.1")
-}

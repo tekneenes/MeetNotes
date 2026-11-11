@@ -5826,6 +5826,20 @@ class PlannerController extends ChangeNotifier {
     }
   }
 
+  double _minDistanceToStrokeCenterline(Offset center, List<Offset> pts) {
+    if (pts.isEmpty) return double.infinity;
+    if (pts.length == 1) return (pts.first - center).distance;
+    double minDist = double.infinity;
+    for (int i = 0; i < pts.length - 1; i++) {
+      final d = _distanceToSegment(center, pts[i], pts[i + 1]);
+      if (d < minDist) {
+        minDist = d;
+        if (minDist == 0.0) break;
+      }
+    }
+    return minDist;
+  }
+
   ({bool changed, List<DrawingStroke> strokes}) _sliceStrokeWithCircle(
     DrawingStroke stroke,
     Offset center,
@@ -5834,9 +5848,27 @@ class PlannerController extends ChangeNotifier {
     final pts = stroke.points;
     if (pts.isEmpty) return (changed: false, strokes: const []);
     
-    // Include stroke ink thickness (round cap radius) so cut ends sit tangent to the eraser ring
-    final strokeInkRadius = math.max(0.0, stroke.strokeWidth / 2.0);
-    final cutRadius = radius + strokeInkRadius;
+    final isThickStroke = stroke.tool == DrawingTool.marker ||
+        stroke.tool == DrawingTool.watercolor ||
+        stroke.strokeWidth > 8.0;
+
+    // For thin strokes (pen/pencil/line/arrow), we use a small ink cap offset so cut ends sit tangent to the eraser ring.
+    // For thick strokes (highlighter, thick marker), we require the eraser circle to reach the stroke's core centerline
+    // (Goodnotes centerline penetration threshold), preventing accidental grazing cuts when lightly skimming the edge.
+    final strokeInkCapOffset = isThickStroke
+        ? math.min(2.5, stroke.strokeWidth * 0.1)
+        : math.max(0.0, stroke.strokeWidth / 2.0);
+
+    final cutRadius = radius + strokeInkCapOffset;
+
+    // Centerline threshold check for thick strokes / highlighter:
+    // If the eraser circle only grazes the outer margin and does not reach the core centerline, preserve the stroke.
+    if (isThickStroke) {
+      final minDistToCenterline = _minDistanceToStrokeCenterline(center, pts);
+      if (minDistToCenterline > radius) {
+        return (changed: false, strokes: [stroke]);
+      }
+    }
 
     if (pts.length == 1) {
       if ((pts.first - center).distance <= cutRadius) {

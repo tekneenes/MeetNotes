@@ -3531,9 +3531,9 @@ class _PlannerScreenState extends State<PlannerScreen>
                   onPanUpdate: (details) => _handleReelDragUpdate(details.delta),
                   onPanEnd: (details) => _handleReelDragEnd(details.velocity),
                   child: Container(
-                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                    padding: const EdgeInsets.fromLTRB(14, 7, 14, 9),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: const Color(0xFFFBFBFA),
                       border: Border(
                         bottom: BorderSide(
                           color: Colors.black.withValues(alpha: 0.08),
@@ -3548,7 +3548,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                           duration: const Duration(milliseconds: 140),
                           width: isReadyToDismiss ? 56 : 42,
                           height: 4.5,
-                          margin: const EdgeInsets.only(bottom: 8),
+                          margin: const EdgeInsets.only(bottom: 7),
                           decoration: BoxDecoration(
                             color: isReadyToDismiss
                                 ? const Color(0xFF2563EB)
@@ -3556,438 +3556,204 @@ class _PlannerScreenState extends State<PlannerScreen>
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            // Sol Kısım: Küçült / Haftaya Dön ve Gün Başlığı
-                            Expanded(
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  InkWell(
-                                    borderRadius: BorderRadius.circular(20),
-                                    onTap: _closeDayExpandedOverlay,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 7,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFEFF6FF),
-                                        borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(
-                                          color: const Color(0xFF2563EB)
-                                              .withValues(alpha: 0.25),
-                                        ),
-                                      ),
-                                      child: const Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.close_fullscreen_rounded,
-                                            size: 15,
-                                            color: Color(0xFF1D4ED8),
-                                          ),
-                                          SizedBox(width: 6),
-                                          Text(
-                                            'Küçült / Haftaya Dön',
-                                            style: TextStyle(
-                                              fontSize: 12.5,
-                                              fontWeight: FontWeight.w700,
-                                              color: Color(0xFF1D4ED8),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final maxLeftWidth =
+                                (constraints.maxWidth - 510.0).clamp(240.0, 760.0);
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                // Sol Kısım: Küçült / Haftaya Dön ve Gün Başlığı
+                                ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth: maxLeftWidth,
                                   ),
-                                  const SizedBox(width: 14),
-                                  Flexible(
-                                    fit: FlexFit.loose,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 3,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFF8FAFC),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      InkWell(
                                         borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(
-                                          color: Colors.black.withValues(alpha: 0.07),
-                                        ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton(
-                                            tooltip: 'Önceki Gün (Alt + ←)',
-                                            icon: const Icon(
-                                              Icons.chevron_left_rounded,
-                                              size: 18,
-                                              color: Color(0xFF1E293B),
-                                            ),
-                                            padding: EdgeInsets.zero,
-                                            style: IconButton.styleFrom(
-                                              tapTargetSize:
-                                                  MaterialTapTargetSize.shrinkWrap,
-                                            ),
-                                            constraints: const BoxConstraints(
-                                              minWidth: 26,
-                                              minHeight: 26,
-                                            ),
-                                            onPressed: () => _switchExpandedDay(-1),
+                                        onTap: _closeDayExpandedOverlay,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 7,
                                           ),
-                                          const SizedBox(width: 4),
-                                          const Icon(
-                                            Icons.calendar_today_rounded,
-                                            size: 13,
-                                            color: Color(0xFF2563EB),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Flexible(
-                                            child: Text(
-                                              '${day.dayName} • $fullDateStr',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w700,
-                                                color: Color(0xFF0F172A),
-                                              ),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFEFF6FF),
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                            border: Border.all(
+                                              color: const Color(0xFF2563EB)
+                                                  .withValues(alpha: 0.25),
                                             ),
                                           ),
-                                          if (isToday) ...[
-                                            const SizedBox(width: 6),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 6,
-                                                vertical: 2,
+                                          child: const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.close_fullscreen_rounded,
+                                                size: 15,
+                                                color: Color(0xFF1D4ED8),
                                               ),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFFDBEAFE),
-                                                borderRadius: BorderRadius.circular(6),
-                                              ),
-                                              child: const Text(
-                                                'BUGÜN',
+                                              SizedBox(width: 6),
+                                              Text(
+                                                'Küçült / Haftaya Dön',
                                                 style: TextStyle(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 12.5,
+                                                  fontWeight: FontWeight.w700,
                                                   color: Color(0xFF1D4ED8),
                                                 ),
                                               ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Flexible(
+                                        fit: FlexFit.loose,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 3,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                            border: Border.all(
+                                              color: Colors.black
+                                                  .withValues(alpha: 0.08),
                                             ),
-                                          ],
-                                          const SizedBox(width: 4),
-                                          IconButton(
-                                            tooltip: 'Sonraki Gün (Alt + →)',
-                                            icon: const Icon(
-                                              Icons.chevron_right_rounded,
-                                              size: 18,
-                                              color: Color(0xFF1E293B),
-                                            ),
-                                            padding: EdgeInsets.zero,
-                                            style: IconButton.styleFrom(
-                                              tapTargetSize:
-                                                  MaterialTapTargetSize.shrinkWrap,
-                                            ),
-                                            constraints: const BoxConstraints(
-                                              minWidth: 26,
-                                              minHeight: 26,
-                                            ),
-                                            onPressed: () => _switchExpandedDay(1),
                                           ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-
-                            // Orta Kısım: Sayfa Geçiş Hapı (Tam Ortalanmış)
-                            Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: Colors.black.withValues(alpha: 0.08),
-                                  ),
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                  vertical: 2,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      tooltip: 'Önceki Sayfa',
-                                      icon: const Icon(
-                                        Icons.chevron_left_rounded,
-                                        size: 19,
-                                      ),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(
-                                        minWidth: 28,
-                                        minHeight: 28,
-                                      ),
-                                      onPressed:
-                                          dayCanvasController.currentPageIndex > 0
-                                              ? () =>
-                                                  dayCanvasController.previousPage()
-                                              : null,
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                      ),
-                                      child: Text(
-                                        'Sayfa ${dayCanvasController.currentPageIndex + 1} / ${dayCanvasController.totalPages}',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFF1E293B),
-                                        ),
-                                      ),
-                                    ),
-                                    IconButton(
-                                      tooltip: 'Sonraki Sayfa',
-                                      icon: const Icon(
-                                        Icons.chevron_right_rounded,
-                                        size: 19,
-                                      ),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(
-                                        minWidth: 28,
-                                        minHeight: 28,
-                                      ),
-                                      onPressed:
-                                          dayCanvasController.currentPageIndex <
-                                                  dayCanvasController.totalPages - 1
-                                              ? () => dayCanvasController.nextPage()
-                                              : null,
-                                    ),
-                                    Container(
-                                      height: 15,
-                                      width: 1,
-                                      color: Colors.grey.shade300,
-                                      margin: const EdgeInsets.symmetric(
-                                        horizontal: 4,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      tooltip: 'Yeni Sayfa Ekle',
-                                      icon: const Icon(
-                                        Icons.add_rounded,
-                                        size: 19,
-                                        color: Color(0xFF007AFF),
-                                      ),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(
-                                        minWidth: 28,
-                                        minHeight: 28,
-                                      ),
-                                      onPressed: () =>
-                                          dayCanvasController.addNewPage(),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            const SizedBox(width: 8),
-
-                            // Sağ Kısım: İleri/Geri/Temizle + Yakınlaştırma ve Ayarlar İkonu
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  // İleri / Geri / Temizle Hapı
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: Colors.black.withValues(alpha: 0.08),
-                                      ),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 2,
-                                      vertical: 2,
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          tooltip: 'Geri Al',
-                                          icon: const Icon(
-                                            Icons.undo_rounded,
-                                            size: 18,
-                                          ),
-                                          constraints: const BoxConstraints(
-                                            minWidth: 28,
-                                            minHeight: 28,
-                                          ),
-                                          padding: EdgeInsets.zero,
-                                          color: const Color(0xFF1E293B),
-                                          disabledColor: Colors.grey.shade300,
-                                          onPressed: dayCanvasController.canUndo
-                                              ? () => dayCanvasController.undo()
-                                              : null,
-                                        ),
-                                        IconButton(
-                                          tooltip: 'Yinele',
-                                          icon: const Icon(
-                                            Icons.redo_rounded,
-                                            size: 18,
-                                          ),
-                                          constraints: const BoxConstraints(
-                                            minWidth: 28,
-                                            minHeight: 28,
-                                          ),
-                                          padding: EdgeInsets.zero,
-                                          color: const Color(0xFF1E293B),
-                                          disabledColor: Colors.grey.shade300,
-                                          onPressed: dayCanvasController.canRedo
-                                              ? () => dayCanvasController.redo()
-                                              : null,
-                                        ),
-                                        Container(
-                                          height: 14,
-                                          width: 1,
-                                          color: Colors.grey.shade300,
-                                          margin: const EdgeInsets.symmetric(
-                                            horizontal: 2,
-                                          ),
-                                        ),
-                                        IconButton(
-                                          tooltip: 'Sayfayı Temizle',
-                                          icon: const Icon(
-                                            Icons.delete_outline_rounded,
-                                            size: 18,
-                                          ),
-                                          constraints: const BoxConstraints(
-                                            minWidth: 28,
-                                            minHeight: 28,
-                                          ),
-                                          padding: EdgeInsets.zero,
-                                          color: const Color(0xFFFF3B30),
-                                          disabledColor: Colors.grey.shade300,
-                                          onPressed: dayCanvasController.strokes.isEmpty
-                                              ? null
-                                              : () => _confirmClearDayCanvas(context, dayCanvasController),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-
-                                  // Zoom Pill
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(
-                                        color: Colors.black.withValues(alpha: 0.08),
-                                      ),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 4,
-                                      vertical: 2,
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          tooltip: 'Uzaklaştır',
-                                          icon: const Icon(
-                                            Icons.remove_rounded,
-                                            size: 16,
-                                          ),
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(
-                                            minWidth: 26,
-                                            minHeight: 26,
-                                          ),
-                                          onPressed: dayCanvasController.zoomScale > 0.5
-                                              ? () => dayCanvasController.zoomOut()
-                                              : null,
-                                        ),
-                                        Tooltip(
-                                          message: 'Sıfırla (%100)',
-                                          child: InkWell(
-                                            borderRadius: BorderRadius.circular(8),
-                                            onTap: () => dayCanvasController.resetZoom(),
-                                            child: Padding(
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 5,
-                                                vertical: 3,
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              IconButton(
+                                                tooltip:
+                                                    'Önceki Gün (Alt + ←)',
+                                                icon: const Icon(
+                                                  Icons.chevron_left_rounded,
+                                                  size: 18,
+                                                  color: Color(0xFF1E293B),
+                                                ),
+                                                padding: EdgeInsets.zero,
+                                                style: IconButton.styleFrom(
+                                                  tapTargetSize:
+                                                      MaterialTapTargetSize
+                                                          .shrinkWrap,
+                                                ),
+                                                constraints:
+                                                    const BoxConstraints(
+                                                  minWidth: 26,
+                                                  minHeight: 26,
+                                                ),
+                                                onPressed: () =>
+                                                    _switchExpandedDay(-1),
                                               ),
-                                              child: Text(
-                                                '%${(dayCanvasController.zoomScale * 100).toInt()}',
-                                                style: const TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: Color(0xFF007AFF),
+                                              const SizedBox(width: 4),
+                                              const Icon(
+                                                Icons.calendar_today_rounded,
+                                                size: 13,
+                                                color: Color(0xFF2563EB),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Flexible(
+                                                child: Text(
+                                                  '${day.dayName} • $fullDateStr',
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: Color(0xFF0F172A),
+                                                  ),
                                                 ),
                                               ),
-                                            ),
+                                              if (isToday) ...[
+                                                const SizedBox(width: 6),
+                                                Container(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 2,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color:
+                                                        const Color(0xFFDBEAFE),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            6),
+                                                  ),
+                                                  child: const Text(
+                                                    'BUGÜN',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                      color: Color(0xFF1D4ED8),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                              const SizedBox(width: 4),
+                                              IconButton(
+                                                tooltip:
+                                                    'Sonraki Gün (Alt + →)',
+                                                icon: const Icon(
+                                                  Icons.chevron_right_rounded,
+                                                  size: 18,
+                                                  color: Color(0xFF1E293B),
+                                                ),
+                                                padding: EdgeInsets.zero,
+                                                style: IconButton.styleFrom(
+                                                  tapTargetSize:
+                                                      MaterialTapTargetSize
+                                                          .shrinkWrap,
+                                                ),
+                                                constraints:
+                                                    const BoxConstraints(
+                                                  minWidth: 26,
+                                                  minHeight: 26,
+                                                ),
+                                                onPressed: () =>
+                                                    _switchExpandedDay(1),
+                                              ),
+                                            ],
                                           ),
-                                        ),
-                                        IconButton(
-                                          tooltip: 'Yakınlaştır',
-                                          icon: const Icon(
-                                            Icons.add_rounded,
-                                            size: 16,
-                                          ),
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(
-                                            minWidth: 26,
-                                            minHeight: 26,
-                                          ),
-                                          onPressed: dayCanvasController.zoomScale < 4.0
-                                              ? () => dayCanvasController.zoomIn()
-                                              : null,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-
-                                  // Hızlı Erişim & Katmanlar İkonu
-                                  IconButton(
-                                    tooltip: dayCanvasController.isQuickAccessOpen
-                                        ? 'Hızlı Erişimi Kapat'
-                                        : 'Hızlı Erişim & Katmanlar',
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: dayCanvasController.isQuickAccessOpen
-                                          ? const Color(0xFF007AFF).withValues(alpha: 0.12)
-                                          : Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                        side: BorderSide(
-                                          color: dayCanvasController.isQuickAccessOpen
-                                              ? const Color(0xFF007AFF).withValues(alpha: 0.4)
-                                              : Colors.black.withValues(alpha: 0.08),
                                         ),
                                       ),
-                                    ),
-                                    icon: Icon(
-                                      Icons.flash_on_rounded,
-                                      size: 20,
-                                      color: dayCanvasController.isQuickAccessOpen
-                                          ? const Color(0xFF007AFF)
-                                          : const Color(0xFF1E293B),
-                                    ),
-                                    onPressed: dayCanvasController.toggleQuickAccess,
+                                    ],
                                   ),
-                                ],
-                              ),
-                            ),
-                          ],
+                                ),
+                                Container(
+                                  width: 1,
+                                  height: 22,
+                                  color: Colors.black.withValues(alpha: 0.08),
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                ),
+
+                                // Sağ / Tuval Araç Çubuğu: Normal görünümdeki PlannerToolbar ile birebir aynı düzen
+                                Expanded(
+                                  child: PlannerToolbar(
+                                    controller: dayCanvasController,
+                                    isQuickAccessOpen:
+                                        dayCanvasController.isQuickAccessOpen,
+                                    onToggleQuickAccess:
+                                        dayCanvasController.toggleQuickAccess,
+                                    isMinimapOpen:
+                                        dayCanvasController.isMinimapOpen,
+                                    onToggleMinimap:
+                                        dayCanvasController.toggleMinimap,
+                                    embedded: true,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -4009,21 +3775,55 @@ class _PlannerScreenState extends State<PlannerScreen>
                         ),
                       ),
 
-                      // Right Column: Full Interactive Day Drawing Canvas with Floating Apple Notes Toolbar & Quick Access
+                      // Right Column: Full Interactive Day Drawing Canvas with Minimap & Quick Access
                       Expanded(
                         child: Stack(
                           children: [
                             Positioned.fill(
-                              child: DrawingWorkspace(controller: dayCanvasController),
+                              child: DrawingWorkspace(
+                                controller: dayCanvasController,
+                              ),
+                            ),
+                            Positioned(
+                              top: 10,
+                              left: 12,
+                              child: IgnorePointer(
+                                ignoring: !dayCanvasController.isMinimapOpen,
+                                child: AnimatedOpacity(
+                                  opacity: dayCanvasController.isMinimapOpen
+                                      ? 1.0
+                                      : 0.0,
+                                  duration: const Duration(milliseconds: 170),
+                                  curve: Curves.easeOutCubic,
+                                  child: AnimatedScale(
+                                    scale: dayCanvasController.isMinimapOpen
+                                        ? 1.0
+                                        : 0.92,
+                                    alignment: Alignment.topLeft,
+                                    duration: const Duration(milliseconds: 190),
+                                    curve: Curves.easeOutCubic,
+                                    child: dayCanvasController.isMinimapOpen
+                                        ? CanvasMinimapOverlay(
+                                            controller: dayCanvasController,
+                                          )
+                                        : const SizedBox.shrink(),
+                                  ),
+                                ),
+                              ),
                             ),
                             AnimatedPositioned(
                               duration: const Duration(milliseconds: 260),
                               curve: Curves.easeOutCubic,
                               top: 0,
                               bottom: 0,
-                              right: dayCanvasController.isQuickAccessOpen ? 0 : -300,
+                              right: dayCanvasController.isQuickAccessOpen
+                                  ? 0
+                                  : -300,
                               width: 300,
-                              child: _buildQuickAccessDrawer(context, dayCanvasController),
+                              child: _buildQuickAccessDrawer(
+                                context,
+                                dayCanvasController,
+                              ),
                             ),
                           ],
                         ),
@@ -4051,30 +3851,6 @@ class _PlannerScreenState extends State<PlannerScreen>
           ],
         );
       },
-    );
-  }
-
-  void _confirmClearDayCanvas(BuildContext context, PlannerController dayCanvasController) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Sayfayı Temizle'),
-        content: const Text('Bu sayfadaki tüm çizimler silinecek. Emin misiniz?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('İptal'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFF3B30)),
-            onPressed: () {
-              dayCanvasController.clearCanvas();
-              Navigator.of(ctx).pop();
-            },
-            child: const Text('Temizle'),
-          ),
-        ],
-      ),
     );
   }
 }

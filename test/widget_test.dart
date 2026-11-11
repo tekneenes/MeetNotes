@@ -17,6 +17,7 @@ import 'package:meet_notes/widgets/canvas_minimap.dart';
 import 'package:meet_notes/widgets/days_sidebar.dart';
 import 'package:meet_notes/widgets/drawing_workspace.dart';
 import 'package:meet_notes/widgets/paper_settings_dialog.dart';
+import 'package:meet_notes/widgets/planner_toolbar.dart';
 import 'package:meet_notes/widgets/compact_paper_region_style_dialog.dart';
 import 'package:meet_notes/services/planner_storage_service.dart';
 import 'package:meet_notes/services/shape_recognition_service.dart';
@@ -3063,5 +3064,42 @@ void main() {
     await tester.tap(find.byTooltip('Tuval Haritasını Kapat'));
     await tester.pumpAndSettle();
     expect(find.byType(CanvasMinimapOverlay), findsNothing);
+
+    // Expanding a day card uses the same PlannerToolbar order & supports minimap
+    await tester.tap(find.text('Pazartesi'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Küçült / Haftaya Dön'), findsOneWidget);
+    final expandedToolbar = find.byWidgetPredicate(
+      (w) => w is PlannerToolbar && w.embedded,
+    );
+    expect(expandedToolbar, findsOneWidget);
+
+    final expandedMinimapBtn = find.descendant(
+      of: expandedToolbar,
+      matching: find.byTooltip('Tuval Haritası (Minimap)'),
+    );
+    final expandedZoom = find.descendant(
+      of: expandedToolbar,
+      matching: find.byTooltip('Sıfırla (%100)'),
+    );
+    final expandedPageLabel = find.descendant(
+      of: expandedToolbar,
+      matching: find.textContaining('Sayfa '),
+    );
+    expect(
+      tester.getTopLeft(expandedMinimapBtn).dx,
+      lessThan(tester.getTopLeft(expandedZoom).dx),
+    );
+    expect(
+      tester.getTopLeft(expandedZoom).dx,
+      lessThan(tester.getTopLeft(expandedPageLabel).dx),
+    );
+
+    await tester.tap(expandedMinimapBtn);
+    await tester.pumpAndSettle();
+    expect(find.byType(CanvasMinimapOverlay), findsOneWidget);
   });
 }

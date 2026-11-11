@@ -7,6 +7,7 @@ class PlannerToolbar extends StatelessWidget {
   final bool isQuickAccessOpen;
   final VoidCallback? onToggleMinimap;
   final bool isMinimapOpen;
+  final bool embedded;
 
   const PlannerToolbar({
     super.key,
@@ -15,10 +16,17 @@ class PlannerToolbar extends StatelessWidget {
     this.isQuickAccessOpen = false,
     this.onToggleMinimap,
     this.isMinimapOpen = false,
+    this.embedded = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (embedded) {
+      return SizedBox(
+        height: 38,
+        child: _buildResponsiveToolbarBody(context),
+      );
+    }
     return Container(
       height: 52,
       decoration: BoxDecoration(
@@ -31,199 +39,234 @@ class PlannerToolbar extends StatelessWidget {
         ),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Sol Kısım: Tuval Haritası (Minimap) + Zoom (%100, -, +)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  tooltip: isMinimapOpen
-                      ? 'Tuval Haritasını Kapat'
-                      : 'Tuval Haritası (Minimap)',
-                  constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                  padding: EdgeInsets.zero,
-                  style: IconButton.styleFrom(
-                    backgroundColor: isMinimapOpen
-                        ? const Color(0xFF007AFF).withValues(alpha: 0.12)
-                        : Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: BorderSide(
-                        color: isMinimapOpen
-                            ? const Color(0xFF007AFF).withValues(alpha: 0.45)
-                            : Colors.black.withValues(alpha: 0.08),
-                      ),
-                    ),
-                  ),
-                  icon: Icon(
-                    isMinimapOpen ? Icons.map_rounded : Icons.map_outlined,
-                    size: 18,
-                    color: isMinimapOpen
-                        ? const Color(0xFF007AFF)
-                        : const Color(0xFF1E293B),
-                  ),
-                  onPressed: onToggleMinimap,
-                ),
-                const SizedBox(width: 8),
-                _buildZoomPill(context),
-              ],
-            ),
-          ),
+      child: _buildResponsiveToolbarBody(context),
+    );
+  }
 
-          // Orta Kısım: Sayfa Geçiş Hapı (Her zaman tam ortalanmış)
-          Center(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+  Widget _buildResponsiveToolbarBody(BuildContext context) {
+    final leftControls = _buildLeftControls(context);
+    final pagePill = _buildPagePill();
+    final rightControls = _buildRightControls(context);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 540) {
+          return Align(
+            alignment: Alignment.centerRight,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(
-                    tooltip: 'Önceki Sayfa',
-                    icon: const Icon(Icons.chevron_left_rounded, size: 19),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                    onPressed: controller.currentPageIndex > 0
-                        ? () => controller.previousPage()
-                        : null,
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    child: Text(
-                      'Sayfa ${controller.currentPageIndex + 1} / ${controller.totalPages}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1E293B),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Sonraki Sayfa',
-                    icon: const Icon(Icons.chevron_right_rounded, size: 19),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                    onPressed: controller.currentPageIndex < controller.totalPages - 1
-                        ? () => controller.nextPage()
-                        : null,
-                  ),
-                  Container(
-                    height: 15,
-                    width: 1,
-                    color: Colors.grey.shade300,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                  ),
-                  IconButton(
-                    tooltip: 'Yeni Sayfa Ekle',
-                    icon: const Icon(
-                      Icons.add_rounded,
-                      size: 19,
-                      color: Color(0xFF007AFF),
-                    ),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                    onPressed: () => controller.addNewPage(),
-                  ),
+                  leftControls,
+                  const SizedBox(width: 10),
+                  pagePill,
+                  const SizedBox(width: 10),
+                  rightControls,
                 ],
               ),
             ),
-          ),
-
-          // Sağ Kısım: Geri Al / Yinele / Temizle + Hızlı Erişim
-          Align(
-            alignment: Alignment.centerRight,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // İleri / Geri / Temizle Hapı
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: 'Geri Al',
-                        icon: const Icon(Icons.undo_rounded, size: 18),
-                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                        padding: EdgeInsets.zero,
-                        color: const Color(0xFF1E293B),
-                        disabledColor: Colors.grey.shade300,
-                        onPressed: controller.canUndo ? () => controller.undo() : null,
-                      ),
-                      IconButton(
-                        tooltip: 'Yinele',
-                        icon: const Icon(Icons.redo_rounded, size: 18),
-                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                        padding: EdgeInsets.zero,
-                        color: const Color(0xFF1E293B),
-                        disabledColor: Colors.grey.shade300,
-                        onPressed: controller.canRedo ? () => controller.redo() : null,
-                      ),
-                      Container(
-                        height: 14,
-                        width: 1,
-                        color: Colors.grey.shade300,
-                        margin: const EdgeInsets.symmetric(horizontal: 2),
-                      ),
-                      IconButton(
-                        tooltip: 'Sayfayı Temizle',
-                        icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                        padding: EdgeInsets.zero,
-                        color: const Color(0xFFFF3B30),
-                        disabledColor: Colors.grey.shade300,
-                        onPressed: controller.strokes.isEmpty
-                            ? null
-                            : () => _confirmClear(context),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-
-                // Hızlı Erişim Butonu
-                IconButton(
-                  tooltip: isQuickAccessOpen ? 'Hızlı Erişimi Kapat' : 'Hızlı Erişim',
-                  style: IconButton.styleFrom(
-                    backgroundColor: isQuickAccessOpen
-                        ? const Color(0xFF007AFF).withValues(alpha: 0.12)
-                        : Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: BorderSide(
-                        color: isQuickAccessOpen
-                            ? const Color(0xFF007AFF).withValues(alpha: 0.4)
-                            : Colors.black.withValues(alpha: 0.08),
-                      ),
-                    ),
-                  ),
-                  icon: Icon(
-                    Icons.flash_on_rounded,
-                    size: 20,
-                    color: isQuickAccessOpen
-                        ? const Color(0xFF007AFF)
-                        : const Color(0xFF1E293B),
-                  ),
-                  onPressed: onToggleQuickAccess,
-                ),
-              ],
+          );
+        }
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: leftControls,
             ),
+            Center(child: pagePill),
+            Align(
+              alignment: Alignment.centerRight,
+              child: rightControls,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildLeftControls(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: isMinimapOpen
+              ? 'Tuval Haritasını Kapat'
+              : 'Tuval Haritası (Minimap)',
+          constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+          padding: EdgeInsets.zero,
+          style: IconButton.styleFrom(
+            backgroundColor: isMinimapOpen
+                ? const Color(0xFF007AFF).withValues(alpha: 0.12)
+                : Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(
+                color: isMinimapOpen
+                    ? const Color(0xFF007AFF).withValues(alpha: 0.45)
+                    : Colors.black.withValues(alpha: 0.08),
+              ),
+            ),
+          ),
+          icon: Icon(
+            isMinimapOpen ? Icons.map_rounded : Icons.map_outlined,
+            size: 18,
+            color: isMinimapOpen
+                ? const Color(0xFF007AFF)
+                : const Color(0xFF1E293B),
+          ),
+          onPressed: onToggleMinimap,
+        ),
+        const SizedBox(width: 8),
+        _buildZoomPill(context),
+      ],
+    );
+  }
+
+  Widget _buildPagePill() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: 'Önceki Sayfa',
+            icon: const Icon(Icons.chevron_left_rounded, size: 19),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            onPressed: controller.currentPageIndex > 0
+                ? () => controller.previousPage()
+                : null,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Text(
+              'Sayfa ${controller.currentPageIndex + 1} / ${controller.totalPages}',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1E293B),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Sonraki Sayfa',
+            icon: const Icon(Icons.chevron_right_rounded, size: 19),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            onPressed: controller.currentPageIndex < controller.totalPages - 1
+                ? () => controller.nextPage()
+                : null,
+          ),
+          Container(
+            height: 15,
+            width: 1,
+            color: Colors.grey.shade300,
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+          ),
+          IconButton(
+            tooltip: 'Yeni Sayfa Ekle',
+            icon: const Icon(
+              Icons.add_rounded,
+              size: 19,
+              color: Color(0xFF007AFF),
+            ),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            onPressed: () => controller.addNewPage(),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildRightControls(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // İleri / Geri / Temizle Hapı
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: 'Geri Al',
+                icon: const Icon(Icons.undo_rounded, size: 18),
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                padding: EdgeInsets.zero,
+                color: const Color(0xFF1E293B),
+                disabledColor: Colors.grey.shade300,
+                onPressed: controller.canUndo ? () => controller.undo() : null,
+              ),
+              IconButton(
+                tooltip: 'Yinele',
+                icon: const Icon(Icons.redo_rounded, size: 18),
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                padding: EdgeInsets.zero,
+                color: const Color(0xFF1E293B),
+                disabledColor: Colors.grey.shade300,
+                onPressed: controller.canRedo ? () => controller.redo() : null,
+              ),
+              Container(
+                height: 14,
+                width: 1,
+                color: Colors.grey.shade300,
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+              ),
+              IconButton(
+                tooltip: 'Sayfayı Temizle',
+                icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                padding: EdgeInsets.zero,
+                color: const Color(0xFFFF3B30),
+                disabledColor: Colors.grey.shade300,
+                onPressed: controller.strokes.isEmpty
+                    ? null
+                    : () => _confirmClear(context),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+
+        // Hızlı Erişim Butonu
+        IconButton(
+          tooltip: isQuickAccessOpen ? 'Hızlı Erişimi Kapat' : 'Hızlı Erişim',
+          style: IconButton.styleFrom(
+            backgroundColor: isQuickAccessOpen
+                ? const Color(0xFF007AFF).withValues(alpha: 0.12)
+                : Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(
+                color: isQuickAccessOpen
+                    ? const Color(0xFF007AFF).withValues(alpha: 0.4)
+                    : Colors.black.withValues(alpha: 0.08),
+              ),
+            ),
+          ),
+          icon: Icon(
+            Icons.flash_on_rounded,
+            size: 20,
+            color: isQuickAccessOpen
+                ? const Color(0xFF007AFF)
+                : const Color(0xFF1E293B),
+          ),
+          onPressed: onToggleQuickAccess,
+        ),
+      ],
     );
   }
 

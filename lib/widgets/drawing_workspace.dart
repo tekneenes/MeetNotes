@@ -548,6 +548,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                 smartGuides: controller.activeSmartGuides,
                 isRotatingSelection: controller.isRotatingSelection,
                 isSelectionLocked: controller.isSelectionLocked,
+                hasMaskedStrokeInSelection: controller.hasMaskedStrokeInSelection,
                 scale: _scale,
                 panOffset: _panOffset,
               ),

@@ -311,6 +311,15 @@ class PlannerController extends ChangeNotifier {
   bool get showOnlySelectedGroups =>
       _showOnlySelectedGroups && hasGroupedStrokeInSelection;
 
+  bool get hasMaskedStrokeInSelection {
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length && _strokes[idx].eraserMasks.isNotEmpty) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   bool get isSingleLineOrArrowSelected {
     if (_selectedStrokeIndices.length != 1 ||
         _selectedTextIds.isNotEmpty ||
@@ -319,6 +328,8 @@ class PlannerController extends ChangeNotifier {
     }
     final idx = _selectedStrokeIndices.first;
     if (idx < 0 || idx >= _strokes.length) return false;
+    // When a line has an eraser mask, it is an edited ink stroke and cannot be morphed by endpoints
+    if (_strokes[idx].eraserMasks.isNotEmpty) return false;
     return _strokes[idx].tool.isLineOrArrow;
   }
 
@@ -2621,17 +2632,22 @@ class PlannerController extends ChangeNotifier {
 
         if (!isSelectionLocked) {
           // 0. Check if user grabbed the Canva circular 2D rotation handle attached to the bottom stem
-          final rotHandleCenter = Offset(
-            bounds.bottomCenter.dx,
-            bounds.bottomCenter.dy + 34.0 / _zoomScale,
-          );
-          if ((localPoint - rotHandleCenter).distance <= 22.0 / _zoomScale) {
-            startRotation(point);
-            return;
+          if (!hasMaskedStrokeInSelection) {
+            final rotHandleCenter = Offset(
+              bounds.bottomCenter.dx,
+              bounds.bottomCenter.dy + 34.0 / _zoomScale,
+            );
+            if ((localPoint - rotHandleCenter).distance <= 22.0 / _zoomScale) {
+              startRotation(point);
+              return;
+            }
           }
 
           // 1. Check if user grabbed one of the 8 resize handles (corners or edges)
-          final handle = _findResizeHandleAtPoint(localPoint, bounds);
+          // If the selection has a masked stroke, resizing is disabled (move-only)
+          final handle = hasMaskedStrokeInSelection
+              ? null
+              : _findResizeHandleAtPoint(localPoint, bounds);
           if (handle != null) {
             _undoStack.add(List.from(_strokes));
             _redoStack.clear();
@@ -5062,7 +5078,15 @@ class PlannerController extends ChangeNotifier {
         final expanded = _expandShapeToPolygon(_strokes[idx]);
         final flippedPoints =
             expanded.points.map((pt) => Offset(2 * cx - pt.dx, pt.dy)).toList();
-        _strokes[idx] = expanded.copyWith(points: flippedPoints);
+        final flippedMasks = expanded.eraserMasks.map((mask) {
+          return mask.copyWith(
+            points: mask.points.map((pt) => Offset(2 * cx - pt.dx, pt.dy)).toList(),
+          );
+        }).toList();
+        _strokes[idx] = expanded.copyWith(
+          points: flippedPoints,
+          eraserMasks: flippedMasks,
+        );
       }
     }
     for (final textId in _selectedTextIds) {
@@ -5129,7 +5153,15 @@ class PlannerController extends ChangeNotifier {
         final expanded = _expandShapeToPolygon(_strokes[idx]);
         final flippedPoints =
             expanded.points.map((pt) => Offset(pt.dx, 2 * cy - pt.dy)).toList();
-        _strokes[idx] = expanded.copyWith(points: flippedPoints);
+        final flippedMasks = expanded.eraserMasks.map((mask) {
+          return mask.copyWith(
+            points: mask.points.map((pt) => Offset(pt.dx, 2 * cy - pt.dy)).toList(),
+          );
+        }).toList();
+        _strokes[idx] = expanded.copyWith(
+          points: flippedPoints,
+          eraserMasks: flippedMasks,
+        );
       }
     }
     for (final textId in _selectedTextIds) {

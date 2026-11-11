@@ -252,7 +252,7 @@ void main() {
     expect(controller.selectedLineStroke!.tool, DrawingTool.line);
     expect(controller.selectedLineStroke!.points.length, 2);
 
-    // 6. Test Line with Eraser Masks and Endpoint Dragging Synchronization:
+    // 6. Test Masked Line Selection Behavior:
     // Add an eraser mask at the midpoint (220, 165)
     controller.setTool(DrawingTool.eraser);
     controller.setEraserType(EraserType.pixel);
@@ -267,22 +267,28 @@ void main() {
     controller.setTool(DrawingTool.lasso);
     controller.startStroke(const Offset(110, 150));
     controller.endStroke();
-    expect(controller.isSingleLineOrArrowSelected, isTrue);
 
-    // Drag the end handle from (340, 180) downwards to (340, 280)
-    final lineEndHandle = controller.selectedLineStroke!.points[1];
-    controller.startStroke(lineEndHandle);
-    expect(controller.activeResizeHandle, SelectionHandle.lineEnd);
-    controller.updateStroke(const Offset(340, 280));
+    // Since the line has an eraser mask, it is now an edited ink drawing:
+    // It should NOT allow endpoint dragging (isSingleLineOrArrowSelected is false),
+    // and it should NOT allow resizing (hasMaskedStrokeInSelection is true).
+    expect(controller.isSingleLineOrArrowSelected, isFalse);
+    expect(controller.hasLassoSelection, isTrue);
+    expect(controller.hasMaskedStrokeInSelection, isTrue);
+
+    // Tapping on the stroke and dragging translates the line and its masks together
+    final preDragPoint = controller.strokes.first.points[0];
+    final preDragMask = controller.strokes.first.eraserMasks.first.points.first;
+
+    controller.startStroke(const Offset(110, 150));
+    expect(controller.activeResizeHandle, isNull); // Resizing handle is disabled!
+    controller.updateStroke(const Offset(140, 190)); // Translate by (+30, +40)
     controller.endStroke();
 
-    // Verify the line rotated downwards
-    expect(controller.selectedLineStroke!.points[1], const Offset(340, 280));
-    // Verify the eraser mask points rotated and followed the line proportionally!
-    final updatedMaskPoint = controller.selectedLineStroke!.eraserMasks.first.points.first;
-    // Expected new midpoint is ((100 + 340)/2, (150 + 280)/2) = (220, 215)
-    expect(updatedMaskPoint.dx, closeTo(220.0, 1.0));
-    expect(updatedMaskPoint.dy, closeTo(215.0, 1.0));
+    // Verify both the line points and the mask points translated cleanly by (+30, +40)
+    expect(controller.strokes.first.points[0].dx, closeTo(preDragPoint.dx + 30.0, 1.0));
+    expect(controller.strokes.first.points[0].dy, closeTo(preDragPoint.dy + 40.0, 1.0));
+    expect(controller.strokes.first.eraserMasks.first.points.first.dx, closeTo(preDragMask.dx + 30.0, 1.0));
+    expect(controller.strokes.first.eraserMasks.first.points.first.dy, closeTo(preDragMask.dy + 40.0, 1.0));
 
     // Drain debounce save timer
     await tester.pump(const Duration(milliseconds: 1000));
@@ -1787,41 +1793,30 @@ void main() {
     // The stroke should NOT be selected because all points in this area are erased
     expect(controller.selectedStrokeIndices.isEmpty, isTrue);
 
-    // Re-select the trimmed stroke with Lasso and test resizing (büyütüp küçültme)
+    // Re-select the trimmed stroke with Lasso and test move-only behavior:
     controller.clearLassoSelection();
     controller.startStroke(const Offset(50, 50));
     controller.updateStroke(const Offset(280, 150));
     controller.endStroke();
     expect(controller.selectedStrokeIndices, contains(0));
+    expect(controller.hasMaskedStrokeInSelection, isTrue);
 
-    final preResizeBounds = controller.selectionBounds!;
-    // Drag the right resize handle to stretch horizontally by 50px
-    final rightHandlePos = Offset(preResizeBounds.right, preResizeBounds.center.dy);
-    controller.startStroke(rightHandlePos);
-    controller.updateStroke(Offset(rightHandlePos.dx + 50.0, rightHandlePos.dy));
+    final preDragBounds = controller.selectionBounds!;
+    // Masked strokes have resizing disabled; touching anywhere moves/translates it
+    final touchPoint = Offset(preDragBounds.center.dx, preDragBounds.center.dy);
+    controller.startStroke(touchPoint);
+    expect(controller.activeResizeHandle, isNull); // Resizing handles are disabled!
+    controller.updateStroke(Offset(touchPoint.dx + 40.0, touchPoint.dy + 20.0));
     controller.endStroke();
 
-    final postResizeBounds = controller.selectionBounds!;
-    // Verify that the stroke scaled cleanly and did not shoot out uncontrollably
-    expect(postResizeBounds.right, closeTo(preResizeBounds.right + 50.0, 5.0));
-    // Verify that all points in the resized stroke remain within the selection bounds
-    final resizedStroke = controller.strokes.first;
-    for (final pt in resizedStroke.points) {
-      expect(pt.dx, lessThanOrEqualTo(postResizeBounds.right));
-      expect(pt.dx, greaterThanOrEqualTo(postResizeBounds.left));
-    }
+    final postDragBounds = controller.selectionBounds!;
+    expect(postDragBounds.left, closeTo(preDragBounds.left + 40.0, 1.0));
+    expect(postDragBounds.top, closeTo(preDragBounds.top + 20.0, 1.0));
 
-    // Now test shrinking horizontally by 50px (büyütüp küçültme)
-    final shrinkHandlePos = Offset(postResizeBounds.right, postResizeBounds.center.dy);
-    controller.startStroke(shrinkHandlePos);
-    controller.updateStroke(Offset(shrinkHandlePos.dx - 50.0, shrinkHandlePos.dy));
-    controller.endStroke();
-
-    final shrunkBounds = controller.selectionBounds!;
-    expect(shrunkBounds.right, closeTo(preResizeBounds.right, 5.0));
+    // Verify all points remain cleanly within the moved bounds
     for (final pt in controller.strokes.first.points) {
-      expect(pt.dx, lessThanOrEqualTo(shrunkBounds.right));
-      expect(pt.dx, greaterThanOrEqualTo(shrunkBounds.left));
+      expect(pt.dx, lessThanOrEqualTo(postDragBounds.right));
+      expect(pt.dx, greaterThanOrEqualTo(postDragBounds.left));
     }
 
     await tester.pump(const Duration(milliseconds: 1000));

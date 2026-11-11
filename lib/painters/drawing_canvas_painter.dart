@@ -75,6 +75,7 @@ class DrawingCanvasPainter extends CustomPainter {
   final bool isDark;
   final bool isRotatingSelection;
   final bool isSelectionLocked;
+  final bool hasMaskedStrokeInSelection;
   final double? selectionBorderRadius;
   final double scale;
   final Offset panOffset;
@@ -98,6 +99,7 @@ class DrawingCanvasPainter extends CustomPainter {
     this.isDark = false,
     this.isRotatingSelection = false,
     this.isSelectionLocked = false,
+    this.hasMaskedStrokeInSelection = false,
     this.selectionBorderRadius,
     this.scale = 1.0,
     this.panOffset = Offset.zero,
@@ -601,7 +603,7 @@ class DrawingCanvasPainter extends CustomPainter {
       ..addRRect(RRect.fromRectAndRadius(bounds, radius));
     _drawDashedPath(canvas, rectPath, borderPaint, 6.0 / scale, 4.0 / scale);
 
-    if (isSelectionLocked) {
+    if (isSelectionLocked || hasMaskedStrokeInSelection) {
       canvas.restore();
       return;
     }

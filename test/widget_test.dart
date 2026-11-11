@@ -2924,6 +2924,12 @@ void main() {
     expect(nextWeekBtn, findsOneWidget);
     expect(todayBtn, findsOneWidget);
 
+    // No English subtitles or fullscreen expand icon inside Day Cards
+    expect(find.byIcon(Icons.open_in_full_rounded), findsNothing);
+    expect(find.text('Monday'), findsNothing);
+    expect(find.text('Tuesday'), findsNothing);
+    expect(find.text('Wednesday'), findsNothing);
+
     // Navigate next week and back to today
     await tester.tap(nextWeekBtn);
     await tester.pumpAndSettle();

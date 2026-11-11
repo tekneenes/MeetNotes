@@ -135,10 +135,10 @@ class _PlannerScreenState extends State<PlannerScreen>
         d.date.day == date.day);
     if (idx != -1 && _sidebarScrollController.hasClients) {
       final pos = _sidebarScrollController.position;
-      // Estimate slot (~162px/card) and bring the target card cleanly into viewport center
-      final estimatedCardTop = idx * 162.0;
+      // Estimate slot (~148px/card) and bring the target card cleanly into viewport center
+      final estimatedCardTop = idx * 148.0;
       final viewportH = pos.viewportDimension;
-      final targetOffset = (estimatedCardTop - (viewportH - 152.0) * 0.5)
+      final targetOffset = (estimatedCardTop - (viewportH - 138.0) * 0.5)
           .clamp(0.0, pos.maxScrollExtent);
       if ((pos.pixels - targetOffset).abs() > 1.0) {
         _sidebarScrollController.jumpTo(targetOffset);
@@ -3578,7 +3578,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                                           const SizedBox(width: 6),
                                           Flexible(
                                             child: Text(
-                                              '${day.dayName} • $fullDateStr (${day.dayNameEnglish})',
+                                              '${day.dayName} • $fullDateStr',
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: const TextStyle(

@@ -207,8 +207,8 @@ class _InteractiveDayCardState extends State<_InteractiveDayCard> {
         onTapCancel: () => setState(() => _isPressed = false),
         onTap: widget.onTap,
         child: AnimatedScale(
-          scale: _isPressed ? 0.97 : (_isHovered ? 1.015 : 1.0),
-          duration: const Duration(milliseconds: 160),
+          scale: _isPressed ? 0.985 : 1.0,
+          duration: const Duration(milliseconds: 140),
           curve: Curves.easeOutCubic,
           child: DayCardSurface(
             day: widget.day,
@@ -279,53 +279,40 @@ class DayCardSurface extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                day.dayName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: isToday
-                                      ? const Color(0xFF1D4ED8)
-                                      : const Color(0xFF1E293B),
-                                ),
-                              ),
+                        Flexible(
+                          child: Text(
+                            day.dayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: isToday
+                                  ? const Color(0xFF1D4ED8)
+                                  : const Color(0xFF1E293B),
                             ),
-                            if (isToday) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFDBEAFE),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  'Bugün',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1D4ED8),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        Text(
-                          day.dayNameEnglish,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey.shade500,
                           ),
                         ),
+                        if (isToday) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDBEAFE),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'Bugün',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1D4ED8),
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -350,24 +337,6 @@ class DayCardSurface extends StatelessWidget {
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       color: Colors.grey.shade600,
-                    ),
-                  ),
-                  const SizedBox(width: 5),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: isHovered
-                          ? const Color(0xFFEFF6FF)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(7),
-                    ),
-                    child: Icon(
-                      Icons.open_in_full_rounded,
-                      size: 12,
-                      color: isHovered
-                          ? const Color(0xFF2563EB)
-                          : Colors.grey.shade400,
                     ),
                   ),
                 ],

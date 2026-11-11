@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/planner_models.dart';
 
@@ -10,6 +13,7 @@ class PlannerStorageService {
   static const String _strokesPrefix = 'meet_notes_strokes_';
   static const String _dayTextPrefix = 'meet_notes_day_';
   static const String _savedAssetsKey = 'meet_notes_saved_assets';
+  static const String _uploadedFilesKey = 'meet_notes_uploaded_files';
 
   // --- Debounced (coalesced) writes for strokes & canvas texts ---
   // jsonEncode of every stroke on the UI thread caused a dropped frame at the
@@ -282,6 +286,73 @@ class PlannerStorageService {
     final prefs = await SharedPreferences.getInstance();
     final raw = jsonEncode(assets.map((a) => a.toMap()).toList());
     await prefs.setString(_savedAssetsKey, raw);
+  }
+
+  // --- Global Persistent Uploaded Files Library (PDFs, Documents, etc.) ---
+  Future<List<CanvasFileItem>> loadUploadedFiles() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_uploadedFilesKey);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map((e) => CanvasFileItem.fromMap(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveUploadedFiles(List<CanvasFileItem> files) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = jsonEncode(files.map((f) => f.toMap()).toList());
+    await prefs.setString(_uploadedFilesKey, raw);
+  }
+
+  /// Copies uploaded bytes into the app's sandboxed Application Support directory
+  /// so macOS/iOS security-scoped file permissions never expire across restarts
+  /// and large binaries do not bloat SharedPreferences.
+  Future<String?> persistUploadedFileBytes(
+    String fileId,
+    String extension,
+    Uint8List bytes,
+  ) async {
+    if (kIsWeb || bytes.isEmpty) return null;
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      final filesDir = Directory('${supportDir.path}/uploaded_files');
+      if (!await filesDir.exists()) {
+        await filesDir.create(recursive: true);
+      }
+      final cleanExt = extension.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
+      final suffix = cleanExt.isNotEmpty ? '.$cleanExt' : '';
+      final targetFile = File('${filesDir.path}/$fileId$suffix');
+      await targetFile.writeAsBytes(bytes, flush: true);
+      return targetFile.path;
+    } on MissingPluginException {
+      return null;
+    } catch (e) {
+      debugPrint('persistUploadedFileBytes error: $e');
+      return null;
+    }
+  }
+
+  Future<void> deleteUploadedFileBytes(CanvasFileItem file) async {
+    final filePath = file.path;
+    if (kIsWeb || filePath == null || filePath.isEmpty) return;
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      final filesDirPath = '${supportDir.path}/uploaded_files/';
+      if (!filePath.startsWith(filesDirPath)) return;
+      final targetFile = File(filePath);
+      if (await targetFile.exists()) {
+        await targetFile.delete();
+      }
+    } on MissingPluginException {
+      // Ignore in headless tests without path_provider channel
+    } catch (e) {
+      debugPrint('deleteUploadedFileBytes error: $e');
+    }
   }
 }
 

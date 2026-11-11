@@ -30,6 +30,7 @@ class PdfService {
   static bool hasMissingPlugin = false;
 
   static Future<PdfDocumentInfo?> getPdfInfo({String? path, Uint8List? data}) async {
+    if (path == null && data == null) return null;
     try {
       final res = await _channel.invokeMapMethod<String, dynamic>('getPdfInfo', {
         if (path != null) 'path': path,
@@ -64,6 +65,7 @@ class PdfService {
     required int pageIndex,
     double width = 720.0,
   }) async {
+    if (path == null && data == null) return null;
     try {
       final res = await _channel.invokeMethod<Uint8List>('renderPdfPage', {
         if (path != null) 'path': path,

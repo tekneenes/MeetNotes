@@ -1277,7 +1277,7 @@ void main() {
     expect(controller.canvasImages, isEmpty);
     expect(controller.canvasFiles, isEmpty);
 
-    // 3. Test PDF viewer subpage navigation and dragging/inserting a PDF page to canvas
+    // 3. Test persistent uploaded PDF library (not auto-placed onto canvas)
     const samplePdfFile = CanvasFileItem(
       id: 'pdf_test_1',
       position: Offset(100, 100),
@@ -1285,6 +1285,15 @@ void main() {
       extension: 'pdf',
       sizeBytes: 1024 * 50,
     );
+
+    await controller.addUploadedFile(samplePdfFile);
+    expect(controller.uploadedFiles.length, 1);
+    expect(controller.uploadedFiles.first.name, 'Sample.pdf');
+    expect(controller.canvasFiles, isEmpty);
+
+    // Re-uploading the exact same file deduplicates cleanly
+    await controller.addUploadedFile(samplePdfFile);
+    expect(controller.uploadedFiles.length, 1);
 
     controller.openQuickAccessPdfViewer(samplePdfFile);
     expect(controller.isQuickAccessPdfViewerPage, isTrue);
@@ -1310,6 +1319,19 @@ void main() {
     controller.closeQuickAccessPdfViewer();
     expect(controller.isQuickAccessPdfViewerPage, isFalse);
     expect(controller.isQuickAccessFilesPage, isTrue);
+    expect(controller.uploadedFiles.length, 1);
+
+    // Uploaded files remain available across clearCanvas, page additions, and day controllers
+    controller.clearCanvas();
+    controller.addNewPage();
+    expect(controller.uploadedFiles.length, 1);
+
+    final dayController = PlannerController(singleDayDate: DateTime(2026, 11, 11));
+    await tester.pump(const Duration(milliseconds: 100));
+    await dayController.refreshUploadedFiles();
+    expect(dayController.uploadedFiles.length, 1);
+    expect(dayController.uploadedFiles.first.name, 'Sample.pdf');
+    dayController.dispose();
 
     // Drain debounce save timer
     await tester.pump(const Duration(milliseconds: 1000));

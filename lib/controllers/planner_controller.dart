@@ -115,6 +115,7 @@ class PlannerController extends ChangeNotifier {
   List<CanvasTextItem> _canvasTexts = [];
   List<CanvasImageItem> _canvasImages = [];
   List<CanvasFileItem> _canvasFiles = [];
+  List<CanvasFileItem> _uploadedFiles = [];
   List<CanvasPaperRegion> _canvasPaperRegions = [];
   final Set<String> _selectedPaperRegionIds = {};
   Rect? _activeAreaSelectionRect;
@@ -426,6 +427,7 @@ class PlannerController extends ChangeNotifier {
   CanvasFileItem? get activePdfFile => _activePdfFile;
   List<CanvasImageItem> get canvasImages => List.unmodifiable(_canvasImages);
   List<CanvasFileItem> get canvasFiles => List.unmodifiable(_canvasFiles);
+  List<CanvasFileItem> get uploadedFiles => List.unmodifiable(_uploadedFiles);
   String? get selectedImageId =>
       _selectedImageIds.length == 1 ? _selectedImageIds.first : null;
   String? get selectedFileId => _selectedFileId;
@@ -696,8 +698,35 @@ class PlannerController extends ChangeNotifier {
         _savedAssets = assets;
         notifyListeners();
       });
+      refreshUploadedFiles();
     }
     notifyListeners();
+  }
+
+  Future<void> refreshUploadedFiles() async {
+    final loaded = await _storage.loadUploadedFiles();
+    final merged = List<CanvasFileItem>.of(loaded);
+    var changed = false;
+    for (final legacy in _canvasFiles) {
+      final exists = merged.any((u) => _isSameUploadedFile(u, legacy));
+      if (!exists) {
+        merged.add(legacy);
+        changed = true;
+      }
+    }
+    _uploadedFiles = merged;
+    if (changed) {
+      await _storage.saveUploadedFiles(_uploadedFiles);
+    }
+    notifyListeners();
+  }
+
+  static bool _isSameUploadedFile(CanvasFileItem a, CanvasFileItem b) {
+    if (a.id == b.id) return true;
+    return a.sizeBytes > 0 &&
+        b.sizeBytes > 0 &&
+        a.sizeBytes == b.sizeBytes &&
+        a.name.trim().toLowerCase() == b.name.trim().toLowerCase();
   }
 
   void openQuickAccessMainPage() {
@@ -755,6 +784,7 @@ class PlannerController extends ChangeNotifier {
     _isQuickAccessOpen = true;
     _quickAccessSubPage = QuickAccessSubPage.files;
     _activePdfFile = null;
+    refreshUploadedFiles();
     notifyListeners();
   }
 
@@ -768,6 +798,7 @@ class PlannerController extends ChangeNotifier {
   void closeQuickAccessPdfViewer() {
     _activePdfFile = null;
     _quickAccessSubPage = QuickAccessSubPage.files;
+    refreshUploadedFiles();
     notifyListeners();
   }
 
@@ -782,8 +813,11 @@ class PlannerController extends ChangeNotifier {
     PdfPageDragData dragData, {
     Offset? targetCenter,
   }) async {
-    final idx = _canvasFiles.indexWhere((f) => f.id == dragData.fileId);
-    final file = idx != -1 ? _canvasFiles[idx] : null;
+    final uploadedIdx = _uploadedFiles.indexWhere((f) => f.id == dragData.fileId);
+    final canvasIdx = _canvasFiles.indexWhere((f) => f.id == dragData.fileId);
+    final file = uploadedIdx != -1
+        ? _uploadedFiles[uploadedIdx]
+        : (canvasIdx != -1 ? _canvasFiles[canvasIdx] : null);
 
     Uint8List? pngBytes;
     if (dragData.previewBase64 != null) {
@@ -899,6 +933,58 @@ class PlannerController extends ChangeNotifier {
     }
   }
 
+  Future<CanvasFileItem?> addUploadedFile(
+    CanvasFileItem item, {
+    Uint8List? rawBytes,
+  }) async {
+    final ext = (item.extension ??
+            (item.name.contains('.') ? item.name.split('.').last : ''))
+        .toLowerCase();
+
+    final existingIdx =
+        _uploadedFiles.indexWhere((f) => _isSameUploadedFile(f, item));
+    if (existingIdx != -1) {
+      final existing = _uploadedFiles[existingIdx];
+      var updated = existing;
+      if (rawBytes != null && rawBytes.isNotEmpty) {
+        final localPath = await _storage.persistUploadedFileBytes(
+          existing.id,
+          ext,
+          rawBytes,
+        );
+        updated = existing.copyWith(
+          path: localPath ?? item.path ?? existing.path,
+          base64Data: localPath != null ? null : base64Encode(rawBytes),
+          extension: ext.isNotEmpty ? ext : existing.extension,
+          sizeBytes: item.sizeBytes > 0 ? item.sizeBytes : existing.sizeBytes,
+        );
+        _uploadedFiles[existingIdx] = updated;
+        await _storage.saveUploadedFiles(_uploadedFiles);
+      }
+      _selectedFileId = updated.id;
+      notifyListeners();
+      return updated;
+    }
+
+    String? localPath;
+    if (rawBytes != null && rawBytes.isNotEmpty) {
+      localPath = await _storage.persistUploadedFileBytes(item.id, ext, rawBytes);
+    }
+
+    final savedItem = item.copyWith(
+      extension: ext,
+      path: localPath ?? item.path,
+      base64Data: localPath != null
+          ? null
+          : (rawBytes != null ? base64Encode(rawBytes) : item.base64Data),
+    );
+    _uploadedFiles.add(savedItem);
+    _selectedFileId = savedItem.id;
+    await _storage.saveUploadedFiles(_uploadedFiles);
+    notifyListeners();
+    return savedItem;
+  }
+
   Future<CanvasFileItem?> pickAndAddFile({Offset? targetPosition}) async {
     try {
       final result = await FilePicker.pickFiles(
@@ -923,18 +1009,66 @@ class PlannerController extends ChangeNotifier {
         position: pos,
         name: file.name,
         sizeBytes: file.size,
-        extension: file.extension ?? (file.name.contains('.') ? file.name.split('.').last : ''),
+        extension: file.extension ??
+            (file.name.contains('.') ? file.name.split('.').last : ''),
         path: filePath,
         base64Data: bytes != null ? base64Encode(bytes) : null,
       );
-      _canvasFiles.add(item);
-      _selectedFileId = id;
-      await _saveCurrentCanvasFiles();
-      notifyListeners();
-      return item;
+      return await addUploadedFile(item, rawBytes: bytes);
     } catch (e) {
       debugPrint('pickAndAddFile error: $e');
       return null;
+    }
+  }
+
+  /// Explicitly places an already-uploaded file shortcut onto the active canvas page
+  /// without touching or duplicating the persistent uploaded library entry.
+  void addUploadedFileToCanvas(CanvasFileItem file, {Offset? targetPosition}) {
+    final existingIdx = _canvasFiles.indexWhere((f) => f.id == file.id);
+    if (existingIdx != -1) {
+      _selectedFileId = _canvasFiles[existingIdx].id;
+      notifyListeners();
+      return;
+    }
+    final canvasItem = file.copyWith(
+      position: targetPosition ?? const Offset(120, 160),
+    );
+    _canvasFiles.add(canvasItem);
+    _selectedFileId = canvasItem.id;
+    _saveCurrentCanvasFiles();
+    notifyListeners();
+  }
+
+  Future<void> removeUploadedFile(String id) async {
+    final idx = _uploadedFiles.indexWhere((f) => f.id == id);
+    if (idx != -1) {
+      final removed = _uploadedFiles.removeAt(idx);
+      await _storage.deleteUploadedFileBytes(removed);
+      await _storage.saveUploadedFiles(_uploadedFiles);
+    }
+    if (_activePdfFile?.id == id) {
+      _activePdfFile = null;
+      _quickAccessSubPage = QuickAccessSubPage.files;
+    }
+    if (_selectedFileId == id) _selectedFileId = null;
+    notifyListeners();
+  }
+
+  void toggleUploadedFileLock(String id) {
+    final idx = _uploadedFiles.indexWhere((f) => f.id == id);
+    if (idx != -1) {
+      _uploadedFiles[idx] = _uploadedFiles[idx].copyWith(
+        isLocked: !_uploadedFiles[idx].isLocked,
+      );
+      _storage.saveUploadedFiles(_uploadedFiles);
+      final canvasIdx = _canvasFiles.indexWhere((f) => f.id == id);
+      if (canvasIdx != -1) {
+        _canvasFiles[canvasIdx] = _canvasFiles[canvasIdx].copyWith(
+          isLocked: _uploadedFiles[idx].isLocked,
+        );
+        _saveCurrentCanvasFiles();
+      }
+      notifyListeners();
     }
   }
 
@@ -1769,6 +1903,19 @@ class PlannerController extends ChangeNotifier {
     _canvasPaperRegions = await _storage.loadCanvasPaperRegions(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
     _normalizeUnifiedLayerOrders();
     _savedAssets = await _storage.loadSavedAssets();
+    final loadedFiles = await _storage.loadUploadedFiles();
+    final mergedFiles = List<CanvasFileItem>.of(loadedFiles);
+    var migratedLegacy = false;
+    for (final legacy in _canvasFiles) {
+      if (!mergedFiles.any((u) => _isSameUploadedFile(u, legacy))) {
+        mergedFiles.add(legacy);
+        migratedLegacy = true;
+      }
+    }
+    _uploadedFiles = mergedFiles;
+    if (migratedLegacy) {
+      await _storage.saveUploadedFiles(_uploadedFiles);
+    }
 
     if (singleDayDate != null) {
       final key = _formatDateKey(singleDayDate!);

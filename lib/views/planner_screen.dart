@@ -1452,9 +1452,9 @@ class _PlannerScreenState extends State<PlannerScreen>
                         icon: Icons.folder_open_rounded,
                         color: const Color(0xFFEC4899),
                         title: 'Dosya',
-                        subtitle: activeController.canvasFiles.isNotEmpty
-                            ? '${activeController.canvasFiles.length} dosya • Belgeleri görüntüle ve yönet'
-                            : 'PDF, belge veya dosya ekle',
+                        subtitle: activeController.uploadedFiles.isNotEmpty
+                            ? '${activeController.uploadedFiles.length} kayıtlı dosya • Tüm sayfa ve günlerde kullan'
+                            : 'PDF, belge veya dosya yükle (kalıcı olarak saklanır)',
                         onTap: () {
                           activeController.openQuickAccessFilesPage();
                         },
@@ -2610,7 +2610,7 @@ class _PlannerScreenState extends State<PlannerScreen>
     BuildContext context,
     PlannerController activeController,
   ) {
-    final files = activeController.canvasFiles;
+    final files = activeController.uploadedFiles;
     final selectedFileId = activeController.selectedFileId;
 
     return ListView(
@@ -2653,7 +2653,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                       ),
                       SizedBox(height: 1),
                       Text(
-                        'PDF, belge veya dosya ekleyin',
+                        'PDF, belge veya dosya yükleyin (tüm sayfalarda kalır)',
                         style: TextStyle(
                           fontSize: 10,
                           color: Color(0xFFBE185D),
@@ -2690,7 +2690,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Bu sayfada henüz dosya yok',
+                  'Henüz yüklü dosya yok',
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
@@ -2699,7 +2699,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Yukarıdaki butona dokunarak PDF, belge veya istediğiniz dosyaları ekleyebilirsiniz.',
+                  'Bir kez yüklediğiniz PDF ve belgeler tüm gün ve sayfalarda kalıcı olarak burada listelenir.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
                 ),
@@ -2710,7 +2710,7 @@ class _PlannerScreenState extends State<PlannerScreen>
           Padding(
             padding: const EdgeInsets.only(bottom: 8, left: 2),
             child: Text(
-              'Sayfadaki Dosyalar (${files.length})',
+              'Yüklü Dosyalar (${files.length})',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
@@ -2819,6 +2819,12 @@ class _PlannerScreenState extends State<PlannerScreen>
                           icon: const Icon(Icons.menu_book_rounded, size: 17, color: Color(0xFFEF4444)),
                           onPressed: () => activeController.openQuickAccessPdfViewer(f),
                           tooltip: 'Sayfaları Görüntüle ve Tuvale Ekle',
+                        )
+                      else
+                        IconButton(
+                          icon: const Icon(Icons.note_add_outlined, size: 17, color: Color(0xFF0D9488)),
+                          onPressed: () => activeController.addUploadedFileToCanvas(f),
+                          tooltip: 'Tuvale Kısayol Ekle',
                         ),
                       IconButton(
                         icon: Icon(
@@ -2826,13 +2832,13 @@ class _PlannerScreenState extends State<PlannerScreen>
                           size: 17,
                           color: f.isLocked ? const Color(0xFFEC4899) : Colors.grey.shade400,
                         ),
-                        onPressed: () => activeController.toggleCanvasFileLock(f.id),
+                        onPressed: () => activeController.toggleUploadedFileLock(f.id),
                         tooltip: f.isLocked ? 'Kilidi Aç' : 'Kilitle',
                       ),
                       IconButton(
                         icon: const Icon(Icons.delete_outline_rounded, size: 17, color: Color(0xFFEF4444)),
-                        onPressed: () => activeController.removeCanvasFile(f.id),
-                        tooltip: 'Sil',
+                        onPressed: () => activeController.removeUploadedFile(f.id),
+                        tooltip: 'Kütüphaneden Sil',
                       ),
                     ],
                   ),

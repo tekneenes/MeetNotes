@@ -205,6 +205,7 @@ void main() {
 
     // 1. Draw a line from (100, 100) to (300, 100)
     controller.setTool(DrawingTool.line);
+    controller.setStrokeWidth(16.0);
     controller.startStroke(const Offset(100, 100));
     controller.updateStroke(const Offset(300, 100));
     controller.endStroke();
@@ -250,6 +251,38 @@ void main() {
     controller.updateSelectedLineTool(DrawingTool.line);
     expect(controller.selectedLineStroke!.tool, DrawingTool.line);
     expect(controller.selectedLineStroke!.points.length, 2);
+
+    // 6. Test Line with Eraser Masks and Endpoint Dragging Synchronization:
+    // Add an eraser mask at the midpoint (220, 165)
+    controller.setTool(DrawingTool.eraser);
+    controller.setEraserType(EraserType.pixel);
+    controller.setEraserSize(20.0);
+    controller.startStroke(const Offset(220, 165));
+    controller.endStroke();
+
+    expect(controller.strokes.first.eraserMasks.length, 1);
+    expect(controller.strokes.first.eraserMasks.first.points.first, const Offset(220, 165));
+
+    // Re-select the line by tapping near its body
+    controller.setTool(DrawingTool.lasso);
+    controller.startStroke(const Offset(110, 150));
+    controller.endStroke();
+    expect(controller.isSingleLineOrArrowSelected, isTrue);
+
+    // Drag the end handle from (340, 180) downwards to (340, 280)
+    final lineEndHandle = controller.selectedLineStroke!.points[1];
+    controller.startStroke(lineEndHandle);
+    expect(controller.activeResizeHandle, SelectionHandle.lineEnd);
+    controller.updateStroke(const Offset(340, 280));
+    controller.endStroke();
+
+    // Verify the line rotated downwards
+    expect(controller.selectedLineStroke!.points[1], const Offset(340, 280));
+    // Verify the eraser mask points rotated and followed the line proportionally!
+    final updatedMaskPoint = controller.selectedLineStroke!.eraserMasks.first.points.first;
+    // Expected new midpoint is ((100 + 340)/2, (150 + 280)/2) = (220, 215)
+    expect(updatedMaskPoint.dx, closeTo(220.0, 1.0));
+    expect(updatedMaskPoint.dy, closeTo(215.0, 1.0));
 
     // Drain debounce save timer
     await tester.pump(const Duration(milliseconds: 1000));

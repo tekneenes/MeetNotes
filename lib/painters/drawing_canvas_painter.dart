@@ -749,7 +749,42 @@ class DrawingCanvasPainter extends CustomPainter {
         linePath.lineTo(stroke.points[i].dx, stroke.points[i].dy);
       }
     }
-    _drawDashedPath(canvas, linePath, dashPaint, 6.0 / scale, 4.0 / scale);
+    if (stroke.eraserMasks.isNotEmpty) {
+      double minX = stroke.points.first.dx, maxX = stroke.points.first.dx;
+      double minY = stroke.points.first.dy, maxY = stroke.points.first.dy;
+      for (final p in stroke.points) {
+        if (p.dx < minX) minX = p.dx;
+        if (p.dx > maxX) maxX = p.dx;
+        if (p.dy < minY) minY = p.dy;
+        if (p.dy > maxY) maxY = p.dy;
+      }
+      for (final m in stroke.eraserMasks) {
+        for (final p in m.points) {
+          if (p.dx < minX) minX = p.dx;
+          if (p.dx > maxX) maxX = p.dx;
+          if (p.dy < minY) minY = p.dy;
+          if (p.dy > maxY) maxY = p.dy;
+        }
+      }
+      final bounds = Rect.fromLTRB(minX, minY, maxX, maxY).inflate(stroke.strokeWidth + 32.0);
+      canvas.saveLayer(bounds, Paint());
+      _drawDashedPath(canvas, linePath, dashPaint, 6.0 / scale, 4.0 / scale);
+
+      final clearPaint = Paint()
+        ..blendMode = BlendMode.clear
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+
+      for (final mask in stroke.eraserMasks) {
+        if (mask.points.isEmpty) continue;
+        clearPaint.strokeWidth = mask.strokeWidth;
+        _drawFreehandStrokePath(canvas, mask.points, clearPaint);
+      }
+      canvas.restore();
+    } else {
+      _drawDashedPath(canvas, linePath, dashPaint, 6.0 / scale, 4.0 / scale);
+    }
 
     if (isSelectionLocked) return;
 

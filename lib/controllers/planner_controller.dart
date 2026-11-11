@@ -57,6 +57,7 @@ class PlannerController extends ChangeNotifier {
   Offset? _resizeStartPoint;
   Rect? _initialResizeRawBounds;
   Offset? _initialResizeCenter;
+  DrawingStroke? _initialLineStroke;
   Map<int, DrawingStroke> _initialResizeStrokes = {};
   Map<String, CanvasTextItem> _initialResizeTexts = {};
   Map<String, CanvasImageItem> _initialResizeImages = {};
@@ -2584,6 +2585,7 @@ class PlannerController extends ChangeNotifier {
           _undoStack.add(List.from(_strokes));
           _redoStack.clear();
           _activeResizeHandle = lineHandle;
+          _initialLineStroke = lineStroke;
           _isDraggingSelection = false;
           notifyListeners();
           return;
@@ -2946,7 +2948,25 @@ class PlannerController extends ChangeNotifier {
         newPoints[1] = point;
       }
 
-      _strokes[idx] = stroke.copyWith(points: newPoints);
+      final initialLine = _initialLineStroke;
+      List<EraserMask> updatedMasks = stroke.eraserMasks;
+      if (initialLine != null &&
+          initialLine.eraserMasks.isNotEmpty &&
+          initialLine.points.length >= 2 &&
+          newPoints.length >= 2) {
+        updatedMasks = _transformMasksForLineEndpoints(
+          initialLine.points,
+          newPoints,
+          initialLine.eraserMasks,
+          isCurveApexMove: (_activeResizeHandle == SelectionHandle.lineVertex ||
+              _activeResizeHandle == SelectionHandle.lineControl),
+        );
+      }
+
+      _strokes[idx] = stroke.copyWith(
+        points: newPoints,
+        eraserMasks: updatedMasks,
+      );
       canvasDragTick.value++;
       return;
     }
@@ -3139,6 +3159,7 @@ class PlannerController extends ChangeNotifier {
     if (isSingleLineOrArrowSelected &&
         (_activeResizeHandle != null || _isDraggingSelection)) {
       _activeResizeHandle = null;
+      _initialLineStroke = null;
       _activeSnapPoint = null;
       _nearbySnapAnchors = [];
       _activeSmartGuides = [];
@@ -3376,6 +3397,7 @@ class PlannerController extends ChangeNotifier {
         _isDraggingSelection = false;
         _dragStartPoint = null;
         _activeResizeHandle = null;
+        _initialLineStroke = null;
         _resizeStartPoint = null;
         _initialResizeRawBounds = null;
         _initialResizeStrokes.clear();
@@ -3489,6 +3511,71 @@ class PlannerController extends ChangeNotifier {
     _strokes[idx] = stroke.copyWith(tool: newTool, points: newPoints);
     _saveCurrentStrokes();
     notifyListeners();
+  }
+
+  List<EraserMask> _transformMasksForLineEndpoints(
+    List<Offset> initPoints,
+    List<Offset> newPoints,
+    List<EraserMask> masks, {
+    bool isCurveApexMove = false,
+  }) {
+    if (masks.isEmpty || initPoints.length < 2 || newPoints.length < 2) return masks;
+
+    final a0 = initPoints.first;
+    final b0 = initPoints.last;
+    final v0 = b0 - a0;
+    final l0 = v0.distance;
+
+    final a1 = newPoints.first;
+    final b1 = newPoints.last;
+    final v1 = b1 - a1;
+    final l1 = v1.distance;
+
+    if (isCurveApexMove && initPoints.length >= 3 && newPoints.length >= 3) {
+      final deltaApex = newPoints[1] - initPoints[1];
+      if (l0 < 0.001) {
+        return masks.map((m) => m.translate(deltaApex)).toList();
+      }
+      final t0 = Offset(v0.dx / l0, v0.dy / l0);
+      return masks.map((mask) {
+        final transformedPoints = mask.points.map((p) {
+          final d0 = p - a0;
+          final s = d0.dx * t0.dx + d0.dy * t0.dy;
+          final u = (s / l0).clamp(0.0, 1.0);
+          final bendFactor = 4.0 * u * (1.0 - u);
+          return p + deltaApex * bendFactor;
+        }).toList();
+        return mask.copyWith(points: transformedPoints);
+      }).toList();
+    }
+
+    if (l0 < 0.001) {
+      final delta = a1 - a0;
+      return masks.map((m) => m.translate(delta)).toList();
+    }
+
+    final t0 = Offset(v0.dx / l0, v0.dy / l0);
+    final n0 = Offset(-t0.dy, t0.dx);
+
+    final t1 = l1 > 0.001 ? Offset(v1.dx / l1, v1.dy / l1) : t0;
+    final n1 = Offset(-t1.dy, t1.dx);
+
+    return masks.map((mask) {
+      final transformedPoints = mask.points.map((p) {
+        final d0 = p - a0;
+        final s0 = d0.dx * t0.dx + d0.dy * t0.dy;
+        final h0 = d0.dx * n0.dx + d0.dy * n0.dy;
+        final u = s0 / l0;
+
+        final s1 = u * l1;
+        final p1 = Offset(
+          a1.dx + t1.dx * s1 + n1.dx * h0,
+          a1.dy + t1.dy * s1 + n1.dy * h0,
+        );
+        return p1;
+      }).toList();
+      return mask.copyWith(points: transformedPoints);
+    }).toList();
   }
 
   SelectionHandle? _findResizeHandleAtPoint(Offset point, Rect bounds) {

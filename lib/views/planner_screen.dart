@@ -1,6 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter, lerpDouble;
+import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
@@ -37,13 +38,13 @@ class _PlannerScreenState extends State<PlannerScreen>
 
   static const SpringDescription _openSpring = SpringDescription(
     mass: 1.0,
-    stiffness: 360.0,
-    damping: 35.0,
+    stiffness: 380.0,
+    damping: 36.5,
   );
   static const SpringDescription _closeSpring = SpringDescription(
     mass: 1.0,
-    stiffness: 420.0,
-    damping: 39.0,
+    stiffness: 520.0,
+    damping: 45.6,
   );
 
   late final AnimationController _dayExpandController;
@@ -54,6 +55,7 @@ class _PlannerScreenState extends State<PlannerScreen>
   Rect _originCardRect = const Rect.fromLTWH(14, 120, 252, 118);
   Offset _dragOffset = Offset.zero;
   bool _isDraggingReel = false;
+  bool _isClosingDayOverlay = false;
 
   @override
   void initState() {
@@ -102,7 +104,13 @@ class _PlannerScreenState extends State<PlannerScreen>
 
   TickerFuture _animateExpandTo(double target, {double velocity = 0.0}) {
     final spring = target > 0.5 ? _openSpring : _closeSpring;
-    final sim = SpringSimulation(spring, _dayExpandController.value, target, velocity);
+    final sim = SpringSimulation(
+      spring,
+      _dayExpandController.value,
+      target,
+      velocity,
+      tolerance: const Tolerance(distance: 0.003, velocity: 0.01),
+    );
     return _dayExpandController.animateWith(sim);
   }
 
@@ -110,9 +118,22 @@ class _PlannerScreenState extends State<PlannerScreen>
     if (cardKey == null) return null;
     final cardBox = cardKey.currentContext?.findRenderObject() as RenderBox?;
     final stackBox = _rootStackKey.currentContext?.findRenderObject() as RenderBox?;
-    if (cardBox != null && cardBox.hasSize && stackBox != null) {
+    if (cardBox != null && cardBox.hasSize && stackBox != null && stackBox.hasSize) {
       final pos = cardBox.localToGlobal(Offset.zero, ancestor: stackBox);
-      return Rect.fromLTWH(pos.dx, pos.dy, cardBox.size.width, cardBox.size.height);
+      // Compensate for the background depth Transform.scale (centered on stackBox)
+      // so closing lands on the card's true 1.0x unscaled resting rect.
+      final depthT = _activeExpandedDay != null
+          ? _dayExpandController.value.clamp(0.0, 1.0)
+          : 0.0;
+      final bgScale = math.max(0.5, 1.0 - 0.025 * depthT);
+      final cx = stackBox.size.width * 0.5;
+      final cy = stackBox.size.height * 0.5;
+      return Rect.fromLTWH(
+        cx + (pos.dx - cx) / bgScale,
+        cy + (pos.dy - cy) / bgScale,
+        cardBox.size.width / bgScale,
+        cardBox.size.height / bgScale,
+      );
     }
     return null;
   }
@@ -174,10 +195,24 @@ class _PlannerScreenState extends State<PlannerScreen>
       _activeDayNoteTextController = noteTextCtrl;
       _dragOffset = Offset.zero;
       _isDraggingReel = false;
+      _isClosingDayOverlay = false;
     });
 
     _dayExpandController.value = 0.0;
     _animateExpandTo(1.0, velocity: 0.6);
+  }
+
+  void _syncActiveDayPreviewImmediate(DateTime dayDate) {
+    final activeCtrl = _activeDayCanvasController;
+    final liveText = _activeDayNoteTextController?.text;
+    final liveStrokes = (activeCtrl != null && activeCtrl.currentPageIndex == 0)
+        ? activeCtrl.strokes
+        : null;
+    _controller.setDayPreviewImmediate(
+      dayDate,
+      text: liveText,
+      strokes: liveStrokes,
+    );
   }
 
   void _switchExpandedDay(int dayOffset) {
@@ -214,10 +249,13 @@ class _PlannerScreenState extends State<PlannerScreen>
   }
 
   Future<void> _closeDayExpandedOverlay({double initialVelocity = 0.0}) async {
-    if (_activeExpandedDay == null) return;
+    if (_activeExpandedDay == null || _isClosingDayOverlay) return;
+    _isClosingDayOverlay = true;
     FocusScope.of(context).unfocus();
 
     final dayDate = _activeExpandedDay!.date;
+    _syncActiveDayPreviewImmediate(dayDate);
+
     final updatedRect = _showSidebar
         ? await _ensureCardVisibleAndMeasure(dayDate)
         : const Rect.fromLTWH(-260, 140, 252, 130);
@@ -232,17 +270,22 @@ class _PlannerScreenState extends State<PlannerScreen>
     });
 
     await _animateExpandTo(0.0, velocity: initialVelocity);
-    await _controller.refreshDayPreview(dayDate);
+    if (!mounted) return;
 
-    if (mounted) {
-      setState(() {
-        _activeExpandedDay = null;
-        _activeDayCanvasController?.dispose();
-        _activeDayCanvasController = null;
-        _activeDayNoteTextController?.dispose();
-        _activeDayNoteTextController = null;
-      });
-    }
+    // Tear down overlay immediately on the landing frame without blocking on storage I/O.
+    final staleCanvasCtrl = _activeDayCanvasController;
+    final staleNoteCtrl = _activeDayNoteTextController;
+    setState(() {
+      _activeExpandedDay = null;
+      _isClosingDayOverlay = false;
+      _activeDayCanvasController = null;
+      _activeDayNoteTextController = null;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      staleCanvasCtrl?.dispose();
+      staleNoteCtrl?.dispose();
+    });
+    unawaited(_controller.refreshDayPreview(dayDate));
   }
 
   double get _effectivePullDistance =>
@@ -3273,9 +3316,41 @@ class _PlannerScreenState extends State<PlannerScreen>
         day.date.month == now.month &&
         day.date.day == now.day;
 
+    final updatedDay = day.copyWith(text: _controller.getDayNote(day.date));
+    final previewStrokes = _controller.getDayPreviewStrokes(day.date);
+
+    // Build heavyweight children ONCE per overlay state rather than inside the
+    // 60/120fps AnimatedBuilder so shrinking never hitches on teardown/rebuilds.
+    final fullWorkspaceChild = _activeDayCanvasController == null
+        ? null
+        : OverflowBox(
+            minWidth: screenW,
+            maxWidth: screenW,
+            minHeight: screenH,
+            maxHeight: screenH,
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: screenW,
+              height: screenH,
+              child: _buildFullDayWorkspace(
+                context,
+                updatedDay,
+                isToday,
+                _activeDayCanvasController!,
+              ),
+            ),
+          );
+
+    final compactCardChild = DayCardSurface(
+      day: updatedDay,
+      isToday: isToday,
+      previewStrokes: previewStrokes,
+    );
+
     return AnimatedBuilder(
       animation: _dayExpandController,
-      builder: (context, _) {
+      child: fullWorkspaceChild,
+      builder: (context, cachedWorkspace) {
         final rawT = _dayExpandController.value;
         final t = rawT.clamp(0.0, 1.0);
         final tGeom = rawT.clamp(-0.02, 1.02);
@@ -3308,28 +3383,19 @@ class _PlannerScreenState extends State<PlannerScreen>
         final cardPreviewOpacity = (1.0 - (t / 0.34)).clamp(0.0, 1.0);
         final boxW = math.max(1.0, screenW - left - right);
         final cardScale = (boxW / math.max(1.0, _originCardRect.width)).clamp(0.92, 1.55);
-
-        final updatedDay = day.copyWith(text: _controller.getDayNote(day.date));
+        final transitionBorderAlpha = _isDraggingReel
+            ? 0.25
+            : (0.28 * math.sin(t * math.pi)).clamp(0.0, 0.28);
 
         return Stack(
           children: [
-            // Backdrop blur + dim scrim (tappable to shrink back to card)
+            // Smooth dim scrim without heavy per-frame BackdropFilter Gaussian blur stall
             Positioned.fill(
               child: GestureDetector(
                 onTap: _closeDayExpandedOverlay,
-                child: t > 0.02
-                    ? BackdropFilter(
-                        filter: ImageFilter.blur(
-                          sigmaX: 5.0 * t,
-                          sigmaY: 5.0 * t,
-                        ),
-                        child: Container(
-                          color: Colors.black.withValues(alpha: 0.30 * t),
-                        ),
-                      )
-                    : Container(
-                        color: Colors.black.withValues(alpha: 0.30 * t),
-                      ),
+                child: Container(
+                  color: Colors.black.withValues(alpha: 0.28 * t),
+                ),
               ),
             ),
 
@@ -3345,21 +3411,18 @@ class _PlannerScreenState extends State<PlannerScreen>
                   decoration: BoxDecoration(
                     color: const Color(0xFFFAF9F6),
                     borderRadius: BorderRadius.circular(borderRadius),
-                    border: t < 0.98 || _isDraggingReel
+                    border: transitionBorderAlpha > 0.01
                         ? Border.all(
-                            color: const Color(0xFF2563EB).withValues(
-                              alpha: _isDraggingReel
-                                  ? 0.25
-                                  : (0.45 * (1.0 - t)).clamp(0.0, 1.0),
-                            ),
+                            color: const Color(0xFF2563EB)
+                                .withValues(alpha: transitionBorderAlpha),
                             width: 1.5,
                           )
                         : null,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.22 * t + 0.05),
-                        blurRadius: 30 * t + 8,
-                        offset: Offset(0, 10 * t + 2),
+                        color: Colors.black.withValues(alpha: 0.20 * t),
+                        blurRadius: 28 * t,
+                        offset: Offset(0, 8 * t),
                       ),
                     ],
                   ),
@@ -3367,33 +3430,20 @@ class _PlannerScreenState extends State<PlannerScreen>
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      // Full-Screen Day Detail & Drawing Workspace (unfolds & scales in)
-                      if (t > 0.12 && _activeDayCanvasController != null)
-                        Opacity(
-                          opacity: fullViewOpacity,
-                          child: IgnorePointer(
-                            ignoring: t < 0.7,
-                            child: Transform.translate(
-                              offset: Offset(0, contentSlideY),
-                              child: Transform.scale(
-                                scale: contentScale,
-                                alignment: Alignment.topCenter,
-                                child: OverflowBox(
-                                  minWidth: screenW,
-                                  maxWidth: screenW,
-                                  minHeight: screenH,
-                                  maxHeight: screenH,
-                                  alignment: Alignment.topLeft,
-                                  child: SizedBox(
-                                    width: screenW,
-                                    height: screenH,
-                                    child: _buildFullDayWorkspace(
-                                      context,
-                                      updatedDay,
-                                      isToday,
-                                      _activeDayCanvasController!,
-                                    ),
-                                  ),
+                      // Full-Screen Day Detail & Drawing Workspace (stays mounted until dock)
+                      if (cachedWorkspace != null)
+                        Offstage(
+                          offstage: fullViewOpacity <= 0.001,
+                          child: Opacity(
+                            opacity: fullViewOpacity,
+                            child: IgnorePointer(
+                              ignoring: t < 0.7 || _isClosingDayOverlay,
+                              child: Transform.translate(
+                                offset: Offset(0, contentSlideY),
+                                child: Transform.scale(
+                                  scale: contentScale,
+                                  alignment: Alignment.topCenter,
+                                  child: cachedWorkspace,
                                 ),
                               ),
                             ),
@@ -3401,8 +3451,9 @@ class _PlannerScreenState extends State<PlannerScreen>
                         ),
 
                       // Compact Day Card Surface (smoothly scales as container lifts/docks)
-                      if (cardPreviewOpacity > 0.01)
-                        Opacity(
+                      Offstage(
+                        offstage: cardPreviewOpacity <= 0.001,
+                        child: Opacity(
                           opacity: cardPreviewOpacity,
                           child: IgnorePointer(
                             child: OverflowBox(
@@ -3417,17 +3468,13 @@ class _PlannerScreenState extends State<PlannerScreen>
                                 child: SizedBox(
                                   width: _originCardRect.width,
                                   height: _originCardRect.height,
-                                  child: DayCardSurface(
-                                    day: updatedDay,
-                                    isToday: isToday,
-                                    previewStrokes:
-                                        _controller.getDayPreviewStrokes(day.date),
-                                  ),
+                                  child: compactCardChild,
                                 ),
                               ),
                             ),
                           ),
                         ),
+                      ),
                     ],
                   ),
                 ),

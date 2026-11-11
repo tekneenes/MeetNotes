@@ -1702,7 +1702,6 @@ class PlannerController extends ChangeNotifier {
   Future<void> _loadAll() async {
     _isLoading = true;
     notifyListeners();
-
     _paperConfig = await _storage.loadPaperConfig();
     _totalPages = await _storage.loadPageCount(_currentWeekStart, prefix: _storagePrefix);
     if (_currentPageIndex >= _totalPages) {
@@ -1747,6 +1746,26 @@ class PlannerController extends ChangeNotifier {
     _dayNotes[key] = await _storage.loadDayText(date);
     _dayPreviewStrokes[key] = await _storage.loadStrokes(date, 0, prefix: 'day_');
     notifyListeners();
+  }
+
+  /// Immediately updates the in-memory sidebar preview for [date] so close
+  /// transitions do not block waiting on storage I/O.
+  void setDayPreviewImmediate(
+    DateTime date, {
+    String? text,
+    List<DrawingStroke>? strokes,
+  }) {
+    final key = _formatDateKey(date);
+    var changed = false;
+    if (text != null && _dayNotes[key] != text) {
+      _dayNotes[key] = text;
+      changed = true;
+    }
+    if (strokes != null) {
+      _dayPreviewStrokes[key] = List<DrawingStroke>.of(strokes);
+      changed = true;
+    }
+    if (changed) notifyListeners();
   }
 
   // Week Navigation

@@ -63,14 +63,12 @@ class DaysSidebar extends StatelessWidget {
                 final keyStr = dateKey(day.date);
                 final cardKey = cardKeys.putIfAbsent(keyStr, () => GlobalKey());
 
-                return AnimatedOpacity(
-                  duration: const Duration(milliseconds: 140),
-                  curve: Curves.easeOut,
+                // Keep slot dimensions intact without post-close fade/scale hitch;
+                // the morphing overlay already occupies this exact rect until t == 0.
+                return Opacity(
                   opacity: isExpandingThis ? 0.0 : 1.0,
-                  child: AnimatedScale(
-                    duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeOutCubic,
-                    scale: isExpandingThis ? 0.96 : 1.0,
+                  child: IgnorePointer(
+                    ignoring: isExpandingThis,
                     child: _InteractiveDayCard(
                       key: cardKey,
                       day: day,

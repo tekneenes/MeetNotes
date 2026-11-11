@@ -2310,6 +2310,63 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           ),
         ),
       ),
+      if (controller.selectedStrokeIndices.isNotEmpty || controller.selectedTextIds.isNotEmpty) ...[
+        _buildPillDivider(),
+        Builder(
+          builder: (btnCtx) {
+            Color currentColor = controller.selectedColor;
+            if (controller.selectedStrokeIndices.isNotEmpty) {
+              final idx = controller.selectedStrokeIndices.first;
+              if (idx >= 0 && idx < controller.strokes.length) {
+                currentColor = controller.strokes[idx].color;
+              }
+            } else if (controller.selectedTextIds.isNotEmpty) {
+              final tId = controller.selectedTextIds.first;
+              final txt = controller.canvasTexts.where((t) => t.id == tId).firstOrNull;
+              if (txt != null) currentColor = txt.color;
+            }
+            return Tooltip(
+              message: 'Rengi Değiştir',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () {
+                  final box = btnCtx.findRenderObject() as RenderBox?;
+                  final offset = box?.localToGlobal(Offset.zero) ?? Offset.zero;
+                  final size = box?.size ?? Size.zero;
+                  CompactColorPickerDialog.showAnchored(
+                    context: context,
+                    anchorRect: offset & size,
+                    boundaryRect: _getWorkspaceGlobalRect(),
+                    title: 'Seçim Rengi',
+                    initialColor: currentColor,
+                    allowOpacity: true,
+                    onColorChanged: controller.setColor,
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
+                  child: Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: currentColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          blurRadius: 3,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
       if (controller.canGroupSelection) ...[
         _buildPillDivider(),
         Tooltip(

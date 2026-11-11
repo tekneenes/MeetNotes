@@ -1781,6 +1781,7 @@ class PlannerController extends ChangeNotifier {
         }
       }
       _saveCurrentStrokes();
+      canvasDragTick.value++;
     }
     notifyListeners();
   }
@@ -1799,6 +1800,7 @@ class PlannerController extends ChangeNotifier {
         }
       }
       _saveCurrentStrokes();
+      canvasDragTick.value++;
     }
     notifyListeners();
   }

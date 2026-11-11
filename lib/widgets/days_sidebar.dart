@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/planner_models.dart';
@@ -317,6 +318,24 @@ class DayCardSurface extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (events.length > 1) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                      margin: const EdgeInsets.only(right: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE0F2FE),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: Text(
+                        '${events.length}',
+                        style: const TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0284C7),
+                        ),
+                      ),
+                    ),
+                  ],
                   if (hasDrawing) ...[
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
@@ -344,119 +363,372 @@ class DayCardSurface extends StatelessWidget {
               ),
             ),
 
-            // Ruled Notepad Lines Preview Area
+            // Mini Apple Calendar Hourly Timeline Preview (syncs upcoming/scheduled event window)
             Flexible(
               fit: FlexFit.loose,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
                 child: SizedBox(
-                  height: 68,
+                  height: 78,
                   width: double.infinity,
-                  child: Stack(
-                    children: [
-                      // Background Ruled Lines Painter
-                      Positioned.fill(
-                        child: CustomPaint(
-                          painter: RuledLinesPainter(
-                            lineSpacing: 22.0,
-                            lineColor: const Color(0xFF2B4D7E).withValues(alpha: 0.15),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Stack(
+                      children: [
+                        // Miniature Apple Calendar Hourly Grid + Positioned Event Blocks
+                        Positioned.fill(
+                          child: _MiniAppleTimelinePreview(
+                            isToday: isToday,
+                            events: events,
                           ),
                         ),
-                      ),
 
-                      // Miniature Drawing Preview if user drew on this day
-                      if (hasDrawing)
-                        Positioned.fill(
-                          child: ClipRect(
-                            child: CustomPaint(
-                              painter: DrawingCanvasPainter(
-                                strokes: previewStrokes,
-                                scale: 0.18,
-                                panOffset: const Offset(8, 4),
+                        // Miniature Drawing Preview if user drew on this day
+                        if (hasDrawing)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: CustomPaint(
+                                painter: DrawingCanvasPainter(
+                                  strokes: previewStrokes,
+                                  scale: 0.18,
+                                  panOffset: const Offset(8, 4),
+                                ),
                               ),
                             ),
                           ),
-                        ),
 
-                      // Events pills OR Note Text or Placeholder
-                      if (events.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              for (final ev in events.take(3))
-                                Container(
-                                  margin: const EdgeInsets.only(bottom: 2.5),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Color(ev.colorValue)
-                                        .withValues(alpha: 0.13),
-                                    borderRadius: BorderRadius.circular(5),
-                                    border: Border(
-                                      left: BorderSide(
-                                        color: Color(ev.colorValue),
-                                        width: 2.5,
-                                      ),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Text(
-                                        ev.isAllDay
-                                            ? 'Tam gün'
-                                            : DayCalendarEvent.formatMinutes(
-                                                ev.startMinutes,
-                                              ),
-                                        style: TextStyle(
-                                          fontSize: 9.5,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(ev.colorValue),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 5),
-                                      Expanded(
-                                        child: Text(
-                                          ev.title,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 10.5,
-                                            fontWeight: FontWeight.w600,
-                                            color: Color(0xFF1E293B),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                        // Fallback text note overlay only if day has plain text and no events
+                        if (events.isEmpty && hasText)
+                          Positioned(
+                            top: 4,
+                            left: 44,
+                            right: 6,
+                            bottom: 4,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.88),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text(
+                                day.text,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  height: 1.35,
+                                  color: Color(0xFF1E293B),
                                 ),
-                            ],
-                          ),
-                        )
-                      else
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                          child: Text(
-                            hasText ? day.text : 'Bir şeyler yazın...',
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              height: 1.72,
-                              color: hasText
-                                  ? const Color(0xFF1E293B)
-                                  : Colors.grey.shade400,
+                              ),
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniAppleTimelinePreview extends StatelessWidget {
+  final bool isToday;
+  final List<DayCalendarEvent> events;
+
+  const _MiniAppleTimelinePreview({
+    required this.isToday,
+    required this.events,
+  });
+
+  static const double _hourHeight = 30.0;
+  static const double _topPad = 8.0;
+  static const double _gutterWidth = 38.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final nowMinutes = now.hour * 60 + now.minute;
+    final allDayEvents = events.where((e) => e.isAllDay).toList();
+    final timedEvents = events.where((e) => !e.isAllDay).toList()
+      ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
+
+    // Focus 3-hour window on upcoming/ongoing event for Today,
+    // or earliest scheduled event for other days, else 09:00..11:00 (or current hour if Today).
+    int focusHour;
+    if (timedEvents.isNotEmpty) {
+      DayCalendarEvent anchor = timedEvents.first;
+      if (isToday) {
+        for (final ev in timedEvents) {
+          if (ev.endMinutes > nowMinutes) {
+            anchor = ev;
+            break;
+          }
+        }
+        if (anchor.endMinutes <= nowMinutes) {
+          anchor = timedEvents.last;
+        }
+      }
+      focusHour = (anchor.startMinutes ~/ 60).clamp(0, 21);
+    } else {
+      focusHour = isToday ? now.hour.clamp(0, 21) : 9;
+    }
+
+    final windowStartMinutes = focusHour * 60;
+    final windowEndMinutes = windowStartMinutes + 150;
+    final visibleTimedEvents = timedEvents
+        .where(
+          (e) =>
+              e.endMinutes > windowStartMinutes &&
+              e.startMinutes < windowEndMinutes,
+        )
+        .toList();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFCFDFE),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.black.withValues(alpha: 0.05),
+        ),
+      ),
+      child: Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          // 3 hour lines + labels (e.g. 15:00, 16:00, 17:00)
+          for (int i = 0; i <= 2; i++)
+            Positioned(
+              top: _topPad + i * _hourHeight - 5.5,
+              left: 0,
+              right: 0,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: _gutterWidth,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 5),
+                      child: Text(
+                        '${(focusHour + i).toString().padLeft(2, '0')}:00',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey.shade500,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Container(
+                      height: 0.8,
+                      color: Colors.black.withValues(alpha: 0.08),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // Half-hour subtle lines
+          for (int i = 0; i < 2; i++)
+            Positioned(
+              top: _topPad + (i + 0.5) * _hourHeight,
+              left: _gutterWidth,
+              right: 0,
+              child: Container(
+                height: 0.5,
+                color: Colors.black.withValues(alpha: 0.03),
+              ),
+            ),
+
+          // Vertical separator between hour gutter and event track
+          Positioned(
+            top: 0,
+            bottom: 0,
+            left: _gutterWidth,
+            child: Container(
+              width: 0.8,
+              color: Colors.black.withValues(alpha: 0.06),
+            ),
+          ),
+
+          // Red live current-time line if inside visible window on Today
+          if (isToday &&
+              nowMinutes >= windowStartMinutes &&
+              nowMinutes <= windowEndMinutes)
+            Positioned(
+              top: _topPad +
+                  ((nowMinutes - windowStartMinutes) / 60.0) * _hourHeight -
+                  3,
+              left: _gutterWidth - 3,
+              right: 0,
+              child: Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFEF4444),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  Expanded(
+                    child: Container(
+                      height: 1.2,
+                      color: const Color(0xFFEF4444),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // All-day event banner at top of track if no timed events overlap row 0 (or compact pill)
+          if (allDayEvents.isNotEmpty)
+            Positioned(
+              top: 3,
+              left: _gutterWidth + 4,
+              right: 4,
+              height: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                decoration: BoxDecoration(
+                  color: Color(allDayEvents.first.colorValue),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Tam gün · ${allDayEvents.first.title}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+
+          // Apple-style colored event block positioned at exact start/end hour
+          for (final ev in visibleTimedEvents)
+            _buildMiniEventBlock(ev, windowStartMinutes, windowEndMinutes),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniEventBlock(
+    DayCalendarEvent ev,
+    int windowStartMinutes,
+    int windowEndMinutes,
+  ) {
+    final clampedStart = math.max(ev.startMinutes, windowStartMinutes);
+    final clampedEnd = math.min(ev.endMinutes, windowEndMinutes);
+    final top =
+        _topPad + ((clampedStart - windowStartMinutes) / 60.0) * _hourHeight + 1.0;
+    final rawHeight =
+        ((clampedEnd - clampedStart) / 60.0) * _hourHeight - 2.0;
+    final height = math.max(16.0, rawHeight);
+    final baseColor = Color(ev.colorValue);
+    final accentColor = HSLColor.fromColor(baseColor)
+        .withLightness(
+          (HSLColor.fromColor(baseColor).lightness - 0.14).clamp(0.0, 1.0),
+        )
+        .toColor();
+
+    return Positioned(
+      top: top,
+      left: _gutterWidth + 4,
+      right: 4,
+      height: height,
+      child: Container(
+        decoration: BoxDecoration(
+          color: baseColor.withValues(alpha: 0.96),
+          borderRadius: BorderRadius.circular(5),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            Positioned(
+              top: 0,
+              bottom: 0,
+              left: 0,
+              width: 3,
+              child: Container(color: accentColor),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                6,
+                height >= 26.0 ? 2.5 : 1.5,
+                5,
+                1.5,
+              ),
+              child: height >= 26.0
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          ev.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            height: 1.1,
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.schedule_rounded,
+                              size: 8.5,
+                              color: Colors.white.withValues(alpha: 0.92),
+                            ),
+                            const SizedBox(width: 2.5),
+                            Expanded(
+                              child: Text(
+                                '${DayCalendarEvent.formatMinutes(ev.startMinutes)} – ${DayCalendarEvent.formatMinutes(ev.endMinutes)}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.white.withValues(alpha: 0.92),
+                                  height: 1.1,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${ev.title} · ${DayCalendarEvent.formatMinutes(ev.startMinutes)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                              height: 1.1,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
             ),
           ],
         ),

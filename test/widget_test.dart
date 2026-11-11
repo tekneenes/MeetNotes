@@ -141,10 +141,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Tükenmez Kalem, Dolma Kalem, and Kurşun Kalem use the custom PNG icon assets
+    // Tükenmez Kalem, Dolma Kalem, Monoline Kalem, and Kurşun Kalem use custom PNG assets
     const expectedCustomIcons = <String, String>{
       'Tükenmez Kalem': 'assets/icons/pen.png',
       'Dolma Kalem': 'assets/icons/fountain.png',
+      'Monoline Kalem': 'assets/icons/monoline.png',
       'Kurşun Kalem': 'assets/icons/pencil.png',
     };
     for (final entry in expectedCustomIcons.entries) {

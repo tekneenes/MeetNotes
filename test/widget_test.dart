@@ -150,6 +150,7 @@ void main() {
       'Fosforlu Kalem': 'assets/icons/marker.png',
       'Sulu Boya': 'assets/icons/watercolor.png',
       'Pastel Boya': 'assets/icons/crayon.png',
+      'Ezber Bandı': 'assets/icons/tape.png',
     };
     for (final entry in expectedCustomIcons.entries) {
       final toolImage = tester.widget<Image>(

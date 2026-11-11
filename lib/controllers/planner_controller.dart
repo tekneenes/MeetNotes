@@ -333,6 +333,44 @@ class PlannerController extends ChangeNotifier {
     return _strokes[idx].tool.isLineOrArrow;
   }
 
+  /// Whether the canvas currently contains at least one study tape stroke.
+  bool get hasAnyTape => _strokes.any((s) => s.tool == DrawingTool.tape);
+
+  /// Whether all existing study tape strokes on the canvas are revealed (opened).
+  bool get areAllTapesRevealed =>
+      hasAnyTape && _strokes.where((s) => s.tool == DrawingTool.tape).every((s) => s.isTapeRevealed);
+
+  /// Toggles all study tapes between covered (hidden) and revealed (opened).
+  void toggleAllTapes() {
+    if (!hasAnyTape) return;
+    final targetState = !areAllTapesRevealed;
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+    for (int i = 0; i < _strokes.length; i++) {
+      if (_strokes[i].tool == DrawingTool.tape) {
+        _strokes[i] = _strokes[i].copyWith(isTapeRevealed: targetState);
+      }
+    }
+    _saveCurrentStrokes();
+    canvasDragTick.value++;
+    notifyListeners();
+  }
+
+  /// Finds the top-most Tape stroke under the given tap point.
+  int _findTapeStrokeAtPoint(Offset point) {
+    for (int i = _strokes.length - 1; i >= 0; i--) {
+      final s = _strokes[i];
+      if (s.tool == DrawingTool.tape && s.points.isNotEmpty) {
+        final dist = _minDistanceToStrokeCenterline(point, s.points);
+        final hitTolerance = (s.strokeWidth / 2.0).clamp(12.0, 40.0) + 6.0;
+        if (dist <= hitTolerance) {
+          return i;
+        }
+      }
+    }
+    return -1;
+  }
+
   DrawingStroke? get selectedLineStroke {
     if (!isSingleLineOrArrowSelected) return null;
     return _strokes[_selectedStrokeIndices.first];
@@ -1738,6 +1776,9 @@ class PlannerController extends ChangeNotifier {
   void setTool(DrawingTool tool) {
     _selectedTool = tool;
     _strokeWidth = tool == DrawingTool.eraser ? _eraserSize : tool.defaultWidth;
+    if (tool == DrawingTool.tape && _selectedColor == const Color(0xFF1E293B)) {
+      _selectedColor = const Color(0xFFFDE047); // Classic bright study tape yellow default
+    }
     if (tool != DrawingTool.lasso) {
       _selectedStrokeIndices.clear();
       _selectedTextIds.clear();
@@ -3323,6 +3364,37 @@ class PlannerController extends ChangeNotifier {
     }
 
     if (_activeStroke != null) {
+      // Check if this was a quick tap (< 8.0px movement) hitting an interactive Tape stroke:
+      double gestureDist = 0.0;
+      for (int k = 0; k < _activeStroke!.points.length - 1; k++) {
+        gestureDist += (_activeStroke!.points[k + 1] - _activeStroke!.points[k]).distance;
+      }
+
+      if (gestureDist < 8.0) {
+        final tapPoint = _activeStroke!.points.first;
+        final hitTapeIndex = _findTapeStrokeAtPoint(tapPoint);
+        if (hitTapeIndex != -1) {
+          _activeStroke = null;
+          _undoStack.add(List.from(_strokes));
+          _redoStack.clear();
+          final target = _strokes[hitTapeIndex];
+          _strokes[hitTapeIndex] = target.copyWith(isTapeRevealed: !target.isTapeRevealed);
+          _saveCurrentStrokes();
+          activeStrokeTick.value++;
+          canvasDragTick.value++;
+          notifyListeners();
+          return;
+        }
+
+        // In Tape tool mode, discard tiny accidental dots on empty canvas
+        if (_selectedTool == DrawingTool.tape) {
+          _activeStroke = null;
+          activeStrokeTick.value++;
+          notifyListeners();
+          return;
+        }
+      }
+
       if (_isDrawAndHoldActive && _activeRecognizedShape != null) {
         final strokeWithOrder = _activeStroke!.copyWith(
           layerOrder: _nextTopLayerOrder(),

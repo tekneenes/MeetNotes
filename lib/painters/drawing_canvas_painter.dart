@@ -257,6 +257,44 @@ class DrawingCanvasPainter extends CustomPainter {
           ..blendMode = insideMaskLayer ? BlendMode.srcOver : BlendMode.multiply;
         break;
 
+      case DrawingTool.tape:
+        if (stroke.isTapeRevealed) {
+          // REVEALED / OPEN: faint translucent tape so text underneath is clearly legible,
+          // with a stylish subtle border so the user sees the interactive tape boundary.
+          paint
+            ..color = stroke.color.withValues(alpha: 0.16)
+            ..strokeCap = StrokeCap.square
+            ..strokeJoin = StrokeJoin.miter
+            ..blendMode = BlendMode.srcOver;
+          _drawFreehandStrokePath(canvas, stroke.points, paint);
+
+          final outlinePaint = Paint()
+            ..color = stroke.color.withValues(alpha: 0.60)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.2
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round;
+          _drawFreehandStrokePath(canvas, stroke.points, outlinePaint);
+          return;
+        } else {
+          // COVERED / CLOSED: solid opaque tape hiding whatever is underneath,
+          // with a subtle washi-tape tape accent.
+          paint
+            ..color = stroke.color.withValues(alpha: 0.98)
+            ..strokeCap = StrokeCap.square
+            ..strokeJoin = StrokeJoin.miter
+            ..blendMode = BlendMode.srcOver;
+          _drawFreehandStrokePath(canvas, stroke.points, paint);
+
+          final accentPaint = Paint()
+            ..color = Colors.white.withValues(alpha: 0.40)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = math.min(stroke.strokeWidth * 0.14, 2.0)
+            ..strokeCap = StrokeCap.square;
+          _drawFreehandStrokePath(canvas, stroke.points, accentPaint);
+          return;
+        }
+
       case DrawingTool.watercolor:
         paint
           ..color = stroke.color.withValues(alpha: stroke.color.a * 0.26)

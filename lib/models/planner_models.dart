@@ -101,6 +101,7 @@ enum DrawingTool {
   marker('Fosforlu Kalem', Icons.highlight_rounded, 20.0),
   watercolor('Sulu Boya', Icons.brush_rounded, 24.0),
   crayon('Pastel Boya', Icons.grain_rounded, 14.0),
+  tape('Ezber Bandı', Icons.view_agenda_rounded, 24.0),
   eraser('Silgi', Icons.auto_fix_normal_rounded, 22.0),
   lasso('Kement Seçim', Icons.gesture_rounded, 1.0),
   line('Düz Çizgi', Icons.horizontal_rule_rounded, 2.5),
@@ -345,6 +346,7 @@ class DrawingStroke {
   final bool isLocked;
   final int? layerOrder;
   final List<EraserMask> eraserMasks;
+  final bool isTapeRevealed;
 
   const DrawingStroke({
     required this.points,
@@ -356,6 +358,7 @@ class DrawingStroke {
     this.isLocked = false,
     this.layerOrder,
     this.eraserMasks = const [],
+    this.isTapeRevealed = false,
   });
 
   DrawingStroke copyWith({
@@ -369,6 +372,7 @@ class DrawingStroke {
     bool? isLocked,
     int? layerOrder,
     List<EraserMask>? eraserMasks,
+    bool? isTapeRevealed,
   }) {
     return DrawingStroke(
       points: points ?? this.points,
@@ -380,6 +384,7 @@ class DrawingStroke {
       isLocked: isLocked ?? this.isLocked,
       layerOrder: layerOrder ?? this.layerOrder,
       eraserMasks: eraserMasks ?? this.eraserMasks,
+      isTapeRevealed: isTapeRevealed ?? this.isTapeRevealed,
     );
   }
 
@@ -395,6 +400,7 @@ class DrawingStroke {
       if (layerOrder != null) 'layerOrder': layerOrder,
       if (eraserMasks.isNotEmpty)
         'eraserMasks': eraserMasks.map((m) => m.toMap()).toList(),
+      if (isTapeRevealed) 'isTapeRevealed': true,
     };
   }
 
@@ -426,6 +432,7 @@ class DrawingStroke {
       isLocked: map['isLocked'] as bool? ?? false,
       layerOrder: (map['layerOrder'] as num?)?.toInt(),
       eraserMasks: eraserMasks,
+      isTapeRevealed: map['isTapeRevealed'] as bool? ?? false,
     );
   }
 }

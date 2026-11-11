@@ -1862,6 +1862,54 @@ void main() {
     // Now that 100% of the stroke is covered, it should be cleanly removed
     expect(controller.strokes.isEmpty, isTrue);
 
+    // 10. Test Tape Tool (Ezber / Çalışma Bandı):
+    controller.clearCanvas();
+    controller.setTool(DrawingTool.tape);
+    expect(controller.selectedTool, DrawingTool.tape);
+    expect(controller.strokeWidth, 24.0);
+    expect(controller.selectedColor, const Color(0xFFFDE047)); // Yellow study tape default
+
+    // Draw a study tape from (100, 300) to (300, 300)
+    controller.startStroke(const Offset(100, 300));
+    controller.updateStroke(const Offset(200, 300));
+    controller.updateStroke(const Offset(300, 300));
+    controller.endStroke();
+
+    expect(controller.strokes.length, 1);
+    expect(controller.strokes.first.tool, DrawingTool.tape);
+    expect(controller.strokes.first.isTapeRevealed, isFalse); // Covered by default
+    expect(controller.hasAnyTape, isTrue);
+    expect(controller.areAllTapesRevealed, isFalse);
+
+    // Tap on the tape to toggle reveal (dokun ve gör):
+    controller.startStroke(const Offset(180, 300));
+    controller.endStroke();
+    expect(controller.strokes.first.isTapeRevealed, isTrue); // Revealed!
+    expect(controller.areAllTapesRevealed, isTrue);
+
+    // Tap on the tape again to close it:
+    controller.startStroke(const Offset(180, 300));
+    controller.endStroke();
+    expect(controller.strokes.first.isTapeRevealed, isFalse); // Closed!
+    expect(controller.areAllTapesRevealed, isFalse);
+
+    // Add a second tape at (100, 360) to (250, 360)
+    controller.startStroke(const Offset(100, 360));
+    controller.updateStroke(const Offset(250, 360));
+    controller.endStroke();
+    expect(controller.strokes.length, 2);
+
+    // Toggle all tapes on the page (Tümünü Aç / Kapat):
+    controller.toggleAllTapes();
+    expect(controller.strokes[0].isTapeRevealed, isTrue);
+    expect(controller.strokes[1].isTapeRevealed, isTrue);
+    expect(controller.areAllTapesRevealed, isTrue);
+
+    controller.toggleAllTapes();
+    expect(controller.strokes[0].isTapeRevealed, isFalse);
+    expect(controller.strokes[1].isTapeRevealed, isFalse);
+    expect(controller.areAllTapesRevealed, isFalse);
+
     await tester.pump(const Duration(milliseconds: 1000));
   });
 

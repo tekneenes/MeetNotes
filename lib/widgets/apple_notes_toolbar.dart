@@ -84,6 +84,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
     DrawingTool.marker,
     DrawingTool.watercolor,
     DrawingTool.crayon,
+    DrawingTool.tape,
     DrawingTool.eraser,
     DrawingTool.lasso,
     DrawingTool.text,
@@ -96,9 +97,10 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
       builder: (context, _) {
         final t = _animation.value;
         final isVertical = widget.dockEdge.isVertical;
+        final hasTape = widget.controller.hasAnyTape;
 
-        final double targetWidth = isVertical ? 52.0 : 580.0;
-        final double targetHeight = isVertical ? 560.0 : 52.0;
+        final double targetWidth = isVertical ? 52.0 : (hasTape ? 676.0 : 620.0);
+        final double targetHeight = isVertical ? (hasTape ? 676.0 : 620.0) : 52.0;
 
         final double currentWidth = isVertical
             ? 52.0
@@ -210,9 +212,9 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
                                   ? Alignment.topCenter
                                   : Alignment.centerLeft,
                               minWidth: 0,
-                              maxWidth: isVertical ? 52 : 650,
+                              maxWidth: isVertical ? 52 : (targetWidth + 24.0),
                               minHeight: 0,
-                              maxHeight: isVertical ? 650 : 52,
+                              maxHeight: isVertical ? (targetHeight + 24.0) : 52,
                               child: Padding(
                                 padding: isVertical
                                     ? const EdgeInsets.symmetric(vertical: 8)
@@ -333,6 +335,36 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
       if (controller.selectedTool != DrawingTool.eraser) ...[
         SizedBox(width: isVertical ? 0 : 4, height: isVertical ? 4 : 0),
         _buildColorPicker(context),
+      ],
+
+      // 4b. Toggle All Study Tapes (reveals or hides all tape answers on the page)
+      if (controller.hasAnyTape) ...[
+        SizedBox(width: isVertical ? 0 : 4, height: isVertical ? 4 : 0),
+        Tooltip(
+          message: controller.areAllTapesRevealed ? 'Tüm Bantları Kapat' : 'Tüm Bantları Aç',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: controller.toggleAllTapes,
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: controller.areAllTapesRevealed
+                    ? const Color(0xFF007AFF).withValues(alpha: 0.15)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                controller.areAllTapesRevealed
+                    ? Icons.visibility_off_rounded
+                    : Icons.visibility_rounded,
+                size: 19,
+                color: controller.areAllTapesRevealed
+                    ? const Color(0xFF007AFF)
+                    : const Color(0xFF475569),
+              ),
+            ),
+          ),
+        ),
       ],
 
       SizedBox(width: isVertical ? 0 : 4, height: isVertical ? 4 : 0),

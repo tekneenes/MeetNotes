@@ -6,6 +6,7 @@ import '../controllers/planner_controller.dart';
 import '../models/planner_models.dart';
 import '../painters/paper_background_painter.dart';
 import '../painters/drawing_canvas_painter.dart';
+import '../services/handwriting_ocr_service.dart';
 import 'apple_notes_toolbar.dart';
 import 'compact_color_picker_dialog.dart';
 import 'compact_font_picker_dialog.dart';
@@ -2367,6 +2368,34 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           },
         ),
       ],
+      if (controller.canConvertSelectedStrokesToText) ...[
+        _buildPillDivider(),
+        Tooltip(
+          message: 'El Yazısını Metne Çevir (OCR)',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => _showHandwritingToTextDialog(controller),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.text_fields_rounded, size: 15, color: Color(0xFFA78BFA)),
+                  SizedBox(width: 4),
+                  Text(
+                    'Metne Çevir',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFA78BFA),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
       if (controller.canGroupSelection) ...[
         _buildPillDivider(),
         Tooltip(
@@ -2499,6 +2528,191 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       _buildPillDivider(),
       _buildUnifiedMoreOptionsMenu(controller, null),
     ];
+  }
+
+  Future<void> _showHandwritingToTextDialog(PlannerController controller) async {
+    final textController = TextEditingController();
+    final future = controller.recognizeSelectedStrokesToText();
+    bool initializedText = false;
+
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogCtx) {
+          return FutureBuilder<HandwritingOcrResult>(
+            future: future,
+            builder: (ctx, snapshot) {
+              final isLoading = snapshot.connectionState != ConnectionState.done;
+              final result = snapshot.data;
+
+              if (!isLoading && !initializedText && result != null) {
+                initializedText = true;
+                if (result.hasText) {
+                  textController.text = result.text;
+                }
+              }
+
+              return AlertDialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+                contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                actionsPadding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+                title: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.text_fields_rounded,
+                        size: 18,
+                        color: Color(0xFF7C3AED),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'El Yazısını Metne Çevir',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    if (!isLoading && result != null && result.engineName.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          result.engineName,
+                          style: const TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF475569),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                content: SizedBox(
+                  width: 360,
+                  child: isLoading
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 28),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircularProgressIndicator(strokeWidth: 2.6),
+                              SizedBox(height: 14),
+                              Text(
+                                'El yazısı analiz ediliyor...',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (result?.errorMessage != null)
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFEF3C7),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+                                  ),
+                                ),
+                                child: Text(
+                                  result!.errorMessage!,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF92400E),
+                                  ),
+                                ),
+                              ),
+                            TextField(
+                              controller: textController,
+                              maxLines: 5,
+                              minLines: 3,
+                              decoration: InputDecoration(
+                                hintText: result?.hasText == true
+                                    ? null
+                                    : 'Tanınan metin bulunamadı; buradan elle düzenleyebilirsiniz.',
+                                filled: true,
+                                fillColor: const Color(0xFFF8FAFC),
+                                contentPadding: const EdgeInsets.all(12),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide(
+                                    color: Colors.black.withValues(alpha: 0.12),
+                                  ),
+                                ),
+                              ),
+                              style: const TextStyle(fontSize: 14, height: 1.4),
+                            ),
+                          ],
+                        ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogCtx).pop(),
+                    child: const Text('İptal'),
+                  ),
+                  if (!isLoading) ...[
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.copy_rounded, size: 15),
+                      label: const Text('Kopyala'),
+                      onPressed: () async {
+                        final txt = textController.text.trim();
+                        if (txt.isEmpty) return;
+                        await Clipboard.setData(ClipboardData(text: txt));
+                        if (!dialogCtx.mounted) return;
+                        Navigator.of(dialogCtx).pop();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Tanınan metin panoya kopyalandı'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                    FilledButton.icon(
+                      icon: const Icon(Icons.auto_fix_high_rounded, size: 15),
+                      label: const Text('Metne Dönüştür'),
+                      onPressed: () {
+                        final txt = textController.text.trim();
+                        if (txt.isEmpty) return;
+                        controller.replaceSelectedStrokesWithText(txt);
+                        Navigator.of(dialogCtx).pop();
+                      },
+                    ),
+                  ],
+                ],
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      textController.dispose();
+    }
   }
 
   Widget _buildUnifiedMoreOptionsMenu(

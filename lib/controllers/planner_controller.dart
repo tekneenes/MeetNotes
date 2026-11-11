@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import '../models/planner_models.dart';
+import '../services/handwriting_ocr_service.dart';
 import '../services/pdf_service.dart';
 import '../services/planner_storage_service.dart';
 import '../services/shape_recognition_service.dart';
@@ -4723,6 +4724,109 @@ class PlannerController extends ChangeNotifier {
     _saveCurrentCanvasTexts();
     if (newImageIds.isNotEmpty) _saveCurrentCanvasImages();
     notifyListeners();
+  }
+
+  /// True when at least one selected stroke is valid ink/handwriting (excludes tape-only selections).
+  bool get canConvertSelectedStrokesToText {
+    if (_selectedStrokeIndices.isEmpty || isSelectionLocked) return false;
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length) {
+        final s = _strokes[idx];
+        if (s.points.isNotEmpty && s.tool != DrawingTool.tape) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  List<DrawingStroke> get selectedStrokesList {
+    final sorted = _selectedStrokeIndices.toList()..sort();
+    final list = <DrawingStroke>[];
+    for (final idx in sorted) {
+      if (idx >= 0 && idx < _strokes.length) {
+        list.add(_strokes[idx]);
+      }
+    }
+    return list;
+  }
+
+  Future<HandwritingOcrResult> recognizeSelectedStrokesToText({
+    String language = 'tr-TR',
+  }) async {
+    if (!canConvertSelectedStrokesToText) {
+      return const HandwritingOcrResult(
+        text: '',
+        errorMessage: 'Metne çevrilecek geçerli bir el yazısı seçili değil.',
+      );
+    }
+    return HandwritingOcrService.recognizeStrokes(
+      selectedStrokesList,
+      language: language,
+    );
+  }
+
+  /// Replaces the currently selected handwriting strokes with an editable [CanvasTextItem]
+  /// positioned cleanly at the handwriting bounding box, preserving color & width with Undo support.
+  CanvasTextItem? replaceSelectedStrokesWithText(String recognizedText) {
+    final trimmed = recognizedText.trim();
+    if (trimmed.isEmpty || _selectedStrokeIndices.isEmpty || isSelectionLocked) {
+      return null;
+    }
+
+    final selected = selectedStrokesList;
+    final inkStrokes = HandwritingOcrService.extractHandwritingStrokes(selected);
+    final bounds = HandwritingOcrService.computeStrokesBounds(
+          inkStrokes.isNotEmpty ? inkStrokes : selected,
+        ) ??
+        selectionBounds;
+    if (bounds == null) return null;
+
+    final inkColor = inkStrokes.isNotEmpty
+        ? inkStrokes.first.color
+        : (selected.isNotEmpty ? selected.first.color : _selectedColor);
+
+    final lineCount = '\n'.allMatches(trimmed).length + 1;
+    final double estimatedFontSize = lineCount > 0
+        ? (bounds.height / lineCount * 0.56).clamp(14.0, 28.0)
+        : 16.0;
+    final double targetWidth = math.max(bounds.width + 24.0, 140.0).clamp(140.0, 560.0);
+
+    _undoStack.add(List.from(_strokes));
+    _redoStack.clear();
+
+    final sortedDesc = _selectedStrokeIndices.toList()..sort((a, b) => b.compareTo(a));
+    for (final idx in sortedDesc) {
+      if (idx >= 0 && idx < _strokes.length) {
+        _strokes.removeAt(idx);
+      }
+    }
+    _selectedStrokeIndices.clear();
+    _cleanupSingletonGroups();
+
+    final newItem = CanvasTextItem(
+      id: 'txt_${DateTime.now().microsecondsSinceEpoch}',
+      position: bounds.topLeft,
+      text: trimmed,
+      color: inkColor.a < 0.85 ? _selectedColor : inkColor,
+      fontSize: estimatedFontSize,
+      width: targetWidth,
+      layerOrder: _nextTopLayerOrder(),
+    );
+
+    _canvasTexts.add(newItem);
+    _selectedTextIds
+      ..clear()
+      ..add(newItem.id);
+    _selectedTextId = newItem.id;
+    _editingTextId = null;
+    _selectionRotationAngle = 0.0;
+    _normalizeUnifiedLayerOrders();
+    _syncSelectionRotationFromStrokes();
+    _saveCurrentStrokes();
+    _saveCurrentCanvasTexts();
+    notifyListeners();
+    return newItem;
   }
 
   // --- Canva-Style Gruplama (Group / Ungroup Management) ---

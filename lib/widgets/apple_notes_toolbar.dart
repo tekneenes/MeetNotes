@@ -99,8 +99,8 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
         final isVertical = widget.dockEdge.isVertical;
         final hasTape = widget.controller.hasAnyTape;
 
-        final double targetWidth = isVertical ? 52.0 : (hasTape ? 676.0 : 620.0);
-        final double targetHeight = isVertical ? (hasTape ? 676.0 : 620.0) : 52.0;
+        final double targetWidth = isVertical ? 52.0 : (hasTape ? 716.0 : 660.0);
+        final double targetHeight = isVertical ? (hasTape ? 716.0 : 660.0) : 52.0;
 
         final double currentWidth = isVertical
             ? 52.0
@@ -325,6 +325,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
 
       // 2. Comprehensive Pen Tools
       ..._penTools.map((tool) => _buildToolItem(tool)),
+      _buildShapesToolButton(context),
 
       _buildDivider(),
 
@@ -911,6 +912,70 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
     );
   }
 
+  void _openShapesPicker(BuildContext btnContext) {
+    final box = btnContext.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final anchorRect = box.localToGlobal(Offset.zero) & box.size;
+    CompactShapesPicker.showAnchored(
+      context: context,
+      anchorRect: anchorRect,
+      dockEdge: widget.dockEdge,
+      controller: widget.controller,
+      onMinimize: _minimizeToolbar,
+      onClearCanvas: widget.controller.clearCanvas,
+    );
+  }
+
+  Widget _buildShapesToolButton(BuildContext context) {
+    final controller = widget.controller;
+    final isSelected = controller.selectedTool.isShape;
+    final isVertical = widget.dockEdge.isVertical;
+
+    return Builder(
+      builder: (btnContext) {
+        return Padding(
+          padding: isVertical
+              ? const EdgeInsets.symmetric(horizontal: 2.0, vertical: 1.5)
+              : const EdgeInsets.symmetric(horizontal: 2.0, vertical: 2.0),
+          child: Tooltip(
+            message: isSelected
+                ? 'Geometrik Şekiller (${controller.selectedTool.label})'
+                : 'Geometrik Şekiller',
+            child: InkResponse(
+              customBorder: const CircleBorder(),
+              radius: 20,
+              onTap: () {
+                setState(() => _showTextPresetPopover = false);
+                _openShapesPicker(btnContext);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isSelected
+                      ? const Color(0xFF007AFF).withValues(alpha: 0.15)
+                      : Colors.transparent,
+                ),
+                child: Center(
+                  child: Image.asset(
+                    'assets/icons/shapes.png',
+                    width: 20,
+                    height: 20,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.medium,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildMoreMenu(BuildContext context) {
     final controller = widget.controller;
     final isShapeActive = controller.selectedTool.isShape;
@@ -923,19 +988,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
               : 'Daha Fazla Seçenek & Şekiller',
           child: InkWell(
             borderRadius: BorderRadius.circular(14),
-            onTap: () {
-              final box = btnContext.findRenderObject() as RenderBox?;
-              if (box == null) return;
-              final anchorRect = box.localToGlobal(Offset.zero) & box.size;
-              CompactShapesPicker.showAnchored(
-                context: context,
-                anchorRect: anchorRect,
-                dockEdge: widget.dockEdge,
-                controller: controller,
-                onMinimize: _minimizeToolbar,
-                onClearCanvas: controller.clearCanvas,
-              );
-            },
+            onTap: () => _openShapesPicker(btnContext),
             child: Container(
               width: 28,
               height: 28,

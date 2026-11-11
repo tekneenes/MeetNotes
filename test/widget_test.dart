@@ -155,6 +155,7 @@ void main() {
       'Kement (${controller.lassoSelectionMode.label})':
           'assets/icons/rect_select.png',
       'Metin Aracı': 'assets/icons/text.png',
+      'Geometrik Şekiller': 'assets/icons/shapes.png',
     };
     for (final entry in expectedCustomIcons.entries) {
       final toolImage = tester.widget<Image>(
@@ -180,6 +181,13 @@ void main() {
       'assets/icons/lasso.png',
     );
     controller.setLassoSelectionMode(LassoSelectionMode.rectangle);
+    await tester.pumpAndSettle();
+
+    // Verify tapping the dedicated Geometrik Şekiller button also opens CompactShapesPicker
+    await tester.tap(find.byTooltip('Geometrik Şekiller'));
+    await tester.pumpAndSettle();
+    expect(find.text('Geometrik Şekiller'), findsOneWidget);
+    await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();
 
     // Find the 3-dots button (Icons.more_horiz_rounded)

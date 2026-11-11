@@ -1263,9 +1263,7 @@ class PlannerController extends ChangeNotifier {
     for (final mask in masks) {
       if (mask.points.isEmpty) continue;
       final maskRadius = mask.strokeWidth / 2.0;
-      final threshold = strokeWidth > 8.0
-          ? math.max(2.5, maskRadius - strokeWidth * 0.2)
-          : maskRadius;
+      final threshold = maskRadius + 1.0;
       if (mask.points.length == 1) {
         if ((pt - mask.points.first).distance <= threshold) {
           return true;
@@ -2610,6 +2608,7 @@ class PlannerController extends ChangeNotifier {
     }
 
     if (_selectedTool == DrawingTool.lasso) {
+      _trimDeadEndsFromMaskedStrokes();
       final bounds = selectionBounds;
       if (bounds != null) {
         final localPoint = _rotatePointAround(
@@ -2653,6 +2652,18 @@ class PlannerController extends ChangeNotifier {
                               p,
                               _initialResizeCenter!,
                               -_selectionRotationAngle,
+                            ))
+                        .toList(),
+                    eraserMasks: _strokes[idx]
+                        .eraserMasks
+                        .map((m) => m.copyWith(
+                              points: m.points
+                                  .map((p) => _rotatePointAround(
+                                        p,
+                                        _initialResizeCenter!,
+                                        -_selectionRotationAngle,
+                                      ))
+                                  .toList(),
                             ))
                         .toList(),
                   ),
@@ -3118,6 +3129,7 @@ class PlannerController extends ChangeNotifier {
       _lastEraserPoint = null;
       _activeEraserPoint = null;
       _activeEraserGestureId = null;
+      _trimDeadEndsFromMaskedStrokes();
       activeStrokeTick.value++;
       _saveCurrentStrokes();
       notifyListeners();
@@ -3279,6 +3291,66 @@ class PlannerController extends ChangeNotifier {
       _saveCurrentStrokes();
       _saveCurrentCanvasTexts();
       notifyListeners();
+    }
+  }
+
+  void _trimDeadEndsFromMaskedStrokes() {
+    bool anyTrimmed = false;
+    for (int i = 0; i < _strokes.length; i++) {
+      final stroke = _strokes[i];
+      if (stroke.eraserMasks.isEmpty || stroke.points.length <= 1) continue;
+
+      int firstVisible = 0;
+      while (firstVisible < stroke.points.length &&
+          _isPointCoveredByMasks(
+            stroke.points[firstVisible],
+            stroke.eraserMasks,
+            strokeWidth: stroke.strokeWidth,
+          )) {
+        firstVisible++;
+      }
+
+      int lastVisible = stroke.points.length - 1;
+      while (lastVisible >= firstVisible &&
+          _isPointCoveredByMasks(
+            stroke.points[lastVisible],
+            stroke.eraserMasks,
+            strokeWidth: stroke.strokeWidth,
+          )) {
+        lastVisible--;
+      }
+
+      if (firstVisible > lastVisible) {
+        _strokes.removeAt(i);
+        i--;
+        anyTrimmed = true;
+        continue;
+      }
+
+      if (firstVisible > 0 || lastVisible < stroke.points.length - 1) {
+        final trimmedPoints = stroke.points.sublist(firstVisible, lastVisible + 1);
+        double minX = trimmedPoints.first.dx, maxX = trimmedPoints.first.dx;
+        double minY = trimmedPoints.first.dy, maxY = trimmedPoints.first.dy;
+        for (final pt in trimmedPoints) {
+          if (pt.dx < minX) minX = pt.dx;
+          if (pt.dx > maxX) maxX = pt.dx;
+          if (pt.dy < minY) minY = pt.dy;
+          if (pt.dy > maxY) maxY = pt.dy;
+        }
+        final strokeBounds = Rect.fromLTRB(minX, minY, maxX, maxY).inflate(stroke.strokeWidth + 24.0);
+        final relevantMasks = stroke.eraserMasks.where((mask) {
+          return mask.points.any((p) => strokeBounds.contains(p));
+        }).toList();
+
+        _strokes[i] = stroke.copyWith(
+          points: trimmedPoints,
+          eraserMasks: relevantMasks,
+        );
+        anyTrimmed = true;
+      }
+    }
+    if (anyTrimmed) {
+      canvasDragTick.value++;
     }
   }
 
@@ -3753,7 +3825,7 @@ class PlannerController extends ChangeNotifier {
           }).toList();
           return mask.copyWith(
             points: mappedMaskPoints,
-            strokeWidth: mask.strokeWidth * avgScale,
+            strokeWidth: math.max(mask.strokeWidth, mask.strokeWidth * avgScale),
           );
         }).toList();
 

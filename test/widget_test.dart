@@ -1705,21 +1705,34 @@ void main() {
     controller.redo();
     expect(controller.strokes.first.eraserMasks.length, 1);
 
-    // 8. Test Lasso Active Point Filtering on Masked Stroke:
-    // Erase the right half of the stroke from (250, 100) to (400, 100)
+    // 8. Test Lasso Active Point Filtering & Resize on Masked Stroke:
+    controller.clearCanvas();
+    controller.setTool(DrawingTool.marker);
+    controller.setStrokeWidth(30.0);
+    controller.startStroke(const Offset(100, 100));
+    for (double x = 110; x <= 400; x += 10) {
+      controller.updateStroke(Offset(x, 100));
+    }
+    controller.endStroke();
+    expect(controller.strokes.length, 1);
+    expect(controller.strokes.first.points.length, 31);
+
+    // Erase the right half of the stroke from (250, 100) to (410, 100)
     controller.setTool(DrawingTool.eraser);
     controller.setEraserType(EraserType.pixel);
     controller.setEraserSize(40.0); // radius 20
     controller.startStroke(const Offset(250, 100));
-    controller.updateStroke(const Offset(400, 100));
+    controller.updateStroke(const Offset(410, 100));
     controller.endStroke();
+
+    // Dead-end trimming should have removed all points covered at the tail (> 240)
+    final survivingStroke = controller.strokes.first;
+    expect(survivingStroke.points.last.dx, lessThanOrEqualTo(250.0));
 
     // Select the stroke with Lasso around the visible part
     controller.setTool(DrawingTool.lasso);
-    controller.startStroke(const Offset(80, 80));
-    controller.updateStroke(const Offset(230, 80));
-    controller.updateStroke(const Offset(230, 120));
-    controller.updateStroke(const Offset(80, 120));
+    controller.startStroke(const Offset(50, 50));
+    controller.updateStroke(const Offset(280, 150));
     controller.endStroke();
 
     expect(controller.selectedStrokeIndices, contains(0));
@@ -1727,21 +1740,56 @@ void main() {
     expect(bounds, isNotNull);
     // The selection box hugs the visible portion only (~100 to ~250),
     // and does NOT extend to the erased original tail at 400!
-    expect(bounds!.right, lessThan(300.0));
+    expect(bounds!.right, lessThan(280.0));
 
     // Deselect
     controller.clearLassoSelection();
     expect(controller.hasLassoSelection, isFalse);
 
-    // Lasso strictly around the empty erased space (from 320,80 to 390,120)
-    controller.startStroke(const Offset(320, 80));
-    controller.updateStroke(const Offset(390, 80));
-    controller.updateStroke(const Offset(390, 120));
-    controller.updateStroke(const Offset(320, 120));
+    // Lasso strictly around the empty erased space (from 300,50 to 450,150)
+    controller.startStroke(const Offset(300, 50));
+    controller.updateStroke(const Offset(450, 150));
     controller.endStroke();
 
-    // The stroke should NOT be selected because all points inside this lasso are masked/erased!
+    // The stroke should NOT be selected because all points in this area are erased
     expect(controller.selectedStrokeIndices.isEmpty, isTrue);
+
+    // Re-select the trimmed stroke with Lasso and test resizing (büyütüp küçültme)
+    controller.clearLassoSelection();
+    controller.startStroke(const Offset(50, 50));
+    controller.updateStroke(const Offset(280, 150));
+    controller.endStroke();
+    expect(controller.selectedStrokeIndices, contains(0));
+
+    final preResizeBounds = controller.selectionBounds!;
+    // Drag the right resize handle to stretch horizontally by 50px
+    final rightHandlePos = Offset(preResizeBounds.right, preResizeBounds.center.dy);
+    controller.startStroke(rightHandlePos);
+    controller.updateStroke(Offset(rightHandlePos.dx + 50.0, rightHandlePos.dy));
+    controller.endStroke();
+
+    final postResizeBounds = controller.selectionBounds!;
+    // Verify that the stroke scaled cleanly and did not shoot out uncontrollably
+    expect(postResizeBounds.right, closeTo(preResizeBounds.right + 50.0, 5.0));
+    // Verify that all points in the resized stroke remain within the selection bounds
+    final resizedStroke = controller.strokes.first;
+    for (final pt in resizedStroke.points) {
+      expect(pt.dx, lessThanOrEqualTo(postResizeBounds.right));
+      expect(pt.dx, greaterThanOrEqualTo(postResizeBounds.left));
+    }
+
+    // Now test shrinking horizontally by 50px (büyütüp küçültme)
+    final shrinkHandlePos = Offset(postResizeBounds.right, postResizeBounds.center.dy);
+    controller.startStroke(shrinkHandlePos);
+    controller.updateStroke(Offset(shrinkHandlePos.dx - 50.0, shrinkHandlePos.dy));
+    controller.endStroke();
+
+    final shrunkBounds = controller.selectionBounds!;
+    expect(shrunkBounds.right, closeTo(preResizeBounds.right, 5.0));
+    for (final pt in controller.strokes.first.points) {
+      expect(pt.dx, lessThanOrEqualTo(shrunkBounds.right));
+      expect(pt.dx, greaterThanOrEqualTo(shrunkBounds.left));
+    }
 
     await tester.pump(const Duration(milliseconds: 1000));
   });

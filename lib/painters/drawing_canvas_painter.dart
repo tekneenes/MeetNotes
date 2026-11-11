@@ -260,21 +260,13 @@ class DrawingCanvasPainter extends CustomPainter {
       case DrawingTool.tape:
         if (stroke.isTapeRevealed) {
           // REVEALED / OPEN: faint translucent tape so text underneath is clearly legible,
-          // with a stylish subtle border so the user sees the interactive tape boundary.
+          // with no center line running through the text.
           paint
-            ..color = stroke.color.withValues(alpha: 0.16)
+            ..color = stroke.color.withValues(alpha: 0.18)
             ..strokeCap = StrokeCap.square
             ..strokeJoin = StrokeJoin.miter
             ..blendMode = BlendMode.srcOver;
           _drawFreehandStrokePath(canvas, stroke.points, paint);
-
-          final outlinePaint = Paint()
-            ..color = stroke.color.withValues(alpha: 0.60)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.2
-            ..strokeCap = StrokeCap.round
-            ..strokeJoin = StrokeJoin.round;
-          _drawFreehandStrokePath(canvas, stroke.points, outlinePaint);
           return;
         } else {
           // COVERED / CLOSED: solid opaque tape hiding whatever is underneath,

@@ -2946,23 +2946,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('GÜNLÜK NOTLAR'), findsOneWidget);
 
-    // 3. Expand Pazartesi -> switch across to Cumartesi / Pazar (scrolled offscreen in sidebar) -> shrink back
+    // 3. Expand Pazartesi -> switch across to Pazar (scrolled offscreen in sidebar) -> shrink back
     await tester.tap(find.text('Pazartesi'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 120));
     await tester.pumpAndSettle();
     expect(find.text('Küçült / Haftaya Dön'), findsOneWidget);
 
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < 6; i++) {
       await tester.tap(find.byTooltip('Sonraki Gün (Alt + →)'));
       await tester.pumpAndSettle();
     }
-    expect(find.text('Cumartesi / Pazar Notları'), findsOneWidget);
+    expect(find.text('Pazar Notları'), findsOneWidget);
 
-    // Close back -> should scroll sidebar to Cumartesi / Pazar slot and complete spring smoothly
+    // Close back -> should scroll sidebar to Pazar slot and complete spring smoothly
     await tester.tap(find.text('Küçült / Haftaya Dön'));
     await tester.pumpAndSettle();
     expect(find.text('Küçült / Haftaya Dön'), findsNothing);
-    expect(find.text('Cumartesi / Pazar'), findsOneWidget);
+    expect(find.text('Pazar'), findsOneWidget);
+    expect(find.text('Cumartesi'), findsOneWidget);
   });
 }

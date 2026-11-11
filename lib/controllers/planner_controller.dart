@@ -1647,25 +1647,27 @@ class PlannerController extends ChangeNotifier {
   bool get canRedo => _redoStack.isNotEmpty;
 
   List<DayScheduleItem> get currentWeekDays {
-    final turkishDays = [
+    const turkishDays = [
       'Pazartesi',
       'Salı',
       'Çarşamba',
       'Perşembe',
       'Cuma',
-      'Cumartesi / Pazar',
+      'Cumartesi',
+      'Pazar',
     ];
-    final englishDays = [
+    const englishDays = [
       'Monday',
       'Tuesday',
       'Wednesday',
       'Thursday',
       'Friday',
-      'Weekend',
+      'Saturday',
+      'Sunday',
     ];
 
     final list = <DayScheduleItem>[];
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 7; i++) {
       final dayDate = _currentWeekStart.add(Duration(days: i));
       final dateKey = _formatDateKey(dayDate);
       list.add(DayScheduleItem(
@@ -1675,16 +1677,6 @@ class PlannerController extends ChangeNotifier {
         text: _dayNotes[dateKey] ?? '',
       ));
     }
-
-    // Weekend (Cumartesi / Pazar combined or 6th day as anchor)
-    final weekendDate = _currentWeekStart.add(const Duration(days: 5));
-    final weekendKey = _formatDateKey(weekendDate);
-    list.add(DayScheduleItem(
-      date: weekendDate,
-      dayName: turkishDays[5],
-      dayNameEnglish: englishDays[5],
-      text: _dayNotes[weekendKey] ?? '',
-    ));
 
     return list;
   }

@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../controllers/planner_controller.dart';
 import '../models/planner_models.dart';
 import '../services/pdf_service.dart';
+import '../widgets/apple_day_calendar_panel.dart';
 import '../widgets/days_sidebar.dart';
 import '../widgets/drawing_workspace.dart';
 import '../widgets/planner_toolbar.dart';
@@ -51,7 +52,6 @@ class _PlannerScreenState extends State<PlannerScreen>
 
   DayScheduleItem? _activeExpandedDay;
   PlannerController? _activeDayCanvasController;
-  TextEditingController? _activeDayNoteTextController;
   Rect _originCardRect = const Rect.fromLTWH(14, 120, 252, 118);
   Offset _dragOffset = Offset.zero;
   bool _isDraggingReel = false;
@@ -86,7 +86,6 @@ class _PlannerScreenState extends State<PlannerScreen>
     _sidebarScrollController.dispose();
     _dayExpandController.dispose();
     _activeDayCanvasController?.dispose();
-    _activeDayNoteTextController?.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -181,10 +180,8 @@ class _PlannerScreenState extends State<PlannerScreen>
     final currentNote = _controller.getDayNote(day.date);
 
     _activeDayCanvasController?.dispose();
-    _activeDayNoteTextController?.dispose();
 
     final dayCanvasCtrl = PlannerController(singleDayDate: day.date);
-    final noteTextCtrl = TextEditingController(text: currentNote);
 
     setState(() {
       if (measuredRect != null) {
@@ -192,7 +189,6 @@ class _PlannerScreenState extends State<PlannerScreen>
       }
       _activeExpandedDay = day.copyWith(text: currentNote);
       _activeDayCanvasController = dayCanvasCtrl;
-      _activeDayNoteTextController = noteTextCtrl;
       _dragOffset = Offset.zero;
       _isDraggingReel = false;
       _isClosingDayOverlay = false;
@@ -204,13 +200,11 @@ class _PlannerScreenState extends State<PlannerScreen>
 
   void _syncActiveDayPreviewImmediate(DateTime dayDate) {
     final activeCtrl = _activeDayCanvasController;
-    final liveText = _activeDayNoteTextController?.text;
     final liveStrokes = (activeCtrl != null && activeCtrl.currentPageIndex == 0)
         ? activeCtrl.strokes
         : null;
     _controller.setDayPreviewImmediate(
       dayDate,
-      text: liveText,
       strokes: liveStrokes,
     );
   }
@@ -236,7 +230,6 @@ class _PlannerScreenState extends State<PlannerScreen>
     final currentNote = _controller.getDayNote(targetDay.date);
 
     _activeDayCanvasController?.dispose();
-    _activeDayNoteTextController?.dispose();
 
     setState(() {
       if (measuredRect != null) {
@@ -244,7 +237,6 @@ class _PlannerScreenState extends State<PlannerScreen>
       }
       _activeExpandedDay = targetDay.copyWith(text: currentNote);
       _activeDayCanvasController = PlannerController(singleDayDate: targetDay.date);
-      _activeDayNoteTextController = TextEditingController(text: currentNote);
     });
   }
 
@@ -274,16 +266,13 @@ class _PlannerScreenState extends State<PlannerScreen>
 
     // Tear down overlay immediately on the landing frame without blocking on storage I/O.
     final staleCanvasCtrl = _activeDayCanvasController;
-    final staleNoteCtrl = _activeDayNoteTextController;
     setState(() {
       _activeExpandedDay = null;
       _isClosingDayOverlay = false;
       _activeDayCanvasController = null;
-      _activeDayNoteTextController = null;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       staleCanvasCtrl?.dispose();
-      staleNoteCtrl?.dispose();
     });
     unawaited(_controller.refreshDayPreview(dayDate));
   }
@@ -3345,6 +3334,7 @@ class _PlannerScreenState extends State<PlannerScreen>
       day: updatedDay,
       isToday: isToday,
       previewStrokes: previewStrokes,
+      events: _controller.getDayEvents(day.date),
     );
 
     return AnimatedBuilder(
@@ -3971,147 +3961,18 @@ class _PlannerScreenState extends State<PlannerScreen>
                   ),
                 ),
 
-                // 2. Main Split inside Expanded Day: Left Ruled Note Pad + Right Full Drawing Canvas
+                // 2. Main Split inside Expanded Day: Left Apple Calendar Day Timeline + Right Drawing Canvas
                 Expanded(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Left Column: Dedicated Ruled Notepad for Day Text Notes
-                      Container(
-                        width: 320,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFAF9F6),
-                          border: Border(
-                            right: BorderSide(
-                              color: Colors.black.withValues(alpha: 0.08),
-                            ),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Ruled Note Header
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF2563EB)
-                                          .withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: const Icon(
-                                      Icons.edit_note_rounded,
-                                      color: Color(0xFF2563EB),
-                                      size: 20,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          '${day.dayName} Notları',
-                                          style: const TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w800,
-                                            color: Color(0xFF1E293B),
-                                          ),
-                                        ),
-                                        Text(
-                                          'Satırlı günlük plan ve not alanı',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.grey.shade500,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const Divider(height: 1),
-
-                            // Full-Height Ruled Lines Text Editor
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.all(14),
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(
-                                      color:
-                                          Colors.black.withValues(alpha: 0.08),
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black
-                                            .withValues(alpha: 0.02),
-                                        blurRadius: 6,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(14),
-                                    child: Stack(
-                                      fit: StackFit.expand,
-                                      children: [
-                                        Positioned.fill(
-                                          child: CustomPaint(
-                                            painter: RuledLinesPainter(
-                                              lineSpacing: 28.0,
-                                              lineColor: const Color(0xFF2B4D7E)
-                                                  .withValues(alpha: 0.16),
-                                            ),
-                                          ),
-                                        ),
-                                        Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 14,
-                                            vertical: 6,
-                                          ),
-                                          child: TextField(
-                                            controller:
-                                                _activeDayNoteTextController,
-                                            maxLines: null,
-                                            expands: true,
-                                            style: const TextStyle(
-                                              fontSize: 14,
-                                              height: 2.0,
-                                              color: Color(0xFF1E293B),
-                                            ),
-                                            decoration: InputDecoration(
-                                              border: InputBorder.none,
-                                              hintText:
-                                                  '${day.dayName} günü için önemli notlarınızı, toplantı detaylarını veya saatlik planınızı buraya yazın...',
-                                              hintStyle: TextStyle(
-                                                fontSize: 13,
-                                                height: 2.0,
-                                                color: Colors.grey.shade400,
-                                              ),
-                                            ),
-                                            onChanged: (text) {
-                                              _controller.updateDayNote(
-                                                day.date,
-                                                text,
-                                              );
-                                            },
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                      // Left Column: Apple Calendar Day View ("12 Kasım 2026", "tam gün", 24h timeline)
+                      ListenableBuilder(
+                        listenable: _controller,
+                        builder: (context, _) => AppleDayCalendarPanel(
+                          day: day,
+                          isToday: isToday,
+                          controller: _controller,
                         ),
                       ),
 

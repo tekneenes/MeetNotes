@@ -213,6 +213,7 @@ class _InteractiveDayCardState extends State<_InteractiveDayCard> {
             isToday: widget.isToday,
             isHovered: _isHovered,
             previewStrokes: widget.controller.getDayPreviewStrokes(widget.day.date),
+            events: widget.controller.getDayEvents(widget.day.date),
           ),
         ),
       ),
@@ -227,6 +228,7 @@ class DayCardSurface extends StatelessWidget {
   final bool isToday;
   final bool isHovered;
   final List<DrawingStroke> previewStrokes;
+  final List<DayCalendarEvent> events;
 
   const DayCardSurface({
     super.key,
@@ -234,6 +236,7 @@ class DayCardSurface extends StatelessWidget {
     required this.isToday,
     this.isHovered = false,
     this.previewStrokes = const [],
+    this.events = const [],
   });
 
   @override
@@ -375,22 +378,81 @@ class DayCardSurface extends StatelessWidget {
                           ),
                         ),
 
-                      // Note Text or Placeholder
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                        child: Text(
-                          hasText ? day.text : 'Bir şeyler yazın...',
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            height: 1.72,
-                            color: hasText
-                                ? const Color(0xFF1E293B)
-                                : Colors.grey.shade400,
+                      // Events pills OR Note Text or Placeholder
+                      if (events.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              for (final ev in events.take(3))
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 2.5),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Color(ev.colorValue)
+                                        .withValues(alpha: 0.13),
+                                    borderRadius: BorderRadius.circular(5),
+                                    border: Border(
+                                      left: BorderSide(
+                                        color: Color(ev.colorValue),
+                                        width: 2.5,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Text(
+                                        ev.isAllDay
+                                            ? 'Tam gün'
+                                            : DayCalendarEvent.formatMinutes(
+                                                ev.startMinutes,
+                                              ),
+                                        style: TextStyle(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(ev.colorValue),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 5),
+                                      Expanded(
+                                        child: Text(
+                                          ev.title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFF1E293B),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        )
+                      else
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          child: Text(
+                            hasText ? day.text : 'Bir şeyler yazın...',
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              height: 1.72,
+                              color: hasText
+                                  ? const Color(0xFF1E293B)
+                                  : Colors.grey.shade400,
+                            ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),

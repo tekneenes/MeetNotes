@@ -460,6 +460,92 @@ class DayScheduleItem {
   }
 }
 
+class DayCalendarEvent {
+  static const List<int> palette = [
+    0xFF0A84FF, // Apple Blue
+    0xFF8B5CF6, // Violet
+    0xFF10B981, // Emerald
+    0xFFF97316, // Amber / Orange
+    0xFFF43F5E, // Rose
+  ];
+
+  final String id;
+  final String title;
+  final bool isAllDay;
+  final int startMinutes;
+  final int endMinutes;
+  final int colorValue;
+  final String notes;
+
+  const DayCalendarEvent({
+    required this.id,
+    required this.title,
+    this.isAllDay = false,
+    this.startMinutes = 540, // 09:00
+    this.endMinutes = 600, // 10:00
+    this.colorValue = 0xFF0A84FF,
+    this.notes = '',
+  });
+
+  static String formatMinutes(int totalMinutes) {
+    final clamped = totalMinutes.clamp(0, 1440);
+    final h = (clamped ~/ 60) % 24;
+    final m = clamped % 60;
+    if (clamped == 1440) return '24:00';
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+  }
+
+  String get formattedTimeRange {
+    if (isAllDay) return 'Tam gün';
+    return '${formatMinutes(startMinutes)} – ${formatMinutes(endMinutes)}';
+  }
+
+  DayCalendarEvent copyWith({
+    String? id,
+    String? title,
+    bool? isAllDay,
+    int? startMinutes,
+    int? endMinutes,
+    int? colorValue,
+    String? notes,
+  }) {
+    return DayCalendarEvent(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      isAllDay: isAllDay ?? this.isAllDay,
+      startMinutes: startMinutes ?? this.startMinutes,
+      endMinutes: endMinutes ?? this.endMinutes,
+      colorValue: colorValue ?? this.colorValue,
+      notes: notes ?? this.notes,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'title': title,
+    'isAllDay': isAllDay,
+    'startMinutes': startMinutes,
+    'endMinutes': endMinutes,
+    'colorValue': colorValue,
+    'notes': notes,
+  };
+
+  factory DayCalendarEvent.fromMap(Map<String, dynamic> map) {
+    final start = ((map['startMinutes'] as num?)?.toInt() ?? 540).clamp(0, 1410);
+    final rawEnd = (map['endMinutes'] as num?)?.toInt() ?? (start + 60);
+    final end = rawEnd.clamp(start + 15, 1440);
+    return DayCalendarEvent(
+      id: map['id'] as String? ?? '',
+      title: map['title'] as String? ?? '',
+      isAllDay: map['isAllDay'] as bool? ?? false,
+      startMinutes: start,
+      endMinutes: end,
+      colorValue: (map['colorValue'] as num?)?.toInt() ?? 0xFF0A84FF,
+      notes: map['notes'] as String? ?? '',
+    );
+  }
+}
+
 class PlannerTaskItem {
   final String id;
   final String title;

@@ -136,6 +136,28 @@ class PlannerStorageService {
     await prefs.setString(key, text);
   }
 
+  // --- Day Calendar Events ---
+  Future<List<DayCalendarEvent>> loadDayEvents(DateTime date) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'meet_notes_day_events_${_formatDayKey(date)}';
+    final raw = prefs.getString(key);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map((e) => DayCalendarEvent.fromMap(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveDayEvents(DateTime date, List<DayCalendarEvent> events) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'meet_notes_day_events_${_formatDayKey(date)}';
+    await prefs.setString(key, jsonEncode(events.map((e) => e.toMap()).toList()));
+  }
+
   // --- Weekly Tasks ---
   Future<List<PlannerTaskItem>> loadTasks(DateTime weekStart) async {
     final prefs = await SharedPreferences.getInstance();

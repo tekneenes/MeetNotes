@@ -11,6 +11,7 @@ import 'package:meet_notes/widgets/compact_font_picker_dialog.dart';
 import 'package:meet_notes/widgets/compact_stroke_width_picker.dart';
 import 'package:meet_notes/widgets/compact_lasso_picker_dialog.dart';
 import 'package:meet_notes/widgets/compact_shapes_picker.dart';
+import 'package:meet_notes/widgets/apple_day_calendar_panel.dart';
 import 'package:meet_notes/widgets/apple_notes_toolbar.dart';
 import 'package:meet_notes/widgets/days_sidebar.dart';
 import 'package:meet_notes/widgets/drawing_workspace.dart';
@@ -48,15 +49,40 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Küçült / Haftaya Dön'), findsOneWidget);
-    expect(find.text('Pazartesi Notları'), findsOneWidget);
+    expect(find.byType(AppleDayCalendarPanel), findsOneWidget);
+    expect(find.text('tam gün'), findsOneWidget);
 
-    // Tap shrink button to return card back to sidebar
+    // Add a calendar event via AppleDayCalendarPanel '+' button
+    await tester.tap(find.byTooltip('Etkinlik Ekle'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byType(TextField).first,
+      'Ürün Toplantısı',
+    );
+    await tester.tap(find.text('Kaydet'));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(AppleDayCalendarPanel),
+        matching: find.text('Ürün Toplantısı'),
+      ),
+      findsOneWidget,
+    );
+
+    // Tap shrink button to return card back to sidebar and verify event preview synced
     await tester.tap(find.text('Küçült / Haftaya Dön'));
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 700));
 
     expect(find.text('Küçült / Haftaya Dön'), findsNothing);
     expect(find.text('Pazartesi'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(DaysSidebar),
+        matching: find.text('Ürün Toplantısı'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('AppleNotesFloatingToolbar shape selection test',
@@ -2957,7 +2983,14 @@ void main() {
       await tester.tap(find.byTooltip('Sonraki Gün (Alt + →)'));
       await tester.pumpAndSettle();
     }
-    expect(find.text('Pazar Notları'), findsOneWidget);
+    expect(find.byType(AppleDayCalendarPanel), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AppleDayCalendarPanel),
+        matching: find.text('Pazar'),
+      ),
+      findsOneWidget,
+    );
 
     // Close back -> should scroll sidebar to Pazar slot and complete spring smoothly
     await tester.tap(find.text('Küçült / Haftaya Dön'));

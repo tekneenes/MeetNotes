@@ -101,6 +101,7 @@ class PlannerController extends ChangeNotifier {
 
   final Map<String, String> _dayNotes = {};
   final Map<String, List<DrawingStroke>> _dayPreviewStrokes = {};
+  final Map<String, List<DayCalendarEvent>> _dayEvents = {};
   List<PlannerTaskItem> _tasks = [];
   List<CanvasTextItem> _canvasTexts = [];
   List<CanvasImageItem> _canvasImages = [];
@@ -1709,15 +1710,17 @@ class PlannerController extends ChangeNotifier {
     _savedAssets = await _storage.loadSavedAssets();
 
     if (singleDayDate != null) {
-      final text = await _storage.loadDayText(singleDayDate!);
-      _dayNotes[_formatDateKey(singleDayDate!)] = text;
+      final key = _formatDateKey(singleDayDate!);
+      _dayNotes[key] = await _storage.loadDayText(singleDayDate!);
+      _dayEvents[key] = await _storage.loadDayEvents(singleDayDate!);
     } else {
-      // Load day notes & daily drawing previews for the week
+      // Load day notes, calendar events & daily drawing previews for the week
       for (int i = 0; i < 7; i++) {
         final day = _currentWeekStart.add(Duration(days: i));
         final key = _formatDateKey(day);
         _dayNotes[key] = await _storage.loadDayText(day);
         _dayPreviewStrokes[key] = await _storage.loadStrokes(day, 0, prefix: 'day_');
+        _dayEvents[key] = await _storage.loadDayEvents(day);
       }
     }
 
@@ -1733,10 +1736,54 @@ class PlannerController extends ChangeNotifier {
     return _dayNotes[_formatDateKey(date)] ?? '';
   }
 
+  List<DayCalendarEvent> getDayEvents(DateTime date) {
+    return List.unmodifiable(_dayEvents[_formatDateKey(date)] ?? const []);
+  }
+
+  void addDayEvent(DateTime date, DayCalendarEvent event) {
+    final key = _formatDateKey(date);
+    final updated = List<DayCalendarEvent>.of(_dayEvents[key] ?? const [])
+      ..add(event)
+      ..sort((a, b) {
+        if (a.isAllDay != b.isAllDay) return a.isAllDay ? -1 : 1;
+        return a.startMinutes.compareTo(b.startMinutes);
+      });
+    _dayEvents[key] = updated;
+    notifyListeners();
+    _storage.saveDayEvents(date, updated);
+  }
+
+  void updateDayEvent(DateTime date, DayCalendarEvent event) {
+    final key = _formatDateKey(date);
+    final current = List<DayCalendarEvent>.of(_dayEvents[key] ?? const []);
+    final idx = current.indexWhere((e) => e.id == event.id);
+    if (idx == -1) return;
+    current[idx] = event;
+    current.sort((a, b) {
+      if (a.isAllDay != b.isAllDay) return a.isAllDay ? -1 : 1;
+      return a.startMinutes.compareTo(b.startMinutes);
+    });
+    _dayEvents[key] = current;
+    notifyListeners();
+    _storage.saveDayEvents(date, current);
+  }
+
+  void deleteDayEvent(DateTime date, String eventId) {
+    final key = _formatDateKey(date);
+    final current = List<DayCalendarEvent>.of(_dayEvents[key] ?? const []);
+    final beforeLen = current.length;
+    current.removeWhere((e) => e.id == eventId);
+    if (current.length == beforeLen) return;
+    _dayEvents[key] = current;
+    notifyListeners();
+    _storage.saveDayEvents(date, current);
+  }
+
   Future<void> refreshDayPreview(DateTime date) async {
     final key = _formatDateKey(date);
     _dayNotes[key] = await _storage.loadDayText(date);
     _dayPreviewStrokes[key] = await _storage.loadStrokes(date, 0, prefix: 'day_');
+    _dayEvents[key] = await _storage.loadDayEvents(date);
     notifyListeners();
   }
 

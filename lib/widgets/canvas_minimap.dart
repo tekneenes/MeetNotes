@@ -58,181 +58,192 @@ class CanvasMinimapOverlay extends StatelessWidget {
               ],
             ),
             clipBehavior: Clip.antiAlias,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Minimap Header
-                Container(
-                  height: 30,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    border: Border(
-                      bottom: BorderSide(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        width: 0.8,
+            child: SizedBox(
+              width: _mapWidth,
+              height: _mapHeight,
+              child: Stack(
+                children: [
+                  // Full-bleed interactive Radar / Minimap Surface
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTapDown: (details) => _panFromLocalPoint(
+                        details.localPosition,
+                        worldBounds,
+                      ),
+                      onPanStart: (details) => _panFromLocalPoint(
+                        details.localPosition,
+                        worldBounds,
+                      ),
+                      onPanUpdate: (details) => _panFromLocalPoint(
+                        details.localPosition,
+                        worldBounds,
+                      ),
+                      child: CustomPaint(
+                        size: const Size(_mapWidth, _mapHeight),
+                        painter: _CanvasMinimapPainter(
+                          controller: controller,
+                          worldBounds: worldBounds,
+                          visibleRect: visibleRect,
+                          homeRect: bounds.homeRect,
+                        ),
                       ),
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 7,
-                        height: 7,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF007AFF),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      const Expanded(
-                        child: Text(
-                          'Tuval Haritası',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1E293B),
+
+                  // Floating Translucent Overlay Controls (Zero Extra Chrome Bands)
+                  Positioned(
+                    top: 6,
+                    left: 6,
+                    right: 6,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: IgnorePointer(
+                            child: Container(
+                              height: 24,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.86),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Colors.black.withValues(alpha: 0.08),
+                                  width: 0.8,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.08),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF007AFF),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Flexible(
+                                    child: Text(
+                                      'X: ${visibleRect.center.dx.round()} · Y: ${visibleRect.center.dy.round()}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF1E293B),
+                                        fontFeatures: [
+                                          FontFeature.tabularFigures(),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                      if (itemCount > 0)
+                        const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 1,
-                          ),
-                          margin: const EdgeInsets.only(right: 4),
+                          height: 24,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFE0F2FE),
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          child: Text(
-                            '$itemCount',
-                            style: const TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF0284C7),
-                              fontFeatures: [FontFeature.tabularFigures()],
+                            color: Colors.white.withValues(alpha: 0.86),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.black.withValues(alpha: 0.08),
+                              width: 0.8,
                             ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (itemCount > 0)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 1,
+                                  ),
+                                  margin: const EdgeInsets.only(right: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE0F2FE),
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                  child: Text(
+                                    '$itemCount',
+                                    style: const TextStyle(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF0284C7),
+                                      fontFeatures: [
+                                        FontFeature.tabularFigures(),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              if (contentBounds != null)
+                                IconButton(
+                                  tooltip: 'Çizimlere Odaklan',
+                                  icon: const Icon(
+                                    Icons.center_focus_strong_rounded,
+                                    size: 13.5,
+                                    color: Color(0xFF475569),
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 20,
+                                    minHeight: 20,
+                                  ),
+                                  onPressed: () {
+                                    controller.requestPanToCanvasCenter(
+                                      contentBounds.center,
+                                    );
+                                  },
+                                ),
+                              IconButton(
+                                tooltip: 'Başlangıca Dön',
+                                icon: const Icon(
+                                  Icons.my_location_rounded,
+                                  size: 13.5,
+                                  color: Color(0xFF007AFF),
+                                ),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(
+                                  minWidth: 20,
+                                  minHeight: 20,
+                                ),
+                                onPressed: () {
+                                  controller.requestPanToCanvasCenter(
+                                    Offset(
+                                      visibleRect.width / 2.0,
+                                      visibleRect.height / 2.0,
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
                           ),
                         ),
-                      if (contentBounds != null)
-                        IconButton(
-                          tooltip: 'Çizimlere Odaklan',
-                          icon: const Icon(
-                            Icons.center_focus_strong_rounded,
-                            size: 14,
-                            color: Color(0xFF475569),
-                          ),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(
-                            minWidth: 22,
-                            minHeight: 22,
-                          ),
-                          onPressed: () {
-                            controller.requestPanToCanvasCenter(
-                              contentBounds.center,
-                            );
-                          },
-                        ),
-                      IconButton(
-                        tooltip: 'Başlangıca Dön',
-                        icon: const Icon(
-                          Icons.my_location_rounded,
-                          size: 14,
-                          color: Color(0xFF007AFF),
-                        ),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 22,
-                          minHeight: 22,
-                        ),
-                        onPressed: () {
-                          controller.requestPanToCanvasCenter(
-                            Offset(
-                              visibleRect.width / 2.0,
-                              visibleRect.height / 2.0,
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Interactive Radar / Minimap Surface
-                SizedBox(
-                  width: _mapWidth,
-                  height: _mapHeight,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTapDown: (details) => _panFromLocalPoint(
-                      details.localPosition,
-                      worldBounds,
-                    ),
-                    onPanStart: (details) => _panFromLocalPoint(
-                      details.localPosition,
-                      worldBounds,
-                    ),
-                    onPanUpdate: (details) => _panFromLocalPoint(
-                      details.localPosition,
-                      worldBounds,
-                    ),
-                    child: CustomPaint(
-                      size: const Size(_mapWidth, _mapHeight),
-                      painter: _CanvasMinimapPainter(
-                        controller: controller,
-                        worldBounds: worldBounds,
-                        visibleRect: visibleRect,
-                        homeRect: bounds.homeRect,
-                      ),
+                      ],
                     ),
                   ),
-                ),
-
-                // Compact Coordinates & Zoom Footer
-                Container(
-                  height: 22,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    border: Border(
-                      top: BorderSide(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        width: 0.8,
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'X: ${visibleRect.center.dx.round()} · Y: ${visibleRect.center.dy.round()}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey.shade600,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '%${(controller.zoomScale * 100).round()}',
-                        style: const TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF007AFF),
-                          fontFeatures: [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );

@@ -3047,7 +3047,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(CanvasMinimapOverlay), findsOneWidget);
-    expect(find.text('Tuval Haritası'), findsOneWidget);
+    expect(find.text('Tuval Haritası'), findsNothing);
+    expect(find.textContaining('X: '), findsOneWidget);
     expect(find.byTooltip('Başlangıca Dön'), findsOneWidget);
 
     // Tap inside the minimap surface to jump viewport and tap return-to-origin

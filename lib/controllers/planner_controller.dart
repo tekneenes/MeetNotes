@@ -6075,6 +6075,41 @@ class PlannerController extends ChangeNotifier {
       return;
     }
 
+    if (_activeStroke!.tool == DrawingTool.marker ||
+        _activeStroke!.tool == DrawingTool.watercolor) {
+      final start = _activeStroke!.points.first;
+      final currentEnd = _activeStroke!.points.last;
+      final chordDist = (currentEnd - start).distance;
+      if (chordDist < 12.0) return;
+
+      double totalLen = 0.0;
+      for (int i = 0; i < _activeStroke!.points.length - 1; i++) {
+        totalLen += (_activeStroke!.points[i + 1] - _activeStroke!.points[i]).distance;
+      }
+      final straightness = chordDist / math.max(totalLen, 1.0);
+      if (straightness < 0.72) return;
+
+      try {
+        HapticFeedback.mediumImpact();
+      } catch (_) {}
+
+      final straightEnd = ShapeRecognitionService.snapAngle(start, currentEnd);
+      final currentTool = _activeStroke!.tool;
+      _isDrawAndHoldActive = true;
+      _activeRecognizedShape = RecognizedShape(
+        tool: currentTool,
+        points: [start, straightEnd],
+        bounds: Rect.fromPoints(start, straightEnd),
+      );
+      _activeStroke = _activeStroke!.copyWith(
+        tool: currentTool,
+        points: [start, straightEnd],
+      );
+      activeStrokeTick.value++;
+      notifyListeners();
+      return;
+    }
+
     final recognized = ShapeRecognitionService.recognize(_activeStroke!.points);
     if (recognized != null) {
       try {
@@ -6097,7 +6132,11 @@ class PlannerController extends ChangeNotifier {
     final tool = _activeRecognizedShape!.tool;
     final initialPoints = _activeRecognizedShape!.points;
 
-    if (tool == DrawingTool.tape || tool == DrawingTool.line || tool == DrawingTool.arrow) {
+    if (tool == DrawingTool.tape ||
+        tool == DrawingTool.marker ||
+        tool == DrawingTool.watercolor ||
+        tool == DrawingTool.line ||
+        tool == DrawingTool.arrow) {
       final start = initialPoints.first;
       final snapped = ShapeRecognitionService.snapAngle(start, point);
       _activeStroke = _activeStroke!.copyWith(

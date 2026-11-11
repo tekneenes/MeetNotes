@@ -1939,6 +1939,41 @@ void main() {
     controller.endStroke();
     expect(controller.strokes.first.isTapeRevealed, isTrue);
 
+    // 12. Test Draw-and-Hold on Highlighter (DrawingTool.marker):
+    // Should straighten cleanly while keeping DrawingTool.marker (preserving 0.38 transparency, multiply blend & square cap), NOT converting to DrawingTool.line!
+    controller.clearCanvas();
+    controller.setTool(DrawingTool.marker);
+    controller.startStroke(const Offset(100, 500));
+    for (int i = 1; i <= 8; i++) {
+      controller.updateStroke(Offset(100.0 + i * 25.0, 500.0 + (i % 2 == 0 ? 3.0 : -3.0)));
+    }
+    controller.triggerDrawAndHoldForTesting();
+    expect(controller.isDrawAndHoldActive, isTrue);
+    expect(controller.activeStroke, isNotNull);
+    expect(controller.activeStroke!.tool, DrawingTool.marker); // Must stay marker!
+    expect(controller.activeStroke!.points.length, 2); // Straightened!
+    controller.updateStroke(const Offset(350, 502));
+    expect(controller.activeStroke!.points.last.dy, closeTo(500.0, 0.01)); // Snapped horizontal!
+    controller.endStroke();
+
+    expect(controller.strokes.length, 1);
+    expect(controller.strokes.first.tool, DrawingTool.marker);
+    expect(controller.strokes.first.points.length, 2);
+    expect(controller.selectedStrokeIndices, isEmpty); // Must NOT auto-select line endpoints
+
+    // Closed circle with marker should NOT collapse into a line or turn into opaque circle shape
+    controller.startStroke(const Offset(240, 600));
+    for (int i = 1; i <= 16; i++) {
+      final angle = i * (2 * math.pi / 16);
+      controller.updateStroke(Offset(200.0 + 40.0 * math.cos(angle), 600.0 + 40.0 * math.sin(angle)));
+    }
+    controller.triggerDrawAndHoldForTesting();
+    expect(controller.isDrawAndHoldActive, isFalse);
+    expect(controller.activeStroke!.tool, DrawingTool.marker);
+    controller.endStroke();
+    expect(controller.strokes.length, 2);
+    expect(controller.strokes.last.tool, DrawingTool.marker);
+
     await tester.pump(const Duration(milliseconds: 1000));
   });
 

@@ -141,6 +141,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // Kurşun Kalem uses the custom PNG icon asset
+    final pencilImage = tester.widget<Image>(
+      find.descendant(
+        of: find.byTooltip('Kurşun Kalem'),
+        matching: find.byType(Image),
+      ),
+    );
+    expect(
+      (pencilImage.image as AssetImage).assetName,
+      'assets/icons/pencil.png',
+    );
+
     // Find the 3-dots button (Icons.more_horiz_rounded)
     final moreButton = find.byIcon(Icons.more_horiz_rounded);
     expect(moreButton, findsOneWidget);

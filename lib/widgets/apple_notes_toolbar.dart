@@ -179,8 +179,8 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
                               child: Stack(
                                 alignment: Alignment.center,
                                 children: [
-                                  Icon(
-                                    widget.controller.selectedTool.icon,
+                                  _buildToolGlyph(
+                                    widget.controller.selectedTool,
                                     size: 22,
                                     color: const Color(0xFF007AFF),
                                   ),
@@ -546,6 +546,28 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
     );
   }
 
+  Widget _buildToolGlyph(
+    DrawingTool tool, {
+    required double size,
+    required Color color,
+    IconData? overrideIcon,
+  }) {
+    if (overrideIcon == null && tool == DrawingTool.pencil) {
+      return Image.asset(
+        'assets/icons/pencil.png',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.medium,
+      );
+    }
+    return Icon(
+      overrideIcon ?? tool.icon,
+      size: size,
+      color: color,
+    );
+  }
+
   Widget _buildToolItem(DrawingTool tool) {
     final controller = widget.controller;
     final isSelected = controller.selectedTool == tool;
@@ -663,13 +685,17 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
                 child: Stack(
                   children: [
                     Center(
-                      child: Icon(
-                        tool == DrawingTool.lasso &&
-                                controller.lassoSelectionMode == LassoSelectionMode.rectangle
-                            ? Icons.crop_square_rounded
-                            : tool.icon,
+                      child: _buildToolGlyph(
+                        tool,
                         size: 20,
-                        color: isSelected ? const Color(0xFF007AFF) : Colors.grey.shade700,
+                        color: isSelected
+                            ? const Color(0xFF007AFF)
+                            : Colors.grey.shade700,
+                        overrideIcon: tool == DrawingTool.lasso &&
+                                controller.lassoSelectionMode ==
+                                    LassoSelectionMode.rectangle
+                            ? Icons.crop_square_rounded
+                            : null,
                       ),
                     ),
                     if (tool == DrawingTool.lasso && !controller.areAllLassoFiltersEnabled)

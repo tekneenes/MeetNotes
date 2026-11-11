@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../controllers/planner_controller.dart';
 
 class PlannerToolbar extends StatelessWidget {
@@ -16,12 +15,6 @@ class PlannerToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final start = controller.currentWeekStart;
-    final end = start.add(const Duration(days: 6));
-    final weekFormat = DateFormat('d MMMM yyyy', 'tr_TR');
-    final weekLabel =
-        '${DateFormat('d MMM', 'tr_TR').format(start)} – ${weekFormat.format(end)}';
-
     return Container(
       height: 52,
       decoration: BoxDecoration(
@@ -37,50 +30,6 @@ class PlannerToolbar extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Sol Kısım: Hafta Navigasyonu
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: 'Önceki Hafta',
-                    icon: const Icon(Icons.chevron_left_rounded, size: 20),
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    padding: EdgeInsets.zero,
-                    onPressed: () => controller.previousWeek(),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Text(
-                      weekLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1E293B),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Sonraki Hafta',
-                    icon: const Icon(Icons.chevron_right_rounded, size: 20),
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    padding: EdgeInsets.zero,
-                    onPressed: () => controller.nextWeek(),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
           // Orta Kısım: Sayfa Geçiş Hapı (Her zaman tam ortalanmış)
           Center(
             child: Container(

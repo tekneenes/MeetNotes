@@ -3335,6 +3335,7 @@ class _PlannerScreenState extends State<PlannerScreen>
       isToday: isToday,
       previewStrokes: previewStrokes,
       events: _controller.getDayEvents(day.date),
+      enableHeaderBlur: false,
     );
 
     return AnimatedBuilder(

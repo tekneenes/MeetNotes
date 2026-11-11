@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/planner_models.dart';
@@ -230,6 +231,7 @@ class DayCardSurface extends StatelessWidget {
   final bool isHovered;
   final List<DrawingStroke> previewStrokes;
   final List<DayCalendarEvent> events;
+  final bool enableHeaderBlur;
 
   const DayCardSurface({
     super.key,
@@ -238,18 +240,20 @@ class DayCardSurface extends StatelessWidget {
     this.isHovered = false,
     this.previewStrokes = const [],
     this.events = const [],
+    this.enableHeaderBlur = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final hasText = day.text.trim().isNotEmpty;
     final hasDrawing = previewStrokes.isNotEmpty;
+    final cardBg = isToday ? const Color(0xFFF8FBFF) : Colors.white;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
-        color: isToday ? const Color(0xFFF8FBFF) : Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isToday
@@ -271,167 +275,220 @@ class DayCardSurface extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(13),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Day Title Bar
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 10, 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            day.dayName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: isToday
-                                  ? const Color(0xFF1D4ED8)
-                                  : const Color(0xFF1E293B),
-                            ),
-                          ),
-                        ),
-                        if (isToday) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFDBEAFE),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              'Bugün',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1D4ED8),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  if (events.length > 1) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                      margin: const EdgeInsets.only(right: 5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE0F2FE),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: Text(
-                        '${events.length}',
-                        style: const TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF0284C7),
-                        ),
-                      ),
-                    ),
-                  ],
-                  if (hasDrawing) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                      margin: const EdgeInsets.only(right: 6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(
-                        Icons.draw_rounded,
-                        size: 11,
-                        color: Color(0xFF2563EB),
-                      ),
-                    ),
-                  ],
-                  Text(
-                    DateFormat('d MMM', 'tr_TR').format(day.date),
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                ],
+        child: SizedBox(
+          height: 120,
+          width: double.infinity,
+          child: Stack(
+            children: [
+              // Borderless Mini Apple Calendar Hourly Grid flowing freely across the card
+              Positioned.fill(
+                child: _MiniAppleTimelinePreview(
+                  isToday: isToday,
+                  events: events,
+                ),
               ),
-            ),
 
-            // Mini Apple Calendar Hourly Timeline Preview (syncs upcoming/scheduled event window)
-            Flexible(
-              fit: FlexFit.loose,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-                child: SizedBox(
-                  height: 78,
-                  width: double.infinity,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Stack(
-                      children: [
-                        // Miniature Apple Calendar Hourly Grid + Positioned Event Blocks
-                        Positioned.fill(
-                          child: _MiniAppleTimelinePreview(
-                            isToday: isToday,
-                            events: events,
-                          ),
-                        ),
+              // Miniature Drawing Preview if user drew on this day
+              if (hasDrawing)
+                Positioned(
+                  top: 38,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: DrawingCanvasPainter(
+                        strokes: previewStrokes,
+                        scale: 0.18,
+                        panOffset: const Offset(10, 4),
+                      ),
+                    ),
+                  ),
+                ),
 
-                        // Miniature Drawing Preview if user drew on this day
-                        if (hasDrawing)
-                          Positioned.fill(
-                            child: IgnorePointer(
-                              child: CustomPaint(
-                                painter: DrawingCanvasPainter(
-                                  strokes: previewStrokes,
-                                  scale: 0.18,
-                                  panOffset: const Offset(8, 4),
-                                ),
-                              ),
-                            ),
-                          ),
+              // Fallback text note overlay only if day has plain text and no events
+              if (events.isEmpty && hasText)
+                Positioned(
+                  top: 42,
+                  left: 50,
+                  right: 10,
+                  bottom: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.86),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      day.text,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        height: 1.35,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                  ),
+                ),
 
-                        // Fallback text note overlay only if day has plain text and no events
-                        if (events.isEmpty && hasText)
-                          Positioned(
-                            top: 4,
-                            left: 44,
-                            right: 6,
-                            bottom: 4,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.88),
-                                borderRadius: BorderRadius.circular(5),
-                              ),
-                              child: Text(
-                                day.text,
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  height: 1.35,
-                                  color: Color(0xFF1E293B),
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
+              // Frosted blur behind header smoothly dissolving into full transparency
+              if (enableHeaderBlur) ...[
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 26,
+                  child: ClipRect(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 6.0, sigmaY: 6.0),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 26,
+                  left: 0,
+                  right: 0,
+                  height: 10,
+                  child: ClipRect(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 2.5, sigmaY: 2.5),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                ),
+              ],
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 44,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          cardBg.withValues(alpha: 0.90),
+                          cardBg.withValues(alpha: 0.72),
+                          cardBg.withValues(alpha: 0.24),
+                          cardBg.withValues(alpha: 0.0),
+                        ],
+                        stops: const [0.0, 0.42, 0.76, 1.0],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+
+              // Day Title Bar floating cleanly over the frosted-to-transparent backdrop
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                day.dayName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: isToday
+                                      ? const Color(0xFF1D4ED8)
+                                      : const Color(0xFF1E293B),
+                                ),
+                              ),
+                            ),
+                            if (isToday) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFDBEAFE),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'Bugün',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF1D4ED8),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      if (events.length > 1) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1.5,
+                          ),
+                          margin: const EdgeInsets.only(right: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE0F2FE),
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: Text(
+                            '${events.length}',
+                            style: const TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0284C7),
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (hasDrawing) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 2,
+                          ),
+                          margin: const EdgeInsets.only(right: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Icon(
+                            Icons.draw_rounded,
+                            size: 11,
+                            color: Color(0xFF2563EB),
+                          ),
+                        ),
+                      ],
+                      Text(
+                        DateFormat('d MMM', 'tr_TR').format(day.date),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -447,9 +504,7 @@ class _MiniAppleTimelinePreview extends StatelessWidget {
     required this.events,
   });
 
-  static const double _hourHeight = 30.0;
-  static const double _topPad = 8.0;
-  static const double _gutterWidth = 38.0;
+  static const double _gutterWidth = 46.0;
 
   @override
   Widget build(BuildContext context) {
@@ -458,6 +513,9 @@ class _MiniAppleTimelinePreview extends StatelessWidget {
     final allDayEvents = events.where((e) => e.isAllDay).toList();
     final timedEvents = events.where((e) => !e.isAllDay).toList()
       ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
+    final hasAllDay = allDayEvents.isNotEmpty;
+    final topPad = hasAllDay ? 56.0 : 42.0;
+    final hourHeight = hasAllDay ? 27.0 : 29.0;
 
     // Focus 3-hour window on upcoming/ongoing event for Today,
     // or earliest scheduled event for other days, else 09:00..11:00 (or current hour if Today).
@@ -490,137 +548,165 @@ class _MiniAppleTimelinePreview extends StatelessWidget {
         )
         .toList();
 
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFFCFDFE),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: Colors.black.withValues(alpha: 0.05),
+    return Stack(
+      clipBehavior: Clip.hardEdge,
+      children: [
+        // Subtle pre-focus grid hairlines extending gently beneath the frosted header
+        Positioned(
+          top: topPad - hourHeight,
+          left: _gutterWidth,
+          right: 0,
+          child: Container(
+            height: 0.8,
+            color: Colors.black.withValues(alpha: 0.06),
+          ),
         ),
-      ),
-      child: Stack(
-        clipBehavior: Clip.hardEdge,
-        children: [
-          // 3 hour lines + labels (e.g. 15:00, 16:00, 17:00)
-          for (int i = 0; i <= 2; i++)
-            Positioned(
-              top: _topPad + i * _hourHeight - 5.5,
-              left: 0,
-              right: 0,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: _gutterWidth,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 5),
-                      child: Text(
-                        '${(focusHour + i).toString().padLeft(2, '0')}:00',
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey.shade500,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
+        Positioned(
+          top: topPad - hourHeight * 0.5,
+          left: _gutterWidth,
+          right: 0,
+          child: Container(
+            height: 0.5,
+            color: Colors.black.withValues(alpha: 0.03),
+          ),
+        ),
+
+        // 3 hour lines + labels (e.g. 15:00, 16:00, 17:00) running freely edge-to-edge
+        for (int i = 0; i <= 2; i++)
+          Positioned(
+            top: topPad + i * hourHeight - 5.5,
+            left: 0,
+            right: 0,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: _gutterWidth,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: Text(
+                      '${(focusHour + i).toString().padLeft(2, '0')}:00',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey.shade500,
+                        fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
                   ),
-                  Expanded(
-                    child: Container(
-                      height: 0.8,
-                      color: Colors.black.withValues(alpha: 0.08),
-                    ),
+                ),
+                Expanded(
+                  child: Container(
+                    height: 0.8,
+                    color: Colors.black.withValues(alpha: 0.065),
                   ),
-                ],
-              ),
-            ),
-
-          // Half-hour subtle lines
-          for (int i = 0; i < 2; i++)
-            Positioned(
-              top: _topPad + (i + 0.5) * _hourHeight,
-              left: _gutterWidth,
-              right: 0,
-              child: Container(
-                height: 0.5,
-                color: Colors.black.withValues(alpha: 0.03),
-              ),
-            ),
-
-          // Vertical separator between hour gutter and event track
-          Positioned(
-            top: 0,
-            bottom: 0,
-            left: _gutterWidth,
-            child: Container(
-              width: 0.8,
-              color: Colors.black.withValues(alpha: 0.06),
+                ),
+              ],
             ),
           ),
 
-          // Red live current-time line if inside visible window on Today
-          if (isToday &&
-              nowMinutes >= windowStartMinutes &&
-              nowMinutes <= windowEndMinutes)
-            Positioned(
-              top: _topPad +
-                  ((nowMinutes - windowStartMinutes) / 60.0) * _hourHeight -
-                  3,
-              left: _gutterWidth - 3,
-              right: 0,
-              child: Row(
-                children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFEF4444),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  Expanded(
-                    child: Container(
-                      height: 1.2,
-                      color: const Color(0xFFEF4444),
-                    ),
-                  ),
+        // Half-hour subtle lines
+        for (int i = 0; i < 2; i++)
+          Positioned(
+            top: topPad + (i + 0.5) * hourHeight,
+            left: _gutterWidth,
+            right: 0,
+            child: Container(
+              height: 0.5,
+              color: Colors.black.withValues(alpha: 0.025),
+            ),
+          ),
+
+        // Whisper-light vertical track guide (fades cleanly top & bottom)
+        Positioned(
+          top: 0,
+          bottom: 0,
+          left: _gutterWidth,
+          child: Container(
+            width: 0.8,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.03),
+                  Colors.black.withValues(alpha: 0.05),
+                  Colors.black.withValues(alpha: 0.0),
                 ],
+                stops: const [0.0, 0.72, 1.0],
               ),
             ),
+          ),
+        ),
 
-          // All-day event banner at top of track if no timed events overlap row 0 (or compact pill)
-          if (allDayEvents.isNotEmpty)
-            Positioned(
-              top: 3,
-              left: _gutterWidth + 4,
-              right: 4,
-              height: 16,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                decoration: BoxDecoration(
-                  color: Color(allDayEvents.first.colorValue),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Tam gün · ${allDayEvents.first.title}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
+        // Red live current-time line if inside visible window on Today
+        if (isToday &&
+            nowMinutes >= windowStartMinutes &&
+            nowMinutes <= windowEndMinutes)
+          Positioned(
+            top: topPad +
+                ((nowMinutes - windowStartMinutes) / 60.0) * hourHeight -
+                3,
+            left: _gutterWidth - 3,
+            right: 0,
+            child: Row(
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEF4444),
+                    shape: BoxShape.circle,
                   ),
                 ),
+                Expanded(
+                  child: Container(
+                    height: 1.2,
+                    color: const Color(0xFFEF4444),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // All-day event banner below header
+        if (hasAllDay)
+          Positioned(
+            top: 37,
+            left: _gutterWidth + 4,
+            right: 10,
+            height: 15,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              decoration: BoxDecoration(
+                color: Color(allDayEvents.first.colorValue),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Tam gün · ${allDayEvents.first.title}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
               ),
             ),
+          ),
 
-          // Apple-style colored event block positioned at exact start/end hour
-          for (final ev in visibleTimedEvents)
-            _buildMiniEventBlock(ev, windowStartMinutes, windowEndMinutes),
-        ],
-      ),
+        // Apple-style colored event block positioned at exact start/end hour
+        for (final ev in visibleTimedEvents)
+          _buildMiniEventBlock(
+            ev,
+            windowStartMinutes,
+            windowEndMinutes,
+            topPad,
+            hourHeight,
+          ),
+      ],
     );
   }
 
@@ -628,13 +714,15 @@ class _MiniAppleTimelinePreview extends StatelessWidget {
     DayCalendarEvent ev,
     int windowStartMinutes,
     int windowEndMinutes,
+    double topPad,
+    double hourHeight,
   ) {
     final clampedStart = math.max(ev.startMinutes, windowStartMinutes);
     final clampedEnd = math.min(ev.endMinutes, windowEndMinutes);
     final top =
-        _topPad + ((clampedStart - windowStartMinutes) / 60.0) * _hourHeight + 1.0;
+        topPad + ((clampedStart - windowStartMinutes) / 60.0) * hourHeight + 1.0;
     final rawHeight =
-        ((clampedEnd - clampedStart) / 60.0) * _hourHeight - 2.0;
+        ((clampedEnd - clampedStart) / 60.0) * hourHeight - 2.0;
     final height = math.max(16.0, rawHeight);
     final baseColor = Color(ev.colorValue);
     final accentColor = HSLColor.fromColor(baseColor)
@@ -646,7 +734,7 @@ class _MiniAppleTimelinePreview extends StatelessWidget {
     return Positioned(
       top: top,
       left: _gutterWidth + 4,
-      right: 4,
+      right: 10,
       height: height,
       child: Container(
         decoration: BoxDecoration(

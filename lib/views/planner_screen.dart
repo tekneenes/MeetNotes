@@ -3531,7 +3531,7 @@ class _PlannerScreenState extends State<PlannerScreen>
                   onPanUpdate: (details) => _handleReelDragUpdate(details.delta),
                   onPanEnd: (details) => _handleReelDragEnd(details.velocity),
                   child: Container(
-                    padding: const EdgeInsets.fromLTRB(14, 7, 14, 9),
+                    height: 58,
                     decoration: BoxDecoration(
                       color: const Color(0xFFFBFBFA),
                       border: Border(
@@ -3540,204 +3540,165 @@ class _PlannerScreenState extends State<PlannerScreen>
                         ),
                       ),
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+                    child: Stack(
                       children: [
-                        // Pull-Down Handle Pill with threshold highlight
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 140),
-                          width: isReadyToDismiss ? 56 : 42,
-                          height: 4.5,
-                          margin: const EdgeInsets.only(bottom: 7),
-                          decoration: BoxDecoration(
-                            color: isReadyToDismiss
-                                ? const Color(0xFF2563EB)
-                                : Colors.grey.shade300,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            final maxLeftWidth =
-                                (constraints.maxWidth - 510.0).clamp(240.0, 760.0);
-                            return Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                // Sol Kısım: Küçült / Haftaya Dön ve Gün Başlığı
-                                ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    maxWidth: maxLeftWidth,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Sol Kısım: 320px (Alttaki saat/takvim paneli ile birebir aynı genişlik ve ayırıcı çizgi hizasında)
+                            Container(
+                              width: 320,
+                              padding: const EdgeInsets.fromLTRB(12, 8, 10, 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFAF9F6),
+                                border: Border(
+                                  right: BorderSide(
+                                    color: Colors.black.withValues(alpha: 0.08),
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      InkWell(
-                                        borderRadius: BorderRadius.circular(20),
-                                        onTap: _closeDayExpandedOverlay,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 7,
+                                ),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  IconButton(
+                                    tooltip: 'Küçült / Haftaya Dön',
+                                    constraints: const BoxConstraints(
+                                      minWidth: 34,
+                                      minHeight: 34,
+                                    ),
+                                    padding: EdgeInsets.zero,
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: const Color(0xFFEFF6FF),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                        side: BorderSide(
+                                          color: const Color(0xFF2563EB)
+                                              .withValues(alpha: 0.25),
+                                        ),
+                                      ),
+                                    ),
+                                    icon: const Icon(
+                                      Icons.close_fullscreen_rounded,
+                                      size: 17,
+                                      color: Color(0xFF1D4ED8),
+                                    ),
+                                    onPressed: _closeDayExpandedOverlay,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius:
+                                            BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: Colors.black
+                                              .withValues(alpha: 0.08),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          IconButton(
+                                            tooltip: 'Önceki Gün (Alt + ←)',
+                                            icon: const Icon(
+                                              Icons.chevron_left_rounded,
+                                              size: 17,
+                                              color: Color(0xFF1E293B),
+                                            ),
+                                            padding: EdgeInsets.zero,
+                                            style: IconButton.styleFrom(
+                                              tapTargetSize:
+                                                  MaterialTapTargetSize
+                                                      .shrinkWrap,
+                                            ),
+                                            constraints: const BoxConstraints(
+                                              minWidth: 22,
+                                              minHeight: 26,
+                                            ),
+                                            onPressed: () =>
+                                                _switchExpandedDay(-1),
                                           ),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFEFF6FF),
-                                            borderRadius:
-                                                BorderRadius.circular(20),
-                                            border: Border.all(
-                                              color: const Color(0xFF2563EB)
-                                                  .withValues(alpha: 0.25),
+                                          const SizedBox(width: 2),
+                                          const Icon(
+                                            Icons.calendar_today_rounded,
+                                            size: 12,
+                                            color: Color(0xFF2563EB),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Expanded(
+                                            child: Text(
+                                              '${day.dayName} • $fullDateStr',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 11.5,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFF0F172A),
+                                              ),
                                             ),
                                           ),
-                                          child: const Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                Icons.close_fullscreen_rounded,
-                                                size: 15,
-                                                color: Color(0xFF1D4ED8),
+                                          if (isToday) ...[
+                                            const SizedBox(width: 4),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 4.5,
+                                                vertical: 1.5,
                                               ),
-                                              SizedBox(width: 6),
-                                              Text(
-                                                'Küçült / Haftaya Dön',
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFDBEAFE),
+                                                borderRadius:
+                                                    BorderRadius.circular(5),
+                                              ),
+                                              child: const Text(
+                                                'BUGÜN',
                                                 style: TextStyle(
-                                                  fontSize: 12.5,
-                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.w800,
                                                   color: Color(0xFF1D4ED8),
                                                 ),
                                               ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Flexible(
-                                        fit: FlexFit.loose,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 3,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            borderRadius:
-                                                BorderRadius.circular(20),
-                                            border: Border.all(
-                                              color: Colors.black
-                                                  .withValues(alpha: 0.08),
                                             ),
+                                          ],
+                                          const SizedBox(width: 2),
+                                          IconButton(
+                                            tooltip: 'Sonraki Gün (Alt + →)',
+                                            icon: const Icon(
+                                              Icons.chevron_right_rounded,
+                                              size: 17,
+                                              color: Color(0xFF1E293B),
+                                            ),
+                                            padding: EdgeInsets.zero,
+                                            style: IconButton.styleFrom(
+                                              tapTargetSize:
+                                                  MaterialTapTargetSize
+                                                      .shrinkWrap,
+                                            ),
+                                            constraints: const BoxConstraints(
+                                              minWidth: 22,
+                                              minHeight: 26,
+                                            ),
+                                            onPressed: () =>
+                                                _switchExpandedDay(1),
                                           ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              IconButton(
-                                                tooltip:
-                                                    'Önceki Gün (Alt + ←)',
-                                                icon: const Icon(
-                                                  Icons.chevron_left_rounded,
-                                                  size: 18,
-                                                  color: Color(0xFF1E293B),
-                                                ),
-                                                padding: EdgeInsets.zero,
-                                                style: IconButton.styleFrom(
-                                                  tapTargetSize:
-                                                      MaterialTapTargetSize
-                                                          .shrinkWrap,
-                                                ),
-                                                constraints:
-                                                    const BoxConstraints(
-                                                  minWidth: 26,
-                                                  minHeight: 26,
-                                                ),
-                                                onPressed: () =>
-                                                    _switchExpandedDay(-1),
-                                              ),
-                                              const SizedBox(width: 4),
-                                              const Icon(
-                                                Icons.calendar_today_rounded,
-                                                size: 13,
-                                                color: Color(0xFF2563EB),
-                                              ),
-                                              const SizedBox(width: 6),
-                                              Flexible(
-                                                child: Text(
-                                                  '${day.dayName} • $fullDateStr',
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: const TextStyle(
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.w700,
-                                                    color: Color(0xFF0F172A),
-                                                  ),
-                                                ),
-                                              ),
-                                              if (isToday) ...[
-                                                const SizedBox(width: 6),
-                                                Container(
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                    horizontal: 6,
-                                                    vertical: 2,
-                                                  ),
-                                                  decoration: BoxDecoration(
-                                                    color:
-                                                        const Color(0xFFDBEAFE),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            6),
-                                                  ),
-                                                  child: const Text(
-                                                    'BUGÜN',
-                                                    style: TextStyle(
-                                                      fontSize: 10,
-                                                      fontWeight:
-                                                          FontWeight.w800,
-                                                      color: Color(0xFF1D4ED8),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                              const SizedBox(width: 4),
-                                              IconButton(
-                                                tooltip:
-                                                    'Sonraki Gün (Alt + →)',
-                                                icon: const Icon(
-                                                  Icons.chevron_right_rounded,
-                                                  size: 18,
-                                                  color: Color(0xFF1E293B),
-                                                ),
-                                                padding: EdgeInsets.zero,
-                                                style: IconButton.styleFrom(
-                                                  tapTargetSize:
-                                                      MaterialTapTargetSize
-                                                          .shrinkWrap,
-                                                ),
-                                                constraints:
-                                                    const BoxConstraints(
-                                                  minWidth: 26,
-                                                  minHeight: 26,
-                                                ),
-                                                onPressed: () =>
-                                                    _switchExpandedDay(1),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
+                                        ],
                                       ),
-                                    ],
+                                    ),
                                   ),
-                                ),
-                                Container(
-                                  width: 1,
-                                  height: 22,
-                                  color: Colors.black.withValues(alpha: 0.08),
-                                  margin: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                  ),
-                                ),
+                                ],
+                              ),
+                            ),
 
-                                // Sağ / Tuval Araç Çubuğu: Normal görünümdeki PlannerToolbar ile birebir aynı düzen
-                                Expanded(
+                            // Sağ / Tuval Araç Çubuğu: Normal görünümdeki PlannerToolbar ile birebir aynı düzen
+                            Expanded(
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(14, 8, 14, 4),
+                                child: Center(
                                   child: PlannerToolbar(
                                     controller: dayCanvasController,
                                     isQuickAccessOpen:
@@ -3751,9 +3712,31 @@ class _PlannerScreenState extends State<PlannerScreen>
                                     embedded: true,
                                   ),
                                 ),
-                              ],
-                            );
-                          },
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        // Pull-Down Handle Pill centered at top edge
+                        Positioned(
+                          top: 4,
+                          left: 0,
+                          right: 0,
+                          child: IgnorePointer(
+                            child: Center(
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 140),
+                                width: isReadyToDismiss ? 56 : 42,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: isReadyToDismiss
+                                      ? const Color(0xFF2563EB)
+                                      : Colors.grey.shade300,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     ),

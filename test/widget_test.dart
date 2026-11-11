@@ -50,7 +50,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     await tester.pumpAndSettle();
 
-    expect(find.text('Küçült / Haftaya Dön'), findsOneWidget);
+    expect(find.text('Küçült / Haftaya Dön'), findsNothing);
+    expect(find.byTooltip('Küçült / Haftaya Dön'), findsOneWidget);
     expect(find.byType(AppleDayCalendarPanel), findsOneWidget);
     expect(find.text('tam gün'), findsOneWidget);
 
@@ -98,11 +99,11 @@ void main() {
     );
 
     // Tap shrink button to return card back to sidebar and verify event preview synced
-    await tester.tap(find.text('Küçült / Haftaya Dön'));
+    await tester.tap(find.byTooltip('Küçült / Haftaya Dön'));
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 700));
 
-    expect(find.text('Küçült / Haftaya Dön'), findsNothing);
+    expect(find.byTooltip('Küçült / Haftaya Dön'), findsNothing);
     expect(find.text('Pazartesi'), findsOneWidget);
     expect(
       find.descendant(
@@ -3005,7 +3006,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 120));
     await tester.pumpAndSettle();
-    expect(find.text('Küçült / Haftaya Dön'), findsOneWidget);
+    expect(find.byTooltip('Küçült / Haftaya Dön'), findsOneWidget);
 
     for (var i = 0; i < 6; i++) {
       await tester.tap(find.byTooltip('Sonraki Gün (Alt + →)'));
@@ -3021,9 +3022,9 @@ void main() {
     );
 
     // Close back -> should scroll sidebar to Pazar slot and complete spring smoothly
-    await tester.tap(find.text('Küçült / Haftaya Dön'));
+    await tester.tap(find.byTooltip('Küçült / Haftaya Dön'));
     await tester.pumpAndSettle();
-    expect(find.text('Küçült / Haftaya Dön'), findsNothing);
+    expect(find.byTooltip('Küçült / Haftaya Dön'), findsNothing);
     expect(find.text('Pazar'), findsOneWidget);
     expect(find.text('Cumartesi'), findsOneWidget);
   });
@@ -3071,11 +3072,21 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     await tester.pumpAndSettle();
 
-    expect(find.text('Küçült / Haftaya Dön'), findsOneWidget);
+    expect(find.text('Küçült / Haftaya Dön'), findsNothing);
+    expect(find.byTooltip('Küçült / Haftaya Dön'), findsOneWidget);
     final expandedToolbar = find.byWidgetPredicate(
       (w) => w is PlannerToolbar && w.embedded,
     );
     expect(expandedToolbar, findsOneWidget);
+
+    // Header divider between day selector and map button aligns cleanly with AppleDayCalendarPanel edge
+    expect(
+      tester.getTopLeft(expandedToolbar).dx - 14.0,
+      moreOrLessEquals(
+        tester.getTopRight(find.byType(AppleDayCalendarPanel)).dx,
+        epsilon: 0.5,
+      ),
+    );
 
     final expandedMinimapBtn = find.descendant(
       of: expandedToolbar,

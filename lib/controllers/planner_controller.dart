@@ -3419,6 +3419,7 @@ class PlannerController extends ChangeNotifier {
 
       if (_enableScribbleToErase &&
           !_selectedTool.isShape &&
+          _selectedTool != DrawingTool.tape &&
           (_strokes.isNotEmpty || _canvasTexts.isNotEmpty)) {
         if (_checkAndApplyScribbleToErase(_activeStroke!)) {
           _activeStroke = null;
@@ -6051,6 +6052,29 @@ class PlannerController extends ChangeNotifier {
     if (_activeStroke == null || _isDrawAndHoldActive) return;
     if (_activeStroke!.points.length < 6) return;
 
+    if (_activeStroke!.tool == DrawingTool.tape) {
+      try {
+        HapticFeedback.mediumImpact();
+      } catch (_) {}
+
+      final start = _activeStroke!.points.first;
+      final currentEnd = _activeStroke!.points.last;
+      final straightEnd = ShapeRecognitionService.snapAngle(start, currentEnd);
+      _isDrawAndHoldActive = true;
+      _activeRecognizedShape = RecognizedShape(
+        tool: DrawingTool.tape,
+        points: [start, straightEnd],
+        bounds: Rect.fromPoints(start, straightEnd),
+      );
+      _activeStroke = _activeStroke!.copyWith(
+        tool: DrawingTool.tape,
+        points: [start, straightEnd],
+      );
+      activeStrokeTick.value++;
+      notifyListeners();
+      return;
+    }
+
     final recognized = ShapeRecognitionService.recognize(_activeStroke!.points);
     if (recognized != null) {
       try {
@@ -6073,7 +6097,7 @@ class PlannerController extends ChangeNotifier {
     final tool = _activeRecognizedShape!.tool;
     final initialPoints = _activeRecognizedShape!.points;
 
-    if (tool == DrawingTool.line || tool == DrawingTool.arrow) {
+    if (tool == DrawingTool.tape || tool == DrawingTool.line || tool == DrawingTool.arrow) {
       final start = initialPoints.first;
       final snapped = ShapeRecognitionService.snapAngle(start, point);
       _activeStroke = _activeStroke!.copyWith(

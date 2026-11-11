@@ -1910,6 +1910,35 @@ void main() {
     expect(controller.strokes[1].isTapeRevealed, isFalse);
     expect(controller.areAllTapesRevealed, isFalse);
 
+    // 11. Test Draw-and-Hold on Tape Tool: should straighten as tape, NOT turn into line/shapes
+    controller.clearCanvas();
+    controller.setTool(DrawingTool.tape);
+    controller.startStroke(const Offset(100, 400));
+    for (int i = 1; i <= 8; i++) {
+      // Slightly wavy horizontal path
+      controller.updateStroke(Offset(100.0 + i * 25.0, 400.0 + (i % 2 == 0 ? 3.0 : -3.0)));
+    }
+    controller.triggerDrawAndHoldForTesting();
+    expect(controller.isDrawAndHoldActive, isTrue);
+    expect(controller.activeStroke, isNotNull);
+    expect(controller.activeStroke!.tool, DrawingTool.tape); // Remains tape, NOT line!
+    expect(controller.activeStroke!.points.length, 2); // Straightened!
+    // Drag while holding to verify tape geometry update snaps smoothly
+    controller.updateStroke(const Offset(350, 402));
+    expect(controller.activeStroke!.points.length, 2);
+    expect(controller.activeStroke!.points.last.dy, closeTo(400.0, 0.01)); // Snapped horizontal!
+    controller.endStroke();
+
+    expect(controller.strokes.length, 1);
+    expect(controller.strokes.first.tool, DrawingTool.tape);
+    expect(controller.strokes.first.points.length, 2);
+    expect(controller.strokes.first.isTapeRevealed, isFalse);
+
+    // Tapping on the straightened tape still toggles reveal state
+    controller.startStroke(const Offset(200, 400));
+    controller.endStroke();
+    expect(controller.strokes.first.isTapeRevealed, isTrue);
+
     await tester.pump(const Duration(milliseconds: 1000));
   });
 

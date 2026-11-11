@@ -141,7 +141,17 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Kurşun Kalem uses the custom PNG icon asset
+    // Tükenmez Kalem and Kurşun Kalem use the custom PNG icon assets
+    final penImage = tester.widget<Image>(
+      find.descendant(
+        of: find.byTooltip('Tükenmez Kalem'),
+        matching: find.byType(Image),
+      ),
+    );
+    expect(
+      (penImage.image as AssetImage).assetName,
+      'assets/icons/pen.png',
+    );
     final pencilImage = tester.widget<Image>(
       find.descendant(
         of: find.byTooltip('Kurşun Kalem'),

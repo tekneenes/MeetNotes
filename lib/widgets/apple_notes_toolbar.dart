@@ -546,15 +546,21 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
     );
   }
 
+  static const Map<DrawingTool, String> _customToolAssetPaths = {
+    DrawingTool.pen: 'assets/icons/pen.png',
+    DrawingTool.pencil: 'assets/icons/pencil.png',
+  };
+
   Widget _buildToolGlyph(
     DrawingTool tool, {
     required double size,
     required Color color,
     IconData? overrideIcon,
   }) {
-    if (overrideIcon == null && tool == DrawingTool.pencil) {
+    final assetPath = overrideIcon == null ? _customToolAssetPaths[tool] : null;
+    if (assetPath != null) {
       return Image.asset(
-        'assets/icons/pencil.png',
+        assetPath,
         width: size,
         height: size,
         fit: BoxFit.contain,

@@ -555,6 +555,7 @@ class _AppleNotesFloatingToolbarState extends State<AppleNotesFloatingToolbar>
     DrawingTool.watercolor: 'assets/icons/watercolor.png',
     DrawingTool.crayon: 'assets/icons/crayon.png',
     DrawingTool.tape: 'assets/icons/tape.png',
+    DrawingTool.eraser: 'assets/icons/eraser.png',
   };
 
   Widget _buildToolGlyph(

@@ -141,8 +141,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Pen tools with custom PNG icon assets
-    const expectedCustomIcons = <String, String>{
+    // Drawing tools with custom PNG icon assets
+    final expectedCustomIcons = <String, String>{
       'Tükenmez Kalem': 'assets/icons/pen.png',
       'Dolma Kalem': 'assets/icons/fountain.png',
       'Monoline Kalem': 'assets/icons/monoline.png',
@@ -151,6 +151,7 @@ void main() {
       'Sulu Boya': 'assets/icons/watercolor.png',
       'Pastel Boya': 'assets/icons/crayon.png',
       'Ezber Bandı': 'assets/icons/tape.png',
+      'Silgi (${controller.eraserType.label})': 'assets/icons/eraser.png',
     };
     for (final entry in expectedCustomIcons.entries) {
       final toolImage = tester.widget<Image>(

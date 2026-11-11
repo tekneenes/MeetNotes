@@ -243,11 +243,48 @@ class DayCardSurface extends StatelessWidget {
     this.enableHeaderBlur = true,
   });
 
+  ({DayCalendarEvent event, bool isOngoing})? _resolveUpcomingEvent(
+    DateTime dayDate,
+    List<DayCalendarEvent> events,
+    DateTime now,
+  ) {
+    if (events.isEmpty) return null;
+    final dayOnly = DateTime(dayDate.year, dayDate.month, dayDate.day);
+    final todayOnly = DateTime(now.year, now.month, now.day);
+    if (dayOnly.isBefore(todayOnly)) return null;
+
+    final timed = events.where((e) => !e.isAllDay).toList()
+      ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
+    final allDay = events.where((e) => e.isAllDay).toList();
+
+    if (dayOnly == todayOnly) {
+      final nowMinutes = now.hour * 60 + now.minute;
+      for (final ev in timed) {
+        if (ev.endMinutes > nowMinutes) {
+          return (event: ev, isOngoing: ev.startMinutes <= nowMinutes);
+        }
+      }
+      if (allDay.isNotEmpty) {
+        return (event: allDay.first, isOngoing: true);
+      }
+      return null;
+    }
+
+    if (timed.isNotEmpty) {
+      return (event: timed.first, isOngoing: false);
+    }
+    if (allDay.isNotEmpty) {
+      return (event: allDay.first, isOngoing: false);
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasText = day.text.trim().isNotEmpty;
     final hasDrawing = previewStrokes.isNotEmpty;
     final cardBg = isToday ? const Color(0xFFF8FBFF) : Colors.white;
+    final upcoming = _resolveUpcomingEvent(day.date, events, DateTime.now());
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
@@ -276,219 +313,355 @@ class DayCardSurface extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(13),
         child: SizedBox(
-          height: 158,
+          height: 172,
           width: double.infinity,
-          child: Stack(
+          child: Column(
             children: [
-              // Borderless Mini Apple Calendar Hourly Grid flowing freely across the card
-              Positioned.fill(
-                child: _MiniAppleTimelinePreview(
-                  isToday: isToday,
-                  events: events,
-                ),
-              ),
-
-              // Miniature Drawing Preview if user drew on this day
-              if (hasDrawing)
-                Positioned(
-                  top: 38,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: IgnorePointer(
-                    child: CustomPaint(
-                      painter: DrawingCanvasPainter(
-                        strokes: previewStrokes,
-                        scale: 0.18,
-                        panOffset: const Offset(10, 4),
+              Expanded(
+                child: Stack(
+                  children: [
+                    // Borderless Mini Apple Calendar Hourly Grid flowing freely across the card
+                    Positioned.fill(
+                      child: _MiniAppleTimelinePreview(
+                        isToday: isToday,
+                        events: events,
                       ),
                     ),
-                  ),
-                ),
 
-              // Fallback text note overlay only if day has plain text and no events
-              if (events.isEmpty && hasText)
-                Positioned(
-                  top: 42,
-                  left: 50,
-                  right: 10,
-                  bottom: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.86),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      day.text,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        height: 1.35,
-                        color: Color(0xFF1E293B),
+                    // Miniature Drawing Preview if user drew on this day
+                    if (hasDrawing)
+                      Positioned(
+                        top: 38,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: IgnorePointer(
+                          child: CustomPaint(
+                            painter: DrawingCanvasPainter(
+                              strokes: previewStrokes,
+                              scale: 0.18,
+                              panOffset: const Offset(10, 4),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    // Fallback text note overlay only if day has plain text and no events
+                    if (events.isEmpty && hasText)
+                      Positioned(
+                        top: 40,
+                        left: 50,
+                        right: 10,
+                        bottom: 6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.86),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            day.text,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              height: 1.35,
+                              color: Color(0xFF1E293B),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    // Frosted blur behind header smoothly dissolving into full transparency
+                    if (enableHeaderBlur)
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        height: 28,
+                        child: ClipRect(
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
+                            child: const SizedBox.expand(),
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: 44,
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                cardBg.withValues(alpha: 0.94),
+                                cardBg.withValues(alpha: 0.80),
+                                cardBg.withValues(alpha: 0.32),
+                                cardBg.withValues(alpha: 0.0),
+                              ],
+                              stops: const [0.0, 0.45, 0.78, 1.0],
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
 
-              // Frosted blur behind header smoothly dissolving into full transparency
-              if (enableHeaderBlur) ...[
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 26,
-                  child: ClipRect(
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 6.0, sigmaY: 6.0),
-                      child: const SizedBox.expand(),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 26,
-                  left: 0,
-                  right: 0,
-                  height: 10,
-                  child: ClipRect(
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 2.5, sigmaY: 2.5),
-                      child: const SizedBox.expand(),
-                    ),
-                  ),
-                ),
-              ],
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: 44,
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          cardBg.withValues(alpha: 0.90),
-                          cardBg.withValues(alpha: 0.72),
-                          cardBg.withValues(alpha: 0.24),
-                          cardBg.withValues(alpha: 0.0),
-                        ],
-                        stops: const [0.0, 0.42, 0.76, 1.0],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-              // Day Title Bar floating cleanly over the frosted-to-transparent backdrop
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                  child: Row(
-                    children: [
-                      Expanded(
+                    // Day Title Bar floating cleanly over the frosted-to-transparent backdrop
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
                         child: Row(
                           children: [
-                            Flexible(
-                              child: Text(
-                                day.dayName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: isToday
-                                      ? const Color(0xFF1D4ED8)
-                                      : const Color(0xFF1E293B),
-                                ),
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      day.dayName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: isToday
+                                            ? const Color(0xFF1D4ED8)
+                                            : const Color(0xFF1E293B),
+                                      ),
+                                    ),
+                                  ),
+                                  if (isToday) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFDBEAFE),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Text(
+                                        'Bugün',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF1D4ED8),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
-                            if (isToday) ...[
-                              const SizedBox(width: 6),
+                            if (events.length > 1) ...[
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
+                                  horizontal: 5,
+                                  vertical: 1.5,
                                 ),
+                                margin: const EdgeInsets.only(right: 5),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFDBEAFE),
-                                  borderRadius: BorderRadius.circular(4),
+                                  color: const Color(0xFFE0F2FE),
+                                  borderRadius: BorderRadius.circular(5),
                                 ),
-                                child: const Text(
-                                  'Bugün',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1D4ED8),
+                                child: Text(
+                                  '${events.length}',
+                                  style: const TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF0284C7),
                                   ),
                                 ),
                               ),
                             ],
+                            if (hasDrawing) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                  vertical: 2,
+                                ),
+                                margin: const EdgeInsets.only(right: 6),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEFF6FF),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Icon(
+                                  Icons.draw_rounded,
+                                  size: 11,
+                                  color: Color(0xFF2563EB),
+                                ),
+                              ),
+                            ],
+                            Text(
+                              DateFormat('d MMM', 'tr_TR').format(day.date),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                      if (events.length > 1) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 1.5,
-                          ),
-                          margin: const EdgeInsets.only(right: 5),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE0F2FE),
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          child: Text(
-                            '${events.length}',
-                            style: const TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF0284C7),
-                            ),
-                          ),
-                        ),
-                      ],
-                      if (hasDrawing) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 2,
-                          ),
-                          margin: const EdgeInsets.only(right: 6),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEFF6FF),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Icon(
-                            Icons.draw_rounded,
-                            size: 11,
-                            color: Color(0xFF2563EB),
-                          ),
-                        ),
-                      ],
-                      Text(
-                        DateFormat('d MMM', 'tr_TR').format(day.date),
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // Dedicated single-event upcoming slot at the bottom of the card
+              _buildUpcomingFooter(upcoming, isToday),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUpcomingFooter(
+    ({DayCalendarEvent event, bool isOngoing})? upcoming,
+    bool isToday,
+  ) {
+    final footerBg =
+        isToday ? const Color(0xFFF3F7FF) : const Color(0xFFFAFAFC);
+
+    if (upcoming == null) {
+      return Container(
+        height: 38,
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+        decoration: BoxDecoration(
+          color: footerBg,
+          border: Border(
+            top: BorderSide(
+              color: Colors.black.withValues(alpha: 0.055),
+              width: 0.7,
+            ),
+          ),
+        ),
+        child: Container(
+          height: 28,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.025),
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.event_available_rounded,
+                size: 12,
+                color: Colors.grey.shade400,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Yaklaşan etkinlik yok',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey.shade500,
                   ),
                 ),
               ),
             ],
           ),
+        ),
+      );
+    }
+
+    final ev = upcoming.event;
+    final baseColor = Color(ev.colorValue);
+    final accentColor = HSLColor.fromColor(baseColor)
+        .withLightness(
+          (HSLColor.fromColor(baseColor).lightness - 0.14).clamp(0.0, 1.0),
+        )
+        .toColor();
+    final timeLabel = ev.isAllDay
+        ? 'Tam gün'
+        : '${DayCalendarEvent.formatMinutes(ev.startMinutes)}–${DayCalendarEvent.formatMinutes(ev.endMinutes)}';
+    final statusLabel = upcoming.isOngoing ? 'Şimdi' : 'Yaklaşan';
+
+    return Container(
+      height: 38,
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+      decoration: BoxDecoration(
+        color: footerBg,
+        border: Border(
+          top: BorderSide(
+            color: Colors.black.withValues(alpha: 0.055),
+            width: 0.7,
+          ),
+        ),
+      ),
+      child: Container(
+        height: 28,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: baseColor.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(7),
+        ),
+        child: Row(
+          children: [
+            Container(width: 3, height: double.infinity, color: baseColor),
+            const SizedBox(width: 7),
+            Text(
+              statusLabel,
+              style: TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w700,
+                color: accentColor,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                '·',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: accentColor.withValues(alpha: 0.65),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                ev.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Text(
+                timeLabel,
+                style: TextStyle(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w600,
+                  color: accentColor,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -514,32 +687,22 @@ class _MiniAppleTimelinePreview extends StatelessWidget {
     final timedEvents = events.where((e) => !e.isAllDay).toList()
       ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
     final hasAllDay = allDayEvents.isNotEmpty;
-    final topPad = hasAllDay ? 58.0 : 44.0;
-    final hourHeight = hasAllDay ? 29.0 : 32.0;
+    final topPad = hasAllDay ? 54.0 : 40.0;
+    final hourHeight = hasAllDay ? 26.5 : 29.5;
 
-    // Focus 4-hour window on upcoming/ongoing event for Today,
-    // or earliest scheduled event for other days, else 09:00..12:00 (or current hour if Today).
+    // On Today, anchor around current time (now.hour - 1) so live time stays visible;
+    // on other days, focus on first scheduled event or default 09:00..11:30 window.
     int focusHour;
-    if (timedEvents.isNotEmpty) {
-      DayCalendarEvent anchor = timedEvents.first;
-      if (isToday) {
-        for (final ev in timedEvents) {
-          if (ev.endMinutes > nowMinutes) {
-            anchor = ev;
-            break;
-          }
-        }
-        if (anchor.endMinutes <= nowMinutes) {
-          anchor = timedEvents.last;
-        }
-      }
-      focusHour = (anchor.startMinutes ~/ 60).clamp(0, 20);
+    if (isToday) {
+      focusHour = (now.hour - 1).clamp(0, 21);
+    } else if (timedEvents.isNotEmpty) {
+      focusHour = (timedEvents.first.startMinutes ~/ 60).clamp(0, 21);
     } else {
-      focusHour = isToday ? now.hour.clamp(0, 20) : 9;
+      focusHour = 9;
     }
 
     final windowStartMinutes = focusHour * 60;
-    final windowEndMinutes = windowStartMinutes + 210;
+    final windowEndMinutes = windowStartMinutes + 150;
     final visibleTimedEvents = timedEvents
         .where(
           (e) =>
@@ -571,8 +734,8 @@ class _MiniAppleTimelinePreview extends StatelessWidget {
           ),
         ),
 
-        // 4 hour lines + labels (e.g. 13:00, 14:00, 15:00, 16:00) running freely edge-to-edge
-        for (int i = 0; i <= 3; i++)
+        // 3 hour lines + labels (e.g. 20:00, 21:00, 22:00) running freely edge-to-edge
+        for (int i = 0; i <= 2; i++)
           Positioned(
             top: topPad + i * hourHeight - 5.5,
             left: 0,
@@ -607,7 +770,7 @@ class _MiniAppleTimelinePreview extends StatelessWidget {
           ),
 
         // Half-hour subtle lines
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 2; i++)
           Positioned(
             top: topPad + (i + 0.5) * hourHeight,
             left: _gutterWidth,

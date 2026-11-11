@@ -276,7 +276,7 @@ class DayCardSurface extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(13),
         child: SizedBox(
-          height: 120,
+          height: 158,
           width: double.infinity,
           child: Stack(
             children: [
@@ -514,11 +514,11 @@ class _MiniAppleTimelinePreview extends StatelessWidget {
     final timedEvents = events.where((e) => !e.isAllDay).toList()
       ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
     final hasAllDay = allDayEvents.isNotEmpty;
-    final topPad = hasAllDay ? 56.0 : 42.0;
-    final hourHeight = hasAllDay ? 27.0 : 29.0;
+    final topPad = hasAllDay ? 58.0 : 44.0;
+    final hourHeight = hasAllDay ? 29.0 : 32.0;
 
-    // Focus 3-hour window on upcoming/ongoing event for Today,
-    // or earliest scheduled event for other days, else 09:00..11:00 (or current hour if Today).
+    // Focus 4-hour window on upcoming/ongoing event for Today,
+    // or earliest scheduled event for other days, else 09:00..12:00 (or current hour if Today).
     int focusHour;
     if (timedEvents.isNotEmpty) {
       DayCalendarEvent anchor = timedEvents.first;
@@ -533,13 +533,13 @@ class _MiniAppleTimelinePreview extends StatelessWidget {
           anchor = timedEvents.last;
         }
       }
-      focusHour = (anchor.startMinutes ~/ 60).clamp(0, 21);
+      focusHour = (anchor.startMinutes ~/ 60).clamp(0, 20);
     } else {
-      focusHour = isToday ? now.hour.clamp(0, 21) : 9;
+      focusHour = isToday ? now.hour.clamp(0, 20) : 9;
     }
 
     final windowStartMinutes = focusHour * 60;
-    final windowEndMinutes = windowStartMinutes + 150;
+    final windowEndMinutes = windowStartMinutes + 210;
     final visibleTimedEvents = timedEvents
         .where(
           (e) =>
@@ -571,8 +571,8 @@ class _MiniAppleTimelinePreview extends StatelessWidget {
           ),
         ),
 
-        // 3 hour lines + labels (e.g. 15:00, 16:00, 17:00) running freely edge-to-edge
-        for (int i = 0; i <= 2; i++)
+        // 4 hour lines + labels (e.g. 13:00, 14:00, 15:00, 16:00) running freely edge-to-edge
+        for (int i = 0; i <= 3; i++)
           Positioned(
             top: topPad + i * hourHeight - 5.5,
             left: 0,
@@ -607,7 +607,7 @@ class _MiniAppleTimelinePreview extends StatelessWidget {
           ),
 
         // Half-hour subtle lines
-        for (int i = 0; i < 2; i++)
+        for (int i = 0; i < 3; i++)
           Positioned(
             top: topPad + (i + 0.5) * hourHeight,
             left: _gutterWidth,

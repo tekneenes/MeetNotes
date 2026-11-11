@@ -89,6 +89,15 @@ class PlannerController extends ChangeNotifier {
   Map<String, CanvasPaperRegion> _initialResizePaperRegions = {};
   Rect? _initialDragAreaSelectionRect;
   Rect? _canvasVisibleRect;
+  final ValueNotifier<Rect?> liveCanvasVisibleRectListenable =
+      ValueNotifier<Rect?>(null);
+  final ValueNotifier<({int id, Offset targetCenter})?>
+      canvasPanRequestListenable =
+      ValueNotifier<({int id, Offset targetCenter})?>(null);
+  int _panRequestSeq = 0;
+  bool _liveRectUpdateScheduled = false;
+  bool _isDisposed = false;
+  bool _isMinimapOpen = false;
   int? _lastDragTimestamp;
   Offset? _lastDragPoint;
   double _currentDragVelocity = 0.0;
@@ -340,8 +349,60 @@ class PlannerController extends ChangeNotifier {
   bool get enableSmartSnapping => _enableSmartSnapping;
   List<SmartAlignmentGuide> get activeSmartGuides => List.unmodifiable(_activeSmartGuides);
   Rect? get canvasVisibleRect => _canvasVisibleRect;
+  bool get isMinimapOpen => _isMinimapOpen;
+
+  void toggleMinimap() {
+    _isMinimapOpen = !_isMinimapOpen;
+    notifyListeners();
+  }
+
+  void setMinimapOpen(bool value) {
+    if (_isMinimapOpen != value) {
+      _isMinimapOpen = value;
+      notifyListeners();
+    }
+  }
+
+  bool _rectsClose(Rect? a, Rect b) {
+    if (a == null) return false;
+    return (a.left - b.left).abs() < 0.5 &&
+        (a.top - b.top).abs() < 0.5 &&
+        (a.width - b.width).abs() < 0.5 &&
+        (a.height - b.height).abs() < 0.5;
+  }
+
   void setCanvasVisibleRect(Rect rect) {
     _canvasVisibleRect = rect;
+    if (!_rectsClose(liveCanvasVisibleRectListenable.value, rect) &&
+        !_liveRectUpdateScheduled) {
+      _liveRectUpdateScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _liveRectUpdateScheduled = false;
+        if (_isDisposed) return;
+        if (!_rectsClose(
+          liveCanvasVisibleRectListenable.value,
+          _canvasVisibleRect!,
+        )) {
+          liveCanvasVisibleRectListenable.value = _canvasVisibleRect;
+        }
+      });
+    }
+  }
+
+  void updateLiveVisibleRect(Rect rect) {
+    _canvasVisibleRect = rect;
+    if (!_isDisposed && !_rectsClose(liveCanvasVisibleRectListenable.value, rect)) {
+      liveCanvasVisibleRectListenable.value = rect;
+    }
+  }
+
+  void requestPanToCanvasCenter(Offset targetCenter) {
+    if (_isDisposed) return;
+    _panRequestSeq++;
+    canvasPanRequestListenable.value = (
+      id: _panRequestSeq,
+      targetCenter: targetCenter,
+    );
   }
   void setEnableSmartSnapping(bool value) {
     if (_enableSmartSnapping != value) {
@@ -6976,8 +7037,11 @@ class PlannerController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _drawAndHoldTimer?.cancel();
     _drawAndHoldTimer = null;
+    liveCanvasVisibleRectListenable.dispose();
+    canvasPanRequestListenable.dispose();
     super.dispose();
   }
 }

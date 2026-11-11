@@ -5,12 +5,16 @@ class PlannerToolbar extends StatelessWidget {
   final PlannerController controller;
   final VoidCallback? onToggleQuickAccess;
   final bool isQuickAccessOpen;
+  final VoidCallback? onToggleMinimap;
+  final bool isMinimapOpen;
 
   const PlannerToolbar({
     super.key,
     required this.controller,
     this.onToggleQuickAccess,
     this.isQuickAccessOpen = false,
+    this.onToggleMinimap,
+    this.isMinimapOpen = false,
   });
 
   @override
@@ -30,10 +34,44 @@ class PlannerToolbar extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Sol Kısım: Zoom (%100, -, +)
+          // Sol Kısım: Tuval Haritası (Minimap) + Zoom (%100, -, +)
           Align(
             alignment: Alignment.centerLeft,
-            child: _buildZoomPill(context),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: isMinimapOpen
+                      ? 'Tuval Haritasını Kapat'
+                      : 'Tuval Haritası (Minimap)',
+                  constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                  padding: EdgeInsets.zero,
+                  style: IconButton.styleFrom(
+                    backgroundColor: isMinimapOpen
+                        ? const Color(0xFF007AFF).withValues(alpha: 0.12)
+                        : Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      side: BorderSide(
+                        color: isMinimapOpen
+                            ? const Color(0xFF007AFF).withValues(alpha: 0.45)
+                            : Colors.black.withValues(alpha: 0.08),
+                      ),
+                    ),
+                  ),
+                  icon: Icon(
+                    isMinimapOpen ? Icons.map_rounded : Icons.map_outlined,
+                    size: 18,
+                    color: isMinimapOpen
+                        ? const Color(0xFF007AFF)
+                        : const Color(0xFF1E293B),
+                  ),
+                  onPressed: onToggleMinimap,
+                ),
+                const SizedBox(width: 8),
+                _buildZoomPill(context),
+              ],
+            ),
           ),
 
           // Orta Kısım: Sayfa Geçiş Hapı (Her zaman tam ortalanmış)

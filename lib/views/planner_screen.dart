@@ -10,6 +10,7 @@ import '../controllers/planner_controller.dart';
 import '../models/planner_models.dart';
 import '../services/pdf_service.dart';
 import '../widgets/apple_day_calendar_panel.dart';
+import '../widgets/canvas_minimap.dart';
 import '../widgets/days_sidebar.dart';
 import '../widgets/drawing_workspace.dart';
 import '../widgets/planner_toolbar.dart';
@@ -404,14 +405,45 @@ class _PlannerScreenState extends State<PlannerScreen>
                                   controller: _controller,
                                   isQuickAccessOpen: _controller.isQuickAccessOpen,
                                   onToggleQuickAccess: _controller.toggleQuickAccess,
+                                  isMinimapOpen: _controller.isMinimapOpen,
+                                  onToggleMinimap: _controller.toggleMinimap,
                                 ),
 
-                                // 1b. Squared Grid / Lined / Dotted Drawing Workspace + Hızlı Erişim Paneli
+                                // 1b. Squared Grid / Lined / Dotted Drawing Workspace + Minimap + Hızlı Erişim Paneli
                                 Expanded(
                                   child: Stack(
                                     children: [
                                       Positioned.fill(
                                         child: DrawingWorkspace(controller: _controller),
+                                      ),
+
+                                      // Sol Üstte Tuşla Açılıp Kapanan Yüzen Oyun-Tarzı Tuval Haritası (Minimap)
+                                      Positioned(
+                                        top: 10,
+                                        left: 12,
+                                        child: IgnorePointer(
+                                          ignoring: !_controller.isMinimapOpen,
+                                          child: AnimatedOpacity(
+                                            opacity:
+                                                _controller.isMinimapOpen ? 1.0 : 0.0,
+                                            duration:
+                                                const Duration(milliseconds: 170),
+                                            curve: Curves.easeOutCubic,
+                                            child: AnimatedScale(
+                                              scale:
+                                                  _controller.isMinimapOpen ? 1.0 : 0.92,
+                                              alignment: Alignment.topLeft,
+                                              duration:
+                                                  const Duration(milliseconds: 190),
+                                              curve: Curves.easeOutCubic,
+                                              child: _controller.isMinimapOpen
+                                                  ? CanvasMinimapOverlay(
+                                                      controller: _controller,
+                                                    )
+                                                  : const SizedBox.shrink(),
+                                            ),
+                                          ),
+                                        ),
                                       ),
 
                                       // Üst Barın Altında Sağdan Açılan Hızlı Erişim Çekmecesi (Üst Barı Etkilemez)

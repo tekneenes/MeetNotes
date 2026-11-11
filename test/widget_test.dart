@@ -13,6 +13,7 @@ import 'package:meet_notes/widgets/compact_lasso_picker_dialog.dart';
 import 'package:meet_notes/widgets/compact_shapes_picker.dart';
 import 'package:meet_notes/widgets/apple_day_calendar_panel.dart';
 import 'package:meet_notes/widgets/apple_notes_toolbar.dart';
+import 'package:meet_notes/widgets/canvas_minimap.dart';
 import 'package:meet_notes/widgets/days_sidebar.dart';
 import 'package:meet_notes/widgets/drawing_workspace.dart';
 import 'package:meet_notes/widgets/paper_settings_dialog.dart';
@@ -3024,5 +3025,42 @@ void main() {
     expect(find.text('Küçült / Haftaya Dön'), findsNothing);
     expect(find.text('Pazar'), findsOneWidget);
     expect(find.text('Cumartesi'), findsOneWidget);
+  });
+
+  testWidgets('PlannerToolbar minimap toggle opens floating CanvasMinimapOverlay and pans on tap', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    PlannerStorageService.resetForTest();
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(const MeetNotesApp());
+    await tester.pumpAndSettle();
+
+    final minimapOpenBtn = find.byTooltip('Tuval Haritası (Minimap)');
+    expect(minimapOpenBtn, findsOneWidget);
+    expect(find.byType(CanvasMinimapOverlay), findsNothing);
+
+    await tester.tap(minimapOpenBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CanvasMinimapOverlay), findsOneWidget);
+    expect(find.text('Tuval Haritası'), findsOneWidget);
+    expect(find.byTooltip('Başlangıca Dön'), findsOneWidget);
+
+    // Tap inside the minimap surface to jump viewport and tap return-to-origin
+    final minimapRect = tester.getRect(find.byType(CanvasMinimapOverlay));
+    await tester.tapAt(Offset(minimapRect.right - 24, minimapRect.bottom - 38));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Başlangıca Dön'));
+    await tester.pumpAndSettle();
+
+    // Toggle closed using toolbar button
+    await tester.tap(find.byTooltip('Tuval Haritasını Kapat'));
+    await tester.pumpAndSettle();
+    expect(find.byType(CanvasMinimapOverlay), findsNothing);
   });
 }

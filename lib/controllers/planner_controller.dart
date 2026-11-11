@@ -1258,19 +1258,22 @@ class PlannerController extends ChangeNotifier {
     _selectionRotationAngle = commonRotation ?? 0.0;
   }
 
-  bool _isPointCoveredByMasks(Offset pt, List<EraserMask> masks) {
+  bool _isPointCoveredByMasks(Offset pt, List<EraserMask> masks, {double strokeWidth = 0.0}) {
     if (masks.isEmpty) return false;
     for (final mask in masks) {
       if (mask.points.isEmpty) continue;
       final maskRadius = mask.strokeWidth / 2.0;
+      final threshold = strokeWidth > 8.0
+          ? math.max(2.5, maskRadius - strokeWidth * 0.2)
+          : maskRadius;
       if (mask.points.length == 1) {
-        if ((pt - mask.points.first).distance <= maskRadius) {
+        if ((pt - mask.points.first).distance <= threshold) {
           return true;
         }
         continue;
       }
       for (int i = 0; i < mask.points.length - 1; i++) {
-        if (_distanceToSegment(pt, mask.points[i], mask.points[i + 1]) <= maskRadius) {
+        if (_distanceToSegment(pt, mask.points[i], mask.points[i + 1]) <= threshold) {
           return true;
         }
       }
@@ -1294,7 +1297,13 @@ class PlannerController extends ChangeNotifier {
         final stroke = _strokes[index];
         final hasMasks = stroke.eraserMasks.isNotEmpty;
         final visiblePoints = hasMasks
-            ? stroke.points.where((p) => !_isPointCoveredByMasks(p, stroke.eraserMasks)).toList()
+            ? stroke.points
+                .where((p) => !_isPointCoveredByMasks(
+                      p,
+                      stroke.eraserMasks,
+                      strokeWidth: stroke.strokeWidth,
+                    ))
+                .toList()
             : stroke.points;
         final pointsToUse = visiblePoints.isNotEmpty ? visiblePoints : stroke.points;
 
@@ -1429,7 +1438,17 @@ class PlannerController extends ChangeNotifier {
             _activeAreaSelectionRect != null)) {
       return raw;
     }
-    return raw.inflate(8.0);
+
+    double maxStrokeHalfWidth = 0.0;
+    for (final idx in _selectedStrokeIndices) {
+      if (idx >= 0 && idx < _strokes.length) {
+        final hw = _strokes[idx].strokeWidth / 2.0;
+        if (hw > maxStrokeHalfWidth) maxStrokeHalfWidth = hw;
+      }
+    }
+
+    final padding = math.max(8.0, maxStrokeHalfWidth + 4.0);
+    return raw.inflate(padding);
   }
 
   List<PlannerTaskItem> get tasks => List.unmodifiable(_tasks);
@@ -3934,7 +3953,13 @@ class PlannerController extends ChangeNotifier {
       // 1. Check if any visible stroke vertex or segment midpoint is inside the lasso polygon
       final hasMasks = stroke.eraserMasks.isNotEmpty;
       final visiblePoints = hasMasks
-          ? stroke.points.where((p) => !_isPointCoveredByMasks(p, stroke.eraserMasks)).toList()
+          ? stroke.points
+              .where((p) => !_isPointCoveredByMasks(
+                    p,
+                    stroke.eraserMasks,
+                    strokeWidth: stroke.strokeWidth,
+                  ))
+              .toList()
           : stroke.points;
 
       // If all vertices are covered by masks, the stroke is visually completely erased
@@ -3944,7 +3969,8 @@ class PlannerController extends ChangeNotifier {
 
       for (int j = 0; j < stroke.points.length; j++) {
         final p = stroke.points[j];
-        if (hasMasks && _isPointCoveredByMasks(p, stroke.eraserMasks)) {
+        if (hasMasks &&
+            _isPointCoveredByMasks(p, stroke.eraserMasks, strokeWidth: stroke.strokeWidth)) {
           continue; // Skip masked/erased points
         }
         if (lassoPath.contains(p)) {
@@ -3953,11 +3979,13 @@ class PlannerController extends ChangeNotifier {
         }
         if (j + 1 < stroke.points.length) {
           final pNext = stroke.points[j + 1];
-          if (hasMasks && _isPointCoveredByMasks(pNext, stroke.eraserMasks)) {
+          if (hasMasks &&
+              _isPointCoveredByMasks(pNext, stroke.eraserMasks, strokeWidth: stroke.strokeWidth)) {
             continue;
           }
           final mid = (p + pNext) / 2.0;
-          if (hasMasks && _isPointCoveredByMasks(mid, stroke.eraserMasks)) {
+          if (hasMasks &&
+              _isPointCoveredByMasks(mid, stroke.eraserMasks, strokeWidth: stroke.strokeWidth)) {
             continue;
           }
           if (lassoPath.contains(mid)) {

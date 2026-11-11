@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
@@ -6,7 +7,7 @@ import '../models/planner_models.dart';
 import '../controllers/planner_controller.dart';
 import '../painters/drawing_canvas_painter.dart';
 
-class DaysSidebar extends StatelessWidget {
+class DaysSidebar extends StatefulWidget {
   final PlannerController controller;
   final DateTime? activeExpandingDate;
   final Map<String, GlobalKey> cardKeys;
@@ -24,13 +25,67 @@ class DaysSidebar extends StatelessWidget {
 
   static String dateKey(DateTime d) => '${d.year}_${d.month}_${d.day}';
 
+  @override
+  State<DaysSidebar> createState() => _DaysSidebarState();
+}
+
+class _DaysSidebarState extends State<DaysSidebar> with WidgetsBindingObserver {
+  Timer? _minuteTimer;
+  late DateTime _now;
+
+  @override
+  void initState() {
+    super.initState();
+    _now = DateTime.now();
+    WidgetsBinding.instance.addObserver(this);
+    _scheduleNextMinuteTick();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      setState(() {
+        _now = DateTime.now();
+      });
+      _scheduleNextMinuteTick();
+    }
+  }
+
+  void _scheduleNextMinuteTick() {
+    _minuteTimer?.cancel();
+    final now = DateTime.now();
+    final nextMinute = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      now.hour,
+      now.minute + 1,
+    );
+    final delay =
+        nextMinute.difference(now) + const Duration(milliseconds: 50);
+    _minuteTimer = Timer(delay, () {
+      if (!mounted) return;
+      setState(() {
+        _now = DateTime.now();
+      });
+      _scheduleNextMinuteTick();
+    });
+  }
+
+  @override
+  void dispose() {
+    _minuteTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
   @override
   Widget build(BuildContext context) {
-    final days = controller.currentWeekDays;
-    final now = DateTime.now();
+    final days = widget.controller.currentWeekDays;
+    final now = _now;
 
     return Container(
       width: 280,
@@ -52,18 +107,19 @@ class DaysSidebar extends StatelessWidget {
           // Day Cards with Ruled Lines
           Expanded(
             child: ListView.separated(
-              controller: scrollController,
+              controller: widget.scrollController,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               itemCount: days.length,
               separatorBuilder: (_, __) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final day = days[index];
                 final isToday = _isSameDay(day.date, now);
-                final isExpandingThis = activeExpandingDate != null &&
-                    _isSameDay(day.date, activeExpandingDate!);
+                final isExpandingThis = widget.activeExpandingDate != null &&
+                    _isSameDay(day.date, widget.activeExpandingDate!);
 
-                final keyStr = dateKey(day.date);
-                final cardKey = cardKeys.putIfAbsent(keyStr, () => GlobalKey());
+                final keyStr = DaysSidebar.dateKey(day.date);
+                final cardKey =
+                    widget.cardKeys.putIfAbsent(keyStr, () => GlobalKey());
 
                 // Keep slot dimensions intact without post-close fade/scale hitch;
                 // the morphing overlay already occupies this exact rect until t == 0.
@@ -75,8 +131,9 @@ class DaysSidebar extends StatelessWidget {
                       key: cardKey,
                       day: day,
                       isToday: isToday,
-                      controller: controller,
-                      onTap: () => onDayExpand?.call(day, cardKey),
+                      now: now,
+                      controller: widget.controller,
+                      onTap: () => widget.onDayExpand?.call(day, cardKey),
                     ),
                   ),
                 );
@@ -93,7 +150,7 @@ class DaysSidebar extends StatelessWidget {
     List<DayScheduleItem> days,
     DateTime now,
   ) {
-    final start = controller.currentWeekStart;
+    final start = widget.controller.currentWeekStart;
     final end = start.add(const Duration(days: 6));
     final rangeFormatter = DateFormat('d MMM', 'tr_TR');
     final formattedRange = '${rangeFormatter.format(start)} – ${rangeFormatter.format(end)}';
@@ -144,21 +201,21 @@ class DaysSidebar extends StatelessWidget {
                   icon: const Icon(Icons.chevron_left_rounded, size: 17, color: Color(0xFF475569)),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                  onPressed: controller.previousWeek,
+                  onPressed: widget.controller.previousWeek,
                 ),
                 IconButton(
                   tooltip: 'Bugüne Git',
                   icon: const Icon(Icons.today_rounded, size: 16, color: Color(0xFF2563EB)),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                  onPressed: controller.goToToday,
+                  onPressed: widget.controller.goToToday,
                 ),
                 IconButton(
                   tooltip: 'Sonraki Hafta',
                   icon: const Icon(Icons.chevron_right_rounded, size: 17, color: Color(0xFF475569)),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                  onPressed: controller.nextWeek,
+                  onPressed: widget.controller.nextWeek,
                 ),
               ],
             ),
@@ -172,6 +229,7 @@ class DaysSidebar extends StatelessWidget {
 class _InteractiveDayCard extends StatefulWidget {
   final DayScheduleItem day;
   final bool isToday;
+  final DateTime now;
   final PlannerController controller;
   final VoidCallback onTap;
 
@@ -179,6 +237,7 @@ class _InteractiveDayCard extends StatefulWidget {
     super.key,
     required this.day,
     required this.isToday,
+    required this.now,
     required this.controller,
     required this.onTap,
   });
@@ -213,6 +272,7 @@ class _InteractiveDayCardState extends State<_InteractiveDayCard> {
           child: DayCardSurface(
             day: widget.day,
             isToday: widget.isToday,
+            now: widget.now,
             isHovered: _isHovered,
             previewStrokes: widget.controller.getDayPreviewStrokes(widget.day.date),
             events: widget.controller.getDayEvents(widget.day.date),
@@ -228,6 +288,7 @@ class _InteractiveDayCardState extends State<_InteractiveDayCard> {
 class DayCardSurface extends StatelessWidget {
   final DayScheduleItem day;
   final bool isToday;
+  final DateTime? now;
   final bool isHovered;
   final List<DrawingStroke> previewStrokes;
   final List<DayCalendarEvent> events;
@@ -237,6 +298,7 @@ class DayCardSurface extends StatelessWidget {
     super.key,
     required this.day,
     required this.isToday,
+    this.now,
     this.isHovered = false,
     this.previewStrokes = const [],
     this.events = const [],
@@ -281,10 +343,11 @@ class DayCardSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final currentTime = now ?? DateTime.now();
     final hasText = day.text.trim().isNotEmpty;
     final hasDrawing = previewStrokes.isNotEmpty;
     final cardBg = isToday ? const Color(0xFFF8FBFF) : Colors.white;
-    final upcoming = _resolveUpcomingEvent(day.date, events, DateTime.now());
+    final upcoming = _resolveUpcomingEvent(day.date, events, currentTime);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
@@ -324,6 +387,7 @@ class DayCardSurface extends StatelessWidget {
                     Positioned.fill(
                       child: _MiniAppleTimelinePreview(
                         isToday: isToday,
+                        now: currentTime,
                         events: events,
                       ),
                     ),
@@ -670,10 +734,12 @@ class DayCardSurface extends StatelessWidget {
 
 class _MiniAppleTimelinePreview extends StatelessWidget {
   final bool isToday;
+  final DateTime now;
   final List<DayCalendarEvent> events;
 
   const _MiniAppleTimelinePreview({
     required this.isToday,
+    required this.now,
     required this.events,
   });
 
@@ -681,7 +747,6 @@ class _MiniAppleTimelinePreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
     final nowMinutes = now.hour * 60 + now.minute;
     final allDayEvents = events.where((e) => e.isAllDay).toList();
     final timedEvents = events.where((e) => !e.isAllDay).toList()

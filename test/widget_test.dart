@@ -1764,9 +1764,10 @@ void main() {
     controller.updateStroke(const Offset(410, 100));
     controller.endStroke();
 
-    // Dead-end trimming should have removed all points covered at the tail (> 240)
+    // The stroke points remain intact to preserve stroke spline geometry, while the eraser mask is applied
     final survivingStroke = controller.strokes.first;
-    expect(survivingStroke.points.last.dx, lessThanOrEqualTo(250.0));
+    expect(survivingStroke.eraserMasks.isNotEmpty, isTrue);
+    expect(survivingStroke.points.length, 31);
 
     // Select the stroke with Lasso around the visible part
     controller.setTool(DrawingTool.lasso);
@@ -1813,11 +1814,53 @@ void main() {
     expect(postDragBounds.left, closeTo(preDragBounds.left + 40.0, 1.0));
     expect(postDragBounds.top, closeTo(preDragBounds.top + 20.0, 1.0));
 
-    // Verify all points remain cleanly within the moved bounds
-    for (final pt in controller.strokes.first.points) {
-      expect(pt.dx, lessThanOrEqualTo(postDragBounds.right));
-      expect(pt.dx, greaterThanOrEqualTo(postDragBounds.left));
+    // Verify all surviving visible points remain cleanly within the moved bounds
+    final visibleSamples = controller.getVisibleSamplesForStroke(controller.strokes.first);
+    expect(visibleSamples.isNotEmpty, isTrue);
+    for (final pt in visibleSamples) {
+      expect(pt.dx, lessThanOrEqualTo(postDragBounds.right + 2.0));
+      expect(pt.dx, greaterThanOrEqualTo(postDragBounds.left - 2.0));
     }
+
+    // 9. Verify that pixel eraser does NOT trim or delete untouched stroke ends upon release (endStroke)
+    controller.clearCanvas();
+    controller.setTool(DrawingTool.marker);
+    controller.setStrokeWidth(25.0);
+    // Draw a stroke from (100, 200) to (400, 200)
+    controller.startStroke(const Offset(100, 200));
+    controller.updateStroke(const Offset(400, 200));
+    controller.endStroke();
+    expect(controller.strokes.length, 1);
+    final originalStart = controller.strokes.first.points.first;
+    final originalEnd = controller.strokes.first.points.last;
+
+    // Erase a tiny spot at the tail (395, 200)
+    controller.setTool(DrawingTool.eraser);
+    controller.setEraserType(EraserType.pixel);
+    controller.setEraserSize(15.0);
+    controller.startStroke(const Offset(395, 200));
+    controller.endStroke(); // "bırakınca" (on release)
+
+    // The stroke MUST NOT be deleted and its points MUST NOT be truncated!
+    expect(controller.strokes.length, 1);
+    expect(controller.strokes.first.points.first, originalStart);
+    expect(controller.strokes.first.points.last, originalEnd);
+    expect(controller.strokes.first.eraserMasks.length, 1);
+
+    // Visible samples hug from 100 up to ~385
+    final surviving = controller.getVisibleSamplesForStroke(controller.strokes.first);
+    expect(surviving.isNotEmpty, isTrue);
+    expect(surviving.first.dx, closeTo(100.0, 5.0));
+    expect(surviving.last.dx, lessThan(395.0));
+
+    // Now completely erase the whole stroke from 90 to 410
+    controller.setEraserSize(50.0);
+    controller.startStroke(const Offset(90, 200));
+    controller.updateStroke(const Offset(410, 200));
+    controller.endStroke();
+
+    // Now that 100% of the stroke is covered, it should be cleanly removed
+    expect(controller.strokes.isEmpty, isTrue);
 
     await tester.pump(const Duration(milliseconds: 1000));
   });

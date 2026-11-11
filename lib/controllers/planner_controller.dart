@@ -1291,6 +1291,63 @@ class PlannerController extends ChangeNotifier {
     return false;
   }
 
+  /// Returns dense sample points along the surviving visible segments of a stroke.
+  List<Offset> getVisibleSamplesForStroke(DrawingStroke stroke) => _getVisibleSamplesForStroke(stroke);
+
+  List<Offset> _getVisibleSamplesForStroke(DrawingStroke stroke) {
+    if (stroke.eraserMasks.isEmpty) return stroke.points;
+    if (stroke.points.length <= 1) {
+      if (stroke.points.isNotEmpty &&
+          !_isPointCoveredByMasks(stroke.points.first, stroke.eraserMasks, strokeWidth: stroke.strokeWidth)) {
+        return stroke.points;
+      }
+      return const [];
+    }
+
+    final visibleSamples = <Offset>[];
+    for (int i = 0; i < stroke.points.length - 1; i++) {
+      final pA = stroke.points[i];
+      final pB = stroke.points[i + 1];
+      final dist = (pB - pA).distance;
+      final steps = math.max(2, (dist / 8.0).ceil());
+      for (int s = 0; s <= steps; s++) {
+        final t = s / steps;
+        final pt = Offset(pA.dx + (pB.dx - pA.dx) * t, pA.dy + (pB.dy - pA.dy) * t);
+        if (!_isPointCoveredByMasks(pt, stroke.eraserMasks, strokeWidth: stroke.strokeWidth)) {
+          visibleSamples.add(pt);
+        }
+      }
+    }
+    return visibleSamples;
+  }
+
+  /// Returns true only if 100% of the stroke's path is covered by eraser masks.
+  bool _isStrokeEntirelyErased(DrawingStroke stroke) {
+    if (stroke.eraserMasks.isEmpty || stroke.points.isEmpty) return false;
+    if (stroke.points.length == 1) {
+      return _isPointCoveredByMasks(
+        stroke.points.first,
+        stroke.eraserMasks,
+        strokeWidth: stroke.strokeWidth,
+      );
+    }
+
+    for (int i = 0; i < stroke.points.length - 1; i++) {
+      final pA = stroke.points[i];
+      final pB = stroke.points[i + 1];
+      final dist = (pB - pA).distance;
+      final steps = math.max(2, (dist / 8.0).ceil());
+      for (int s = 0; s <= steps; s++) {
+        final t = s / steps;
+        final sample = Offset(pA.dx + (pB.dx - pA.dx) * t, pA.dy + (pB.dy - pA.dy) * t);
+        if (!_isPointCoveredByMasks(sample, stroke.eraserMasks, strokeWidth: stroke.strokeWidth)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
   Rect? _computeRawSelectionBounds() {
     if (!hasLassoSelection) return null;
     double minX = double.infinity;
@@ -1307,13 +1364,7 @@ class PlannerController extends ChangeNotifier {
         final stroke = _strokes[index];
         final hasMasks = stroke.eraserMasks.isNotEmpty;
         final visiblePoints = hasMasks
-            ? stroke.points
-                .where((p) => !_isPointCoveredByMasks(
-                      p,
-                      stroke.eraserMasks,
-                      strokeWidth: stroke.strokeWidth,
-                    ))
-                .toList()
+            ? _getVisibleSamplesForStroke(stroke)
             : stroke.points;
         final pointsToUse = visiblePoints.isNotEmpty ? visiblePoints : stroke.points;
 
@@ -2621,7 +2672,6 @@ class PlannerController extends ChangeNotifier {
     }
 
     if (_selectedTool == DrawingTool.lasso) {
-      _trimDeadEndsFromMaskedStrokes();
       final bounds = selectionBounds;
       if (bounds != null) {
         final localPoint = _rotatePointAround(
@@ -3165,7 +3215,12 @@ class PlannerController extends ChangeNotifier {
       _lastEraserPoint = null;
       _activeEraserPoint = null;
       _activeEraserGestureId = null;
-      _trimDeadEndsFromMaskedStrokes();
+      // Clean up strokes that are 100% erased so they do not linger invisibly
+      final beforeCount = _strokes.length;
+      _strokes.removeWhere((stroke) => stroke.eraserMasks.isNotEmpty && _isStrokeEntirelyErased(stroke));
+      if (_strokes.length != beforeCount) {
+        _selectedStrokeIndices.removeWhere((idx) => idx >= _strokes.length);
+      }
       activeStrokeTick.value++;
       _saveCurrentStrokes();
       notifyListeners();
@@ -3328,66 +3383,6 @@ class PlannerController extends ChangeNotifier {
       _saveCurrentStrokes();
       _saveCurrentCanvasTexts();
       notifyListeners();
-    }
-  }
-
-  void _trimDeadEndsFromMaskedStrokes() {
-    bool anyTrimmed = false;
-    for (int i = 0; i < _strokes.length; i++) {
-      final stroke = _strokes[i];
-      if (stroke.eraserMasks.isEmpty || stroke.points.length <= 1) continue;
-
-      int firstVisible = 0;
-      while (firstVisible < stroke.points.length &&
-          _isPointCoveredByMasks(
-            stroke.points[firstVisible],
-            stroke.eraserMasks,
-            strokeWidth: stroke.strokeWidth,
-          )) {
-        firstVisible++;
-      }
-
-      int lastVisible = stroke.points.length - 1;
-      while (lastVisible >= firstVisible &&
-          _isPointCoveredByMasks(
-            stroke.points[lastVisible],
-            stroke.eraserMasks,
-            strokeWidth: stroke.strokeWidth,
-          )) {
-        lastVisible--;
-      }
-
-      if (firstVisible > lastVisible) {
-        _strokes.removeAt(i);
-        i--;
-        anyTrimmed = true;
-        continue;
-      }
-
-      if (firstVisible > 0 || lastVisible < stroke.points.length - 1) {
-        final trimmedPoints = stroke.points.sublist(firstVisible, lastVisible + 1);
-        double minX = trimmedPoints.first.dx, maxX = trimmedPoints.first.dx;
-        double minY = trimmedPoints.first.dy, maxY = trimmedPoints.first.dy;
-        for (final pt in trimmedPoints) {
-          if (pt.dx < minX) minX = pt.dx;
-          if (pt.dx > maxX) maxX = pt.dx;
-          if (pt.dy < minY) minY = pt.dy;
-          if (pt.dy > maxY) maxY = pt.dy;
-        }
-        final strokeBounds = Rect.fromLTRB(minX, minY, maxX, maxY).inflate(stroke.strokeWidth + 24.0);
-        final relevantMasks = stroke.eraserMasks.where((mask) {
-          return mask.points.any((p) => strokeBounds.contains(p));
-        }).toList();
-
-        _strokes[i] = stroke.copyWith(
-          points: trimmedPoints,
-          eraserMasks: relevantMasks,
-        );
-        anyTrimmed = true;
-      }
-    }
-    if (anyTrimmed) {
-      canvasDragTick.value++;
     }
   }
 
@@ -4125,48 +4120,22 @@ class PlannerController extends ChangeNotifier {
 
       bool isSelected = false;
 
-      // 1. Check if any visible stroke vertex or segment midpoint is inside the lasso polygon
+      // 1. Check if any visible stroke vertex or sample point is inside the lasso polygon
       final hasMasks = stroke.eraserMasks.isNotEmpty;
       final visiblePoints = hasMasks
-          ? stroke.points
-              .where((p) => !_isPointCoveredByMasks(
-                    p,
-                    stroke.eraserMasks,
-                    strokeWidth: stroke.strokeWidth,
-                  ))
-              .toList()
+          ? _getVisibleSamplesForStroke(stroke)
           : stroke.points;
 
-      // If all vertices are covered by masks, the stroke is visually completely erased
+      // If all sample points are covered by masks, the stroke is visually completely erased
       if (hasMasks && visiblePoints.isEmpty) {
         continue;
       }
 
-      for (int j = 0; j < stroke.points.length; j++) {
-        final p = stroke.points[j];
-        if (hasMasks &&
-            _isPointCoveredByMasks(p, stroke.eraserMasks, strokeWidth: stroke.strokeWidth)) {
-          continue; // Skip masked/erased points
-        }
+      for (int j = 0; j < visiblePoints.length; j++) {
+        final p = visiblePoints[j];
         if (lassoPath.contains(p)) {
           isSelected = true;
           break;
-        }
-        if (j + 1 < stroke.points.length) {
-          final pNext = stroke.points[j + 1];
-          if (hasMasks &&
-              _isPointCoveredByMasks(pNext, stroke.eraserMasks, strokeWidth: stroke.strokeWidth)) {
-            continue;
-          }
-          final mid = (p + pNext) / 2.0;
-          if (hasMasks &&
-              _isPointCoveredByMasks(mid, stroke.eraserMasks, strokeWidth: stroke.strokeWidth)) {
-            continue;
-          }
-          if (lassoPath.contains(mid)) {
-            isSelected = true;
-            break;
-          }
         }
       }
 

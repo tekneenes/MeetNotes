@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +9,7 @@ import '../controllers/planner_controller.dart';
 import '../models/planner_models.dart';
 import '../painters/paper_background_painter.dart';
 import '../painters/drawing_canvas_painter.dart';
+import '../services/pdf_document_renderer.dart';
 import 'apple_notes_toolbar.dart';
 import 'compact_color_picker_dialog.dart';
 import 'compact_font_picker_dialog.dart';
@@ -264,7 +267,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           ? (currentDistance / _initialPinchDistance)
           : 1.0;
 
-      final newScale = (_baseScale * scaleFactor).clamp(0.5, 5.0);
+      final newScale = (_baseScale * scaleFactor).clamp(0.5, 16.0);
       final rawPan = currentMidpoint - (_anchorCanvasPoint * newScale);
       setState(() {
         _scale = newScale;
@@ -300,7 +303,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
   }
 
   void _handleTrackpadPanZoomUpdate(PointerPanZoomUpdateEvent event, Size viewportSize) {
-    final newScale = (_baseScale * event.scale).clamp(0.5, 5.0);
+    final newScale = (_baseScale * event.scale).clamp(0.5, 16.0);
     // IMPORTANT: Use event.pan (untransformed delta vector), NOT event.localPan!
     // In Flutter's _TransformedPointerPanZoomUpdateEvent, localPan applies transformPosition()
     // which erroneously subtracts the widget's global (x, y) offset (-280px from left sidebar)!
@@ -326,7 +329,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         // Zoom centered at cursor position
         final zoomDelta = -event.scrollDelta.dy;
         final zoomFactor = math.exp(zoomDelta * 0.002);
-        final newScale = (_scale * zoomFactor).clamp(0.5, 5.0);
+        final newScale = (_scale * zoomFactor).clamp(0.5, 16.0);
         final focal = event.localPosition;
         final canvasFocal = _toCanvas(focal);
         final rawPan = focal - (canvasFocal * newScale);
@@ -769,6 +772,33 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
 
   Widget _buildCanvasImageWidget(CanvasImageItem item) {
     final viewportPos = item.position * _scale + _panOffset;
+    if (item.isDocumentPage &&
+        item.pdfFileId != null &&
+        item.pdfPageIndex != null &&
+        item.base64Data.isEmpty) {
+      return Positioned(
+        key: ValueKey('canvas_pdf_${item.id}'),
+        left: viewportPos.dx,
+        top: viewportPos.dy,
+        child: Transform.scale(
+          scale: _scale,
+          alignment: Alignment.topLeft,
+          child: RepaintBoundary(
+            child: IgnorePointer(
+              ignoring: true,
+              child: _PdfDocumentPageSurface(
+                item: item,
+                file: widget.controller.findUploadedFileById(item.pdfFileId!),
+                scale: _scale,
+                panOffset: _panOffset,
+                viewportSize: _lastViewportSize ?? Size.zero,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final imageBytes = item.bytes;
 
     return Positioned(
@@ -3812,5 +3842,237 @@ class SinglePaperRegionPainter extends CustomPainter {
         oldDelegate.panOffset != panOffset ||
         oldDelegate.basePaperColor != basePaperColor ||
         oldDelegate.gridLineColor != gridLineColor;
+  }
+}
+
+class _PdfDocumentPageSurface extends StatefulWidget {
+  final CanvasImageItem item;
+  final CanvasFileItem? file;
+  final double scale;
+  final Offset panOffset;
+  final Size viewportSize;
+
+  const _PdfDocumentPageSurface({
+    required this.item,
+    required this.file,
+    required this.scale,
+    required this.panOffset,
+    required this.viewportSize,
+  });
+
+  @override
+  State<_PdfDocumentPageSurface> createState() =>
+      _PdfDocumentPageSurfaceState();
+}
+
+class _PdfDocumentPageSurfaceState extends State<_PdfDocumentPageSurface> {
+  ui.Image? _baseImage;
+  ui.Image? _tileImage;
+  Rect? _tileRectInPage;
+  Timer? _tileDebounce;
+  int _tileGeneration = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBaseImage();
+    _scheduleTileUpdate();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PdfDocumentPageSurface oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.item.pdfFileId != widget.item.pdfFileId ||
+        oldWidget.item.pdfPageIndex != widget.item.pdfPageIndex ||
+        oldWidget.file?.path != widget.file?.path) {
+      _baseImage = null;
+      _tileImage?.dispose();
+      _tileImage = null;
+      _tileRectInPage = null;
+      _loadBaseImage();
+      _scheduleTileUpdate();
+    } else if ((oldWidget.scale - widget.scale).abs() > 0.01 ||
+        (oldWidget.panOffset - widget.panOffset).distance > 6.0 ||
+        oldWidget.viewportSize != widget.viewportSize) {
+      _scheduleTileUpdate();
+    }
+  }
+
+  @override
+  void dispose() {
+    _tileDebounce?.cancel();
+    _tileImage?.dispose();
+    super.dispose();
+  }
+
+  Uint8List? _decodeFileBytes() {
+    final b64 = widget.file?.base64Data;
+    if (b64 == null || b64.isEmpty) return null;
+    try {
+      return base64Decode(b64);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _loadBaseImage() async {
+    final fileId = widget.item.pdfFileId;
+    final pageIndex = widget.item.pdfPageIndex;
+    if (fileId == null || pageIndex == null) return;
+
+    final cached =
+        PdfDocumentRenderer.instance.getCachedBaseImage(fileId, pageIndex);
+    if (cached != null) {
+      if (mounted) setState(() => _baseImage = cached);
+      return;
+    }
+
+    final img = await PdfDocumentRenderer.instance.renderPageBase(
+      fileId,
+      pageIndex,
+      targetWidth: 1200.0,
+      path: widget.file?.path,
+      bytes: _decodeFileBytes(),
+    );
+    if (mounted && img != null) {
+      setState(() => _baseImage = img);
+    }
+  }
+
+  void _scheduleTileUpdate() {
+    if (widget.scale <= 1.35 || widget.viewportSize.isEmpty) {
+      if (_tileImage != null) {
+        _tileImage?.dispose();
+        _tileImage = null;
+        _tileRectInPage = null;
+      }
+      return;
+    }
+    _tileDebounce?.cancel();
+    _tileDebounce = Timer(const Duration(milliseconds: 90), _renderVisibleTile);
+  }
+
+  Future<void> _renderVisibleTile() async {
+    if (!mounted || widget.scale <= 1.35 || widget.viewportSize.isEmpty) return;
+    final fileId = widget.item.pdfFileId;
+    final pageIndex = widget.item.pdfPageIndex;
+    if (fileId == null || pageIndex == null) return;
+
+    final visibleCanvasRect = Rect.fromLTWH(
+      -widget.panOffset.dx / widget.scale,
+      -widget.panOffset.dy / widget.scale,
+      widget.viewportSize.width / widget.scale,
+      widget.viewportSize.height / widget.scale,
+    );
+    // Add slight overdraw padding around visible area for smooth panning
+    final paddedVisible = visibleCanvasRect.inflate(60.0 / widget.scale);
+    final pageRect = widget.item.rect;
+    if (!paddedVisible.overlaps(pageRect)) return;
+
+    final intersection = paddedVisible.intersect(pageRect);
+    final rectInPage = intersection.translate(
+      -pageRect.left,
+      -pageRect.top,
+    );
+    if (rectInPage.width <= 1.0 || rectInPage.height <= 1.0) return;
+
+    final dpr = MediaQuery.devicePixelRatioOf(context).clamp(1.0, 3.0);
+    final pixelScale = widget.scale * dpr;
+    final fullW = widget.item.width * pixelScale;
+    final fullH = widget.item.height * pixelScale;
+    final cropX = (rectInPage.left * pixelScale).floor().clamp(0, fullW.floor());
+    final cropY = (rectInPage.top * pixelScale).floor().clamp(0, fullH.floor());
+    var cropW = (rectInPage.width * pixelScale).ceil();
+    var cropH = (rectInPage.height * pixelScale).ceil();
+
+    // Guard max GPU texture dimension
+    const maxTexDim = 4096;
+    if (cropW > maxTexDim || cropH > maxTexDim) {
+      final ratio = math.min(maxTexDim / cropW, maxTexDim / cropH);
+      cropW = (cropW * ratio).floor();
+      cropH = (cropH * ratio).floor();
+    }
+    if (cropW <= 0 || cropH <= 0) return;
+
+    final gen = ++_tileGeneration;
+    final tileImg = await PdfDocumentRenderer.instance.renderPageViewportTile(
+      fileId,
+      pageIndex,
+      fullWidth: fullW,
+      fullHeight: fullH,
+      cropX: cropX,
+      cropY: cropY,
+      cropWidth: cropW,
+      cropHeight: cropH,
+      path: widget.file?.path,
+      bytes: _decodeFileBytes(),
+    );
+
+    if (!mounted || gen != _tileGeneration) {
+      tileImg?.dispose();
+      return;
+    }
+    if (tileImg != null) {
+      setState(() {
+        _tileImage?.dispose();
+        _tileImage = tileImg;
+        _tileRectInPage = rectInPage;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: widget.item.width,
+      height: widget.item.height,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (_baseImage != null)
+              RawImage(
+                image: _baseImage,
+                fit: BoxFit.fill,
+                filterQuality: FilterQuality.high,
+              )
+            else
+              const Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            if (_tileImage != null &&
+                _tileRectInPage != null &&
+                widget.scale > 1.35)
+              Positioned(
+                left: _tileRectInPage!.left,
+                top: _tileRectInPage!.top,
+                width: _tileRectInPage!.width,
+                height: _tileRectInPage!.height,
+                child: RawImage(
+                  image: _tileImage,
+                  fit: BoxFit.fill,
+                  filterQuality: FilterQuality.high,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }

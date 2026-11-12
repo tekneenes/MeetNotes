@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import '../models/planner_models.dart';
+import '../services/pdf_document_renderer.dart';
 import '../services/pdf_service.dart';
 import '../services/planner_storage_service.dart';
 import '../services/shape_recognition_service.dart';
@@ -892,8 +893,15 @@ class PlannerController extends ChangeNotifier {
   final Map<String, double> _renderedPdfWidthByImageId = {};
   final Set<String> _inFlightPdfReRenders = {};
 
+  CanvasFileItem? findUploadedFileById(String fileId) {
+    for (final f in _uploadedFiles) {
+      if (f.id == fileId) return f;
+    }
+    return null;
+  }
+
   /// Imports every page of a PDF directly as vertically stacked, non-selectable
-  /// document pages on the scrollable canvas.
+  /// native PDF document pages (zero PNG/base64 bloat).
   Future<int> importPdfAsNotePages({
     required String fileName,
     String? path,
@@ -920,8 +928,52 @@ class PlannerController extends ChangeNotifier {
     );
     final savedFile = await addUploadedFile(fileItem, rawBytes: fileBytes);
     final resolvedFileId = savedFile?.id ?? fileItem.id;
+    final resolvedPath = savedFile?.path ?? path;
 
-    final info = await PdfService.getPdfInfo(path: path, data: fileBytes);
+    final pdfDoc = await PdfDocumentRenderer.instance.openDocument(
+      resolvedFileId,
+      path: resolvedPath,
+      bytes: fileBytes,
+    );
+
+    if (pdfDoc != null && pdfDoc.pages.isNotEmpty) {
+      var currentY = 28.0;
+      const pageW = 680.0;
+      for (var i = 0; i < pdfDoc.pages.length; i++) {
+        final p = pdfDoc.pages[i];
+        final aspect = p.height > 0 ? (p.width / p.height) : 0.707;
+        final pageH = pageW / aspect;
+        final itemId = const Uuid().v4();
+        final item = CanvasImageItem(
+          id: itemId,
+          position: Offset(120.0, currentY),
+          width: pageW,
+          height: pageH,
+          name: '$fileName • Sayfa ${i + 1}',
+          base64Data: '',
+          isLocked: true,
+          isDocumentPage: true,
+          pdfFileId: resolvedFileId,
+          pdfPageIndex: i,
+          layerOrder: -100000 + i,
+        );
+        _canvasImages.add(item);
+        currentY += pageH + 28.0;
+      }
+      // Pre-warm first page texture for instant display
+      await PdfDocumentRenderer.instance.renderPageBase(
+        resolvedFileId,
+        0,
+        targetWidth: 1200.0,
+        path: resolvedPath,
+        bytes: fileBytes,
+      );
+      await _saveCurrentCanvasImages();
+      notifyListeners();
+      return pdfDoc.pages.length;
+    }
+
+    final info = await PdfService.getPdfInfo(path: resolvedPath, data: fileBytes);
     if (info == null || info.pageCount <= 0) {
       notifyListeners();
       return 1;
@@ -933,7 +985,7 @@ class PlannerController extends ChangeNotifier {
 
     for (var i = 0; i < info.pageCount; i++) {
       final pngBytes = await PdfService.renderPage(
-        path: path,
+        path: resolvedPath,
         data: fileBytes,
         pageIndex: i,
         width: initialRenderWidth,
@@ -7335,14 +7387,14 @@ class PlannerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Zoom Controls
+  // Zoom Controls (supports up to 1600% like macOS Preview)
   void zoomIn() {
-    _zoomScale = (_zoomScale + 0.25).clamp(0.5, 5.0);
+    _zoomScale = (_zoomScale + 0.25).clamp(0.5, 16.0);
     notifyListeners();
   }
 
   void zoomOut() {
-    _zoomScale = (_zoomScale - 0.25).clamp(0.5, 5.0);
+    _zoomScale = (_zoomScale - 0.25).clamp(0.5, 16.0);
     notifyListeners();
   }
 
@@ -7352,7 +7404,7 @@ class PlannerController extends ChangeNotifier {
   }
 
   void setZoomScale(double scale, {bool notify = true}) {
-    _zoomScale = scale.clamp(0.5, 5.0);
+    _zoomScale = scale.clamp(0.5, 16.0);
     if (notify) {
       notifyListeners();
     }

@@ -3284,15 +3284,15 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  test('Zoom reaches 500% and PDF document pages cannot be selected by lasso',
+  test('Zoom reaches 1600% and PDF document pages cannot be selected by lasso',
       () async {
     final controller = PlannerController();
     await Future<void>.delayed(const Duration(milliseconds: 50));
-    controller.setZoomScale(5.0);
-    expect(controller.zoomScale, 5.0);
+    controller.setZoomScale(16.0);
+    expect(controller.zoomScale, 16.0);
 
-    controller.setZoomScale(6.5);
-    expect(controller.zoomScale, 5.0);
+    controller.setZoomScale(20.0);
+    expect(controller.zoomScale, 16.0);
 
     // Document page should be ignored by lasso selection
     final docPage = CanvasImageItem(

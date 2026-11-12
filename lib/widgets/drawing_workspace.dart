@@ -33,6 +33,8 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
   Offset _panOffset = Offset.zero;
   Size? _lastViewportSize;
   Timer? _pdfZoomRefreshTimer;
+  bool _isDraggingDocScrollbar = false;
+  bool _isHoveringDocScrollbar = false;
 
   // Multi-touch & Trackpad gesture state
   final Map<int, Offset> _activePointers = {};
@@ -121,6 +123,10 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     }
     if ((widget.controller.zoomScale - _scale).abs() > 0.001) {
       _scale = widget.controller.zoomScale;
+      if (_lastViewportSize != null) {
+        _panOffset = _clampPanOffset(_panOffset, _scale, _lastViewportSize!);
+        _syncLiveVisibleRect(_lastViewportSize!);
+      }
     }
     if (mounted) {
       setState(() {});
@@ -332,7 +338,12 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         widget.controller.setZoomScale(_scale, notify: false);
       } else {
         // Natural trackpad or mouse wheel scroll pan
-        final rawPan = _panOffset - event.scrollDelta;
+        final docBounds = _computeDocumentBounds();
+        final scrollDelta = (docBounds != null &&
+                docBounds.width * _scale <= viewportSize.width - 32.0)
+            ? Offset(0.0, event.scrollDelta.dy)
+            : event.scrollDelta;
+        final rawPan = _panOffset - scrollDelta;
         setState(() {
           _panOffset = _clampPanOffset(rawPan, _scale, viewportSize);
         });
@@ -392,7 +403,59 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     return Rect.fromLTRB(minX, minY, maxX, maxY);
   }
 
+  bool get _hasDocumentPages =>
+      widget.controller.canvasImages.any((img) => img.isDocumentPage);
+
+  Rect? _computeDocumentBounds() {
+    final docImages = widget.controller.canvasImages
+        .where((img) => img.isDocumentPage)
+        .toList();
+    if (docImages.isEmpty) return null;
+    double minX = double.infinity;
+    double minY = double.infinity;
+    double maxX = double.negativeInfinity;
+    double maxY = double.negativeInfinity;
+    for (final img in docImages) {
+      if (img.position.dx < minX) minX = img.position.dx;
+      if (img.position.dy < minY) minY = img.position.dy;
+      if (img.position.dx + img.width > maxX) maxX = img.position.dx + img.width;
+      if (img.position.dy + img.height > maxY) {
+        maxY = img.position.dy + img.height;
+      }
+    }
+    return Rect.fromLTRB(minX, minY, maxX, maxY);
+  }
+
+  ({double topBound, double bottomBound, Rect docBounds})?
+      _documentVerticalRange(double scale, Size viewportSize) {
+    final docBounds = _computeDocumentBounds();
+    if (docBounds == null) return null;
+    final topBound = 20.0 - docBounds.top * scale;
+    final bottomBound = math.min(
+      topBound,
+      viewportSize.height - 56.0 - docBounds.bottom * scale,
+    );
+    return (topBound: topBound, bottomBound: bottomBound, docBounds: docBounds);
+  }
+
   Offset _clampPanOffset(Offset pan, double scale, Size viewportSize) {
+    final docRange = _documentVerticalRange(scale, viewportSize);
+    if (docRange != null) {
+      final docBounds = docRange.docBounds;
+      final docCenterX = (docBounds.left + docBounds.right) / 2.0;
+      final double clampedX;
+      if (docBounds.width * scale <= viewportSize.width - 32.0) {
+        clampedX = viewportSize.width / 2.0 - docCenterX * scale;
+      } else {
+        final minX = viewportSize.width - 36.0 - docBounds.right * scale;
+        final maxX = 24.0 - docBounds.left * scale;
+        clampedX = pan.dx.clamp(math.min(minX, maxX), math.max(minX, maxX));
+      }
+      final clampedY =
+          pan.dy.clamp(docRange.bottomBound, docRange.topBound).toDouble();
+      return Offset(clampedX, clampedY);
+    }
+
     final bounds = _computeContentBounds(viewportSize);
 
     final minX = viewportSize.width * 0.15 - bounds.right * scale;
@@ -419,6 +482,9 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       builder: (context, constraints) {
         final viewportSize = Size(constraints.maxWidth, constraints.maxHeight);
         _lastViewportSize = viewportSize;
+        if (_hasDocumentPages && _panOffset == Offset.zero) {
+          _panOffset = _clampPanOffset(_panOffset, _scale, viewportSize);
+        }
         final visibleCanvasRect = Rect.fromLTWH(
           -_panOffset.dx / _scale,
           -_panOffset.dy / _scale,
@@ -527,6 +593,9 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                       controller.isRotatingSelection &&
                       controller.selectionBounds != null)
                     _buildRotationDegreeBadge(controller.selectionBounds!, viewportSize),
+
+                  // 1f. Interactive Right-Edge Scrollbar for PDF / Document Notes
+                  if (_hasDocumentPages) _buildDocumentScrollbar(viewportSize),
 
                   // 2. Truly Floating, Snapping & Docking Apple Notes Toolbar
                   AnimatedPositioned(
@@ -748,6 +817,151 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildDocumentScrollbar(Size viewportSize) {
+    final docRange = _documentVerticalRange(_scale, viewportSize);
+    if (docRange == null) return const SizedBox.shrink();
+    final scrollableRange = docRange.topBound - docRange.bottomBound;
+    if (scrollableRange <= 8.0) return const SizedBox.shrink();
+
+    const verticalMargin = 14.0;
+    final trackHeight = math.max(
+      60.0,
+      viewportSize.height - verticalMargin * 2,
+    );
+    final totalContentHeight =
+        (docRange.docBounds.height * _scale) + 76.0;
+    final thumbHeight = ((viewportSize.height / totalContentHeight) * trackHeight)
+        .clamp(38.0, trackHeight * 0.85);
+    final maxThumbTop = math.max(1.0, trackHeight - thumbHeight);
+    final fraction =
+        ((docRange.topBound - _panOffset.dy) / scrollableRange).clamp(0.0, 1.0);
+    final thumbTop = fraction * maxThumbTop;
+
+    final docPages = widget.controller.canvasImages
+        .where((img) => img.isDocumentPage)
+        .toList();
+    final viewportCenterY = (viewportSize.height / 2.0 - _panOffset.dy) / _scale;
+    var currentPageIdx = 0;
+    for (var i = 0; i < docPages.length; i++) {
+      final p = docPages[i];
+      if (viewportCenterY >= p.position.dy - 14.0) {
+        currentPageIdx = i;
+      }
+    }
+
+    void updateScrollFromLocalY(double localY) {
+      final newThumbTop = (localY - thumbHeight / 2.0).clamp(0.0, maxThumbTop);
+      final newFraction = newThumbTop / maxThumbTop;
+      final newDy = docRange.topBound - (newFraction * scrollableRange);
+      setState(() {
+        _panOffset = _clampPanOffset(
+          Offset(_panOffset.dx, newDy),
+          _scale,
+          viewportSize,
+        );
+      });
+      _syncLiveVisibleRect(viewportSize);
+    }
+
+    final isActive = _isDraggingDocScrollbar || _isHoveringDocScrollbar;
+
+    return Positioned(
+      top: verticalMargin,
+      bottom: verticalMargin,
+      right: 6,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (isActive && docPages.length > 1)
+            Padding(
+              padding: EdgeInsets.only(
+                top: (thumbTop + thumbHeight / 2.0 - 13.0)
+                    .clamp(0.0, math.max(0.0, trackHeight - 28.0)),
+                right: 8,
+              ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F172A).withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.14),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+                child: Text(
+                  'Sayfa ${currentPageIdx + 1} / ${docPages.length}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          MouseRegion(
+            cursor: SystemMouseCursors.grab,
+            onEnter: (_) => setState(() => _isHoveringDocScrollbar = true),
+            onExit: (_) => setState(() => _isHoveringDocScrollbar = false),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: (details) =>
+                  updateScrollFromLocalY(details.localPosition.dy),
+              onVerticalDragStart: (details) {
+                setState(() => _isDraggingDocScrollbar = true);
+                updateScrollFromLocalY(details.localPosition.dy);
+              },
+              onVerticalDragUpdate: (details) =>
+                  updateScrollFromLocalY(details.localPosition.dy),
+              onVerticalDragEnd: (_) =>
+                  setState(() => _isDraggingDocScrollbar = false),
+              onVerticalDragCancel: () =>
+                  setState(() => _isDraggingDocScrollbar = false),
+              child: SizedBox(
+                width: 16,
+                height: trackHeight,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Container(
+                          width: isActive ? 8 : 6,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: thumbTop,
+                      right: 0,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 120),
+                        width: isActive ? 8 : 6,
+                        height: thumbHeight,
+                        decoration: BoxDecoration(
+                          color: isActive
+                              ? const Color(0xFF334155).withValues(alpha: 0.85)
+                              : const Color(0xFF64748B).withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

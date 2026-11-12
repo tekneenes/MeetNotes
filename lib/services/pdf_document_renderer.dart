@@ -96,6 +96,7 @@ class PdfDocumentRenderer {
         fullWidth: fullW,
         fullHeight: fullH,
         backgroundColor: 0xFFFFFFFF,
+        flags: PdfPageRenderFlags.lcdText,
       );
       if (pdfImage == null) return null;
       final uiImg = await pdfImage.createImage();
@@ -138,6 +139,7 @@ class PdfDocumentRenderer {
         fullWidth: fullWidth,
         fullHeight: fullHeight,
         backgroundColor: 0xFFFFFFFF,
+        flags: PdfPageRenderFlags.lcdText,
       );
       if (pdfImage == null) return null;
       final uiImg = await pdfImage.createImage();

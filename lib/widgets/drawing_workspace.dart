@@ -780,20 +780,14 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         key: ValueKey('canvas_pdf_${item.id}'),
         left: viewportPos.dx,
         top: viewportPos.dy,
-        child: Transform.scale(
-          scale: _scale,
-          alignment: Alignment.topLeft,
-          child: RepaintBoundary(
-            child: IgnorePointer(
-              ignoring: true,
-              child: _PdfDocumentPageSurface(
-                item: item,
-                file: widget.controller.findUploadedFileById(item.pdfFileId!),
-                scale: _scale,
-                panOffset: _panOffset,
-                viewportSize: _lastViewportSize ?? Size.zero,
-              ),
-            ),
+        child: IgnorePointer(
+          ignoring: true,
+          child: _PdfDocumentPageSurface(
+            item: item,
+            file: widget.controller.findUploadedFileById(item.pdfFileId!),
+            scale: _scale,
+            panOffset: _panOffset,
+            viewportSize: _lastViewportSize ?? Size.zero,
           ),
         ),
       );
@@ -3982,8 +3976,20 @@ class _PdfDocumentPageSurfaceState extends State<_PdfDocumentPageSurface> {
     final fullH = widget.item.height * pixelScale;
     final cropX = (rectInPage.left * pixelScale).floor().clamp(0, fullW.floor());
     final cropY = (rectInPage.top * pixelScale).floor().clamp(0, fullH.floor());
-    var cropW = (rectInPage.width * pixelScale).ceil();
-    var cropH = (rectInPage.height * pixelScale).ceil();
+    var cropW = ((rectInPage.right * pixelScale).ceil() - cropX)
+        .clamp(1, math.max(1, fullW.ceil() - cropX))
+        .toInt();
+    var cropH = ((rectInPage.bottom * pixelScale).ceil() - cropY)
+        .clamp(1, math.max(1, fullH.ceil() - cropY))
+        .toInt();
+
+    // Exact page-space rectangle matching the integer crop pixels (prevents 1px blur)
+    final alignedRectInPage = Rect.fromLTWH(
+      cropX / pixelScale,
+      cropY / pixelScale,
+      cropW / pixelScale,
+      cropH / pixelScale,
+    );
 
     // Guard max GPU texture dimension
     const maxTexDim = 4096;
@@ -4016,19 +4022,22 @@ class _PdfDocumentPageSurfaceState extends State<_PdfDocumentPageSurface> {
       setState(() {
         _tileImage?.dispose();
         _tileImage = tileImg;
-        _tileRectInPage = rectInPage;
+        _tileRectInPage = alignedRectInPage;
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final scaledW = widget.item.width * widget.scale;
+    final scaledH = widget.item.height * widget.scale;
+    final radius = 8.0 * widget.scale.clamp(1.0, 2.0);
     return Container(
-      width: widget.item.width,
-      height: widget.item.height,
+      width: scaledW,
+      height: scaledH,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(radius),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.12),
@@ -4038,7 +4047,7 @@ class _PdfDocumentPageSurfaceState extends State<_PdfDocumentPageSurface> {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(radius),
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -4060,14 +4069,14 @@ class _PdfDocumentPageSurfaceState extends State<_PdfDocumentPageSurface> {
                 _tileRectInPage != null &&
                 widget.scale > 1.35)
               Positioned(
-                left: _tileRectInPage!.left,
-                top: _tileRectInPage!.top,
-                width: _tileRectInPage!.width,
-                height: _tileRectInPage!.height,
+                left: _tileRectInPage!.left * widget.scale,
+                top: _tileRectInPage!.top * widget.scale,
+                width: _tileRectInPage!.width * widget.scale,
+                height: _tileRectInPage!.height * widget.scale,
                 child: RawImage(
                   image: _tileImage,
                   fit: BoxFit.fill,
-                  filterQuality: FilterQuality.high,
+                  filterQuality: FilterQuality.none,
                 ),
               ),
           ],

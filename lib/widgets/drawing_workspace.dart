@@ -95,6 +95,9 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
 
   void _schedulePdfZoomRefresh(Rect visibleRect) {
     if (_scale <= 1.2) return;
+    final hasLegacyRasterPdf = widget.controller.canvasImages
+        .any((img) => img.isDocumentPage && img.base64Data.isNotEmpty);
+    if (!hasLegacyRasterPdf) return;
     _pdfZoomRefreshTimer?.cancel();
     _pdfZoomRefreshTimer = Timer(const Duration(milliseconds: 160), () {
       if (!mounted) return;
@@ -706,8 +709,20 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         flushStrokeBatch(renderOverlay: false);
         widgets.add(_buildCanvasTextWidget(entry.textItem!));
       } else if (entry.isImage && entry.imageItem != null) {
+        final imgItem = entry.imageItem!;
+        if (imgItem.isDocumentPage && _lastViewportSize != null) {
+          final visibleRect = Rect.fromLTWH(
+            -_panOffset.dx / _scale,
+            -_panOffset.dy / _scale,
+            _lastViewportSize!.width / _scale,
+            _lastViewportSize!.height / _scale,
+          ).inflate(200.0 / _scale);
+          if (!visibleRect.overlaps(imgItem.rect)) {
+            continue;
+          }
+        }
         flushStrokeBatch(renderOverlay: false);
-        widgets.add(_buildCanvasImageWidget(entry.imageItem!));
+        widgets.add(_buildCanvasImageWidget(imgItem));
       } else if (entry.isPaperRegion && entry.paperRegion != null) {
         flushStrokeBatch(renderOverlay: false);
         widgets.add(_buildCanvasPaperRegionWidget(entry.paperRegion!));
@@ -3863,12 +3878,15 @@ class _PdfDocumentPageSurfaceState extends State<_PdfDocumentPageSurface> {
   ui.Image? _baseImage;
   ui.Image? _tileImage;
   Rect? _tileRectInPage;
+  double _lastTileScale = 1.0;
+  Uint8List? _cachedFileBytes;
   Timer? _tileDebounce;
   int _tileGeneration = 0;
 
   @override
   void initState() {
     super.initState();
+    _cachedFileBytes = _decodeFileBytes();
     _loadBaseImage();
     _scheduleTileUpdate();
   }
@@ -3883,6 +3901,8 @@ class _PdfDocumentPageSurfaceState extends State<_PdfDocumentPageSurface> {
       _tileImage?.dispose();
       _tileImage = null;
       _tileRectInPage = null;
+      _lastTileScale = 1.0;
+      _cachedFileBytes = _decodeFileBytes();
       _loadBaseImage();
       _scheduleTileUpdate();
     } else if ((oldWidget.scale - widget.scale).abs() > 0.01 ||
@@ -3926,7 +3946,7 @@ class _PdfDocumentPageSurfaceState extends State<_PdfDocumentPageSurface> {
       pageIndex,
       targetWidth: 1200.0,
       path: widget.file?.path,
-      bytes: _decodeFileBytes(),
+      bytes: _cachedFileBytes,
     );
     if (mounted && img != null) {
       setState(() => _baseImage = img);
@@ -3935,15 +3955,39 @@ class _PdfDocumentPageSurfaceState extends State<_PdfDocumentPageSurface> {
 
   void _scheduleTileUpdate() {
     if (widget.scale <= 1.35 || widget.viewportSize.isEmpty) {
+      _tileDebounce?.cancel();
       if (_tileImage != null) {
         _tileImage?.dispose();
         _tileImage = null;
         _tileRectInPage = null;
+        _lastTileScale = 1.0;
       }
       return;
     }
+
+    // If existing tile covers the current viewport at almost the same zoom, skip re-render
+    if (_tileImage != null && _tileRectInPage != null) {
+      final scaleDiffRatio =
+          (widget.scale - _lastTileScale).abs() / math.max(_lastTileScale, 1.0);
+      if (scaleDiffRatio < 0.08) {
+        final visibleCanvasRect = Rect.fromLTWH(
+          -widget.panOffset.dx / widget.scale,
+          -widget.panOffset.dy / widget.scale,
+          widget.viewportSize.width / widget.scale,
+          widget.viewportSize.height / widget.scale,
+        );
+        final currentSlice = visibleCanvasRect
+            .intersect(widget.item.rect)
+            .translate(-widget.item.position.dx, -widget.item.position.dy);
+        if (_tileRectInPage!.contains(currentSlice.topLeft) &&
+            _tileRectInPage!.contains(currentSlice.bottomRight)) {
+          return;
+        }
+      }
+    }
+
     _tileDebounce?.cancel();
-    _tileDebounce = Timer(const Duration(milliseconds: 90), _renderVisibleTile);
+    _tileDebounce = Timer(const Duration(milliseconds: 170), _renderVisibleTile);
   }
 
   Future<void> _renderVisibleTile() async {
@@ -3958,8 +4002,8 @@ class _PdfDocumentPageSurfaceState extends State<_PdfDocumentPageSurface> {
       widget.viewportSize.width / widget.scale,
       widget.viewportSize.height / widget.scale,
     );
-    // Add slight overdraw padding around visible area for smooth panning
-    final paddedVisible = visibleCanvasRect.inflate(60.0 / widget.scale);
+    // Small overdraw margin for smooth panning without oversized GPU textures
+    final paddedVisible = visibleCanvasRect.inflate(16.0 / widget.scale);
     final pageRect = widget.item.rect;
     if (!paddedVisible.overlaps(pageRect)) return;
 
@@ -4011,7 +4055,7 @@ class _PdfDocumentPageSurfaceState extends State<_PdfDocumentPageSurface> {
       cropWidth: cropW,
       cropHeight: cropH,
       path: widget.file?.path,
-      bytes: _decodeFileBytes(),
+      bytes: _cachedFileBytes,
     );
 
     if (!mounted || gen != _tileGeneration) {
@@ -4023,6 +4067,7 @@ class _PdfDocumentPageSurfaceState extends State<_PdfDocumentPageSurface> {
         _tileImage?.dispose();
         _tileImage = tileImg;
         _tileRectInPage = alignedRectInPage;
+        _lastTileScale = widget.scale;
       });
     }
   }
@@ -4031,7 +4076,55 @@ class _PdfDocumentPageSurfaceState extends State<_PdfDocumentPageSurface> {
   Widget build(BuildContext context) {
     final scaledW = widget.item.width * widget.scale;
     final scaledH = widget.item.height * widget.scale;
-    final radius = 8.0 * widget.scale.clamp(1.0, 2.0);
+    final useFastFlatSurface = widget.scale > 1.5;
+    final radius = useFastFlatSurface ? 0.0 : 8.0;
+
+    final contentStack = Stack(
+      fit: StackFit.expand,
+      children: [
+        if (_baseImage != null)
+          RawImage(
+            image: _baseImage,
+            fit: BoxFit.fill,
+            filterQuality:
+                _tileImage != null ? FilterQuality.low : FilterQuality.medium,
+          )
+        else
+          const Center(
+            child: SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+        if (_tileImage != null &&
+            _tileRectInPage != null &&
+            widget.scale > 1.35)
+          Positioned(
+            left: _tileRectInPage!.left * widget.scale,
+            top: _tileRectInPage!.top * widget.scale,
+            width: _tileRectInPage!.width * widget.scale,
+            height: _tileRectInPage!.height * widget.scale,
+            child: RawImage(
+              image: _tileImage,
+              fit: BoxFit.fill,
+              filterQuality: FilterQuality.none,
+            ),
+          ),
+      ],
+    );
+
+    if (useFastFlatSurface) {
+      return SizedBox(
+        width: scaledW,
+        height: scaledH,
+        child: ColoredBox(
+          color: Colors.white,
+          child: contentStack,
+        ),
+      );
+    }
+
     return Container(
       width: scaledW,
       height: scaledH,
@@ -4048,39 +4141,7 @@ class _PdfDocumentPageSurfaceState extends State<_PdfDocumentPageSurface> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (_baseImage != null)
-              RawImage(
-                image: _baseImage,
-                fit: BoxFit.fill,
-                filterQuality: FilterQuality.high,
-              )
-            else
-              const Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            if (_tileImage != null &&
-                _tileRectInPage != null &&
-                widget.scale > 1.35)
-              Positioned(
-                left: _tileRectInPage!.left * widget.scale,
-                top: _tileRectInPage!.top * widget.scale,
-                width: _tileRectInPage!.width * widget.scale,
-                height: _tileRectInPage!.height * widget.scale,
-                child: RawImage(
-                  image: _tileImage,
-                  fit: BoxFit.fill,
-                  filterQuality: FilterQuality.none,
-                ),
-              ),
-          ],
-        ),
+        child: contentStack,
       ),
     );
   }

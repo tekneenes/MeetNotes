@@ -107,7 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
       title: _titleFromPdfName(picked.name),
       subjectId: selectedSubjectId,
       paperStyle: PaperStyle.blank,
-      colorTheme: PaperColorTheme.white,
+      colorTheme: PaperColorTheme.gray,
     );
     if (mounted) {
       await _openNote(
@@ -439,7 +439,7 @@ class _HomeScreenState extends State<HomeScreen> {
         title: finalTitle,
         subjectId: selectedSubjectId,
         paperStyle: isPdfOnlyMode ? PaperStyle.blank : selectedStyle,
-        colorTheme: isPdfOnlyMode ? PaperColorTheme.white : selectedTheme,
+        colorTheme: isPdfOnlyMode ? PaperColorTheme.gray : selectedTheme,
       );
       if (mounted) {
         await _openNote(

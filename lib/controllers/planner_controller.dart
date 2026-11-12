@@ -930,18 +930,18 @@ class PlannerController extends ChangeNotifier {
         path: path,
         data: fileBytes,
         pageIndex: i,
-        width: 1000.0,
+        width: 1440.0,
       );
       if (pngBytes == null) continue;
       final pageInfo = i < info.pages.length ? info.pages[i] : null;
       final aspect = (pageInfo != null && pageInfo.aspectRatio > 0)
           ? pageInfo.aspectRatio
           : 0.707;
-      const pageW = 640.0;
+      const pageW = 680.0;
       final pageH = pageW / aspect;
       final item = CanvasImageItem(
         id: const Uuid().v4(),
-        position: const Offset(48, 32),
+        position: const Offset(120, 28),
         width: pageW,
         height: pageH,
         name: '$fileName • Sayfa ${i + 1}',

@@ -43,6 +43,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
       initialPaperConfig: PaperConfig(
         style: widget.note.paperStyle,
         colorTheme: widget.note.colorTheme,
+        showSpineFold: false,
       ),
     );
     _controller.addListener(_handleControllerReadyForPdf);

@@ -66,13 +66,49 @@ class MainFlutterWindow: NSWindow {
           return
         }
         let bounds = page.bounds(for: .mediaBox)
-        let targetWidth = (args["width"] as? Double) ?? 720.0
+        let targetWidth = max((args["width"] as? Double) ?? 1200.0, 1.0)
         let targetHeight = bounds.width > 0 ? (bounds.height / bounds.width) * targetWidth : 960.0
-        let renderSize = NSSize(width: targetWidth, height: targetHeight)
-        let thumbnail = page.thumbnail(of: renderSize, for: .mediaBox)
-        if let tiff = thumbnail.tiffRepresentation,
-           let rep = NSBitmapImageRep(data: tiff),
-           let png = rep.representation(using: .png, properties: [:]) {
+        let pixelWidth = max(Int(ceil(targetWidth)), 1)
+        let pixelHeight = max(Int(ceil(targetHeight)), 1)
+
+        guard let rep = NSBitmapImageRep(
+          bitmapDataPlanes: nil,
+          pixelsWide: pixelWidth,
+          pixelsHigh: pixelHeight,
+          bitsPerSample: 8,
+          samplesPerPixel: 4,
+          hasAlpha: true,
+          isPlanar: false,
+          colorSpaceName: .deviceRGB,
+          bytesPerRow: 0,
+          bitsPerPixel: 0
+        ),
+        let nsCtx = NSGraphicsContext(bitmapImageRep: rep) else {
+          result(FlutterError(code: "RENDER_FAILED", message: "Could not create graphics context", details: nil))
+          return
+        }
+
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = nsCtx
+        let ctx = nsCtx.cgContext
+        ctx.setFillColor(NSColor.white.cgColor)
+        ctx.fill(CGRect(x: 0, y: 0, width: CGFloat(pixelWidth), height: CGFloat(pixelHeight)))
+        ctx.interpolationQuality = .high
+        ctx.setAllowsAntialiasing(true)
+        ctx.setShouldAntialias(true)
+        ctx.setAllowsFontSmoothing(true)
+        ctx.setShouldSmoothFonts(true)
+        ctx.setAllowsFontSubpixelPositioning(true)
+        ctx.setAllowsFontSubpixelQuantization(true)
+
+        let scaleX = CGFloat(pixelWidth) / max(bounds.width, 1.0)
+        let scaleY = CGFloat(pixelHeight) / max(bounds.height, 1.0)
+        ctx.scaleBy(x: scaleX, y: scaleY)
+        ctx.translateBy(x: -bounds.origin.x, y: -bounds.origin.y)
+        page.draw(with: .mediaBox, to: ctx)
+        NSGraphicsContext.restoreGraphicsState()
+
+        if let png = rep.representation(using: .png, properties: [:]) {
           result(FlutterStandardTypedData(bytes: png))
         } else {
           result(FlutterError(code: "RENDER_FAILED", message: "Could not encode page to PNG", details: nil))

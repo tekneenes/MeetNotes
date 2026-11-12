@@ -211,7 +211,11 @@ class HomeLibraryController extends ChangeNotifier {
     _notes.insert(0, doc);
     await _storage.saveNotes(_notes);
     await _storage.savePaperConfig(
-      PaperConfig(style: paperStyle, colorTheme: colorTheme),
+      PaperConfig(
+        style: paperStyle,
+        colorTheme: colorTheme,
+        showSpineFold: false,
+      ),
       prefix: 'note_${id}_',
     );
     notifyListeners();

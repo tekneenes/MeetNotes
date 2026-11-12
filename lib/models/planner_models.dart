@@ -18,7 +18,8 @@ enum PaperColorTheme {
   cream('Krem / Fildişi', 'Krem', Color(0xFFF9F5EB), Color(0xFF7C6F59)),
   black('Siyah Kağıt', 'Siyah', Color(0xFF1E2022), Color(0xFF94A3B8)),
   yellow('Pastel Sarı', 'Sarı', Color(0xFFFFFBEB), Color(0xFF92400E)),
-  green('Pastel Yeşil', 'Yeşil', Color(0xFFF0FDF4), Color(0xFF047857));
+  green('Pastel Yeşil', 'Yeşil', Color(0xFFF0FDF4), Color(0xFF047857)),
+  gray('Gri Zemin', 'Gri', Color(0xFFE5E7EB), Color(0xFF94A3B8));
 
   final String label;
   final String shortLabel;

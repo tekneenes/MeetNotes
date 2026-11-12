@@ -8,6 +8,9 @@ class PlannerToolbar extends StatelessWidget {
   final VoidCallback? onToggleMinimap;
   final bool isMinimapOpen;
   final bool embedded;
+  final VoidCallback? onBackToHome;
+  final String? title;
+  final VoidCallback? onTapTitle;
 
   const PlannerToolbar({
     super.key,
@@ -17,6 +20,9 @@ class PlannerToolbar extends StatelessWidget {
     this.onToggleMinimap,
     this.isMinimapOpen = false,
     this.embedded = false,
+    this.onBackToHome,
+    this.title,
+    this.onTapTitle,
   });
 
   @override
@@ -90,6 +96,86 @@ class PlannerToolbar extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (onBackToHome != null) ...[
+          Tooltip(
+            message: 'Ana Sayfaya Dön',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: onBackToHome,
+              child: Container(
+                height: 34,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: Colors.black.withValues(alpha: 0.08),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      size: 14,
+                      color: Color(0xFF007AFF),
+                    ),
+                    SizedBox(width: 5),
+                    Text(
+                      'Ana Sayfa',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF007AFF),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+        if (title != null && title!.trim().isNotEmpty) ...[
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: onTapTitle,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 210),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.035),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      title!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                  ),
+                  if (onTapTitle != null) ...[
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.edit_outlined,
+                      size: 13,
+                      color: Colors.grey.shade500,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
         IconButton(
           tooltip: isMinimapOpen
               ? 'Tuval Haritasını Kapat'

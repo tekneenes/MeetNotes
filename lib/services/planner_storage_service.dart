@@ -14,6 +14,8 @@ class PlannerStorageService {
   static const String _dayTextPrefix = 'meet_notes_day_';
   static const String _savedAssetsKey = 'meet_notes_saved_assets';
   static const String _uploadedFilesKey = 'meet_notes_uploaded_files';
+  static const String _subjectsKey = 'meet_notes_subjects';
+  static const String _notesKey = 'meet_notes_documents';
 
   // --- Debounced (coalesced) writes for strokes & canvas texts ---
   // jsonEncode of every stroke on the UI thread caused a dropped frame at the
@@ -76,9 +78,10 @@ class PlannerStorageService {
   }
 
   // --- Paper Configuration ---
-  Future<PaperConfig> loadPaperConfig() async {
+  Future<PaperConfig> loadPaperConfig({String prefix = ''}) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_paperConfigKey);
+    final key = prefix.isEmpty ? _paperConfigKey : '${_paperConfigKey}_$prefix';
+    final raw = prefs.getString(key);
     if (raw == null) return const PaperConfig();
     try {
       final map = jsonDecode(raw) as Map<String, dynamic>;
@@ -88,9 +91,10 @@ class PlannerStorageService {
     }
   }
 
-  Future<void> savePaperConfig(PaperConfig config) async {
+  Future<void> savePaperConfig(PaperConfig config, {String prefix = ''}) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_paperConfigKey, jsonEncode(config.toMap()));
+    final key = prefix.isEmpty ? _paperConfigKey : '${_paperConfigKey}_$prefix';
+    await prefs.setString(key, jsonEncode(config.toMap()));
   }
 
   // --- Page Count ---
@@ -352,6 +356,59 @@ class PlannerStorageService {
       // Ignore in headless tests without path_provider channel
     } catch (e) {
       debugPrint('deleteUploadedFileBytes error: $e');
+    }
+  }
+
+  // --- Note Subjects & Standalone Notebook Documents ---
+  Future<List<NoteSubject>> loadNoteSubjects() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_subjectsKey);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map((e) => NoteSubject.fromMap(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveNoteSubjects(List<NoteSubject> subjects) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = jsonEncode(subjects.map((s) => s.toMap()).toList());
+    await prefs.setString(_subjectsKey, raw);
+  }
+
+  Future<List<NoteDocument>> loadNotes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_notesKey);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map((e) => NoteDocument.fromMap(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveNotes(List<NoteDocument> notes) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = jsonEncode(notes.map((n) => n.toMap()).toList());
+    await prefs.setString(_notesKey, raw);
+  }
+
+  Future<void> deleteNoteStorage(String noteId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final marker = 'note_${noteId}_';
+    final keysToRemove = prefs
+        .getKeys()
+        .where((k) => k.contains(marker))
+        .toList();
+    for (final k in keysToRemove) {
+      await prefs.remove(k);
     }
   }
 }

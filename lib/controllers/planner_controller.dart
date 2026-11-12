@@ -14,6 +14,8 @@ import '../services/shape_recognition_service.dart';
 class PlannerController extends ChangeNotifier {
   final PlannerStorageService _storage = PlannerStorageService();
   final DateTime? singleDayDate;
+  final String? noteId;
+  final PaperConfig? initialPaperConfig;
 
   late DateTime _currentWeekStart;
   int _currentPageIndex = 0;
@@ -141,10 +143,25 @@ class PlannerController extends ChangeNotifier {
 
   bool _isLoading = true;
 
-  String get _storagePrefix => singleDayDate != null ? 'day_' : '';
+  String get _storagePrefix {
+    if (noteId != null) return 'note_${noteId}_';
+    if (singleDayDate != null) return 'day_';
+    return '';
+  }
 
-  PlannerController({this.singleDayDate}) {
-    if (singleDayDate != null) {
+  String get _paperStoragePrefix => noteId != null ? _storagePrefix : '';
+
+  PlannerController({
+    this.singleDayDate,
+    this.noteId,
+    this.initialPaperConfig,
+  }) {
+    if (initialPaperConfig != null) {
+      _paperConfig = initialPaperConfig!;
+    }
+    if (noteId != null) {
+      _currentWeekStart = DateTime(2000, 1, 1);
+    } else if (singleDayDate != null) {
       _currentWeekStart = DateTime(
         singleDayDate!.year,
         singleDayDate!.month,
@@ -1890,7 +1907,12 @@ class PlannerController extends ChangeNotifier {
   Future<void> _loadAll() async {
     _isLoading = true;
     notifyListeners();
-    _paperConfig = await _storage.loadPaperConfig();
+    final loadedPaper = await _storage.loadPaperConfig(prefix: _paperStoragePrefix);
+    _paperConfig = (noteId != null &&
+            initialPaperConfig != null &&
+            loadedPaper == const PaperConfig())
+        ? initialPaperConfig!
+        : loadedPaper;
     _totalPages = await _storage.loadPageCount(_currentWeekStart, prefix: _storagePrefix);
     if (_currentPageIndex >= _totalPages) {
       _currentPageIndex = 0;
@@ -1917,18 +1939,20 @@ class PlannerController extends ChangeNotifier {
       await _storage.saveUploadedFiles(_uploadedFiles);
     }
 
-    if (singleDayDate != null) {
-      final key = _formatDateKey(singleDayDate!);
-      _dayNotes[key] = await _storage.loadDayText(singleDayDate!);
-      _dayEvents[key] = await _storage.loadDayEvents(singleDayDate!);
-    } else {
-      // Load day notes, calendar events & daily drawing previews for the week
-      for (int i = 0; i < 7; i++) {
-        final day = _currentWeekStart.add(Duration(days: i));
-        final key = _formatDateKey(day);
-        _dayNotes[key] = await _storage.loadDayText(day);
-        _dayPreviewStrokes[key] = await _storage.loadStrokes(day, 0, prefix: 'day_');
-        _dayEvents[key] = await _storage.loadDayEvents(day);
+    if (noteId == null) {
+      if (singleDayDate != null) {
+        final key = _formatDateKey(singleDayDate!);
+        _dayNotes[key] = await _storage.loadDayText(singleDayDate!);
+        _dayEvents[key] = await _storage.loadDayEvents(singleDayDate!);
+      } else {
+        // Load day notes, calendar events & daily drawing previews for the week
+        for (int i = 0; i < 7; i++) {
+          final day = _currentWeekStart.add(Duration(days: i));
+          final key = _formatDateKey(day);
+          _dayNotes[key] = await _storage.loadDayText(day);
+          _dayPreviewStrokes[key] = await _storage.loadStrokes(day, 0, prefix: 'day_');
+          _dayEvents[key] = await _storage.loadDayEvents(day);
+        }
       }
     }
 
@@ -2189,7 +2213,7 @@ class PlannerController extends ChangeNotifier {
 
   void updatePaperConfig(PaperConfig config) {
     _paperConfig = config;
-    _storage.savePaperConfig(config);
+    _storage.savePaperConfig(config, prefix: _paperStoragePrefix);
     notifyListeners();
   }
 

@@ -42,6 +42,15 @@ void main() {
     await tester.pumpWidget(const MeetNotesApp());
     await tester.pumpAndSettle();
 
+    // Verify Notability-style HomeScreen renders first
+    expect(find.text('Haftalık Ajanda & Planlayıcı'), findsOneWidget);
+    expect(find.text('Tüm Notlar'), findsWidgets);
+    expect(find.text('Yeni Not'), findsOneWidget);
+
+    // Navigate into Weekly Agenda & Planner
+    await tester.tap(find.text('Ajandayı Aç'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Pazartesi'), findsOneWidget);
 
     // Tap the Pazartesi day card to expand it to fullscreen
@@ -112,6 +121,11 @@ void main() {
       ),
       findsOneWidget,
     );
+
+    // Navigate back to HomeScreen via < Ana Sayfa
+    await tester.tap(find.text('Ana Sayfa'));
+    await tester.pumpAndSettle();
+    expect(find.text('Haftalık Ajanda & Planlayıcı'), findsOneWidget);
   });
 
   testWidgets('AppleNotesFloatingToolbar shape selection test',
@@ -3048,6 +3062,9 @@ void main() {
     await tester.pumpWidget(const MeetNotesApp());
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('Ajandayı Aç'));
+    await tester.pumpAndSettle();
+
     // 1. Week navigation arrows exist in GÜNLÜK NOTLAR (DaysSidebar) header
     final sidebarFinder = find.byType(DaysSidebar);
     final prevWeekBtn = find.descendant(
@@ -3128,6 +3145,9 @@ void main() {
     await tester.pumpWidget(const MeetNotesApp());
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('Ajandayı Aç'));
+    await tester.pumpAndSettle();
+
     final minimapOpenBtn = find.byTooltip('Tuval Haritası (Minimap)');
     expect(minimapOpenBtn, findsOneWidget);
     expect(find.byType(CanvasMinimapOverlay), findsNothing);
@@ -3199,5 +3219,56 @@ void main() {
     await tester.tap(expandedMinimapBtn);
     await tester.pumpAndSettle();
     expect(find.byType(CanvasMinimapOverlay), findsOneWidget);
+  });
+
+  testWidgets('HomeScreen create note, open editor, search and favorite flow',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(const MeetNotesApp());
+    await tester.pumpAndSettle();
+
+    // Open "Yeni Not" dialog
+    await tester.tap(find.text('Yeni Not'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Yeni Not Oluştur'), findsOneWidget);
+
+    // Enter note title and create
+    final titleField = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(titleField, 'Matematik Notları');
+    await tester.tap(find.text('Oluştur ve Aç'));
+    await tester.pumpAndSettle();
+
+    // Should now be inside NoteEditorScreen with < Ana Sayfa and title
+    expect(find.text('Ana Sayfa'), findsOneWidget);
+    expect(find.text('Matematik Notları'), findsOneWidget);
+    expect(find.byType(DrawingWorkspace), findsOneWidget);
+
+    // Return to HomeScreen
+    await tester.tap(find.text('Ana Sayfa'));
+    await tester.pumpAndSettle();
+
+    // Verify new note appears on HomeScreen
+    expect(find.text('Matematik Notları'), findsOneWidget);
+
+    // Test search filtering
+    final searchField = find.widgetWithText(TextField, 'Notlarda ara...');
+    await tester.enterText(searchField, 'Matematik');
+    await tester.pumpAndSettle();
+    expect(find.text('Matematik Notları'), findsOneWidget);
+
+    await tester.enterText(searchField, 'OlmayanNot');
+    await tester.pumpAndSettle();
+    expect(find.text('Matematik Notları'), findsNothing);
+
+    await tester.enterText(searchField, '');
+    await tester.pumpAndSettle();
+    expect(find.text('Matematik Notları'), findsOneWidget);
   });
 }

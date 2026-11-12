@@ -1265,5 +1265,134 @@ class SavedCanvasAsset {
   }
 }
 
+class NoteSubject {
+  final String id;
+  final String name;
+  final Color color;
+  final DateTime createdAt;
+
+  const NoteSubject({
+    required this.id,
+    required this.name,
+    required this.color,
+    required this.createdAt,
+  });
+
+  NoteSubject copyWith({
+    String? id,
+    String? name,
+    Color? color,
+    DateTime? createdAt,
+  }) {
+    return NoteSubject(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      color: color ?? this.color,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'name': name,
+    'color': color.toARGB32(),
+    'createdAt': createdAt.toIso8601String(),
+  };
+
+  factory NoteSubject.fromMap(Map<String, dynamic> map) {
+    return NoteSubject(
+      id: map['id'] as String? ?? '',
+      name: map['name'] as String? ?? 'Konu',
+      color: Color((map['color'] as num?)?.toInt() ?? 0xFF2563EB),
+      createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ??
+          DateTime.now(),
+    );
+  }
+}
+
+class NoteDocument {
+  final String id;
+  final String title;
+  final String subjectId;
+  final PaperStyle paperStyle;
+  final PaperColorTheme colorTheme;
+  final bool isFavorite;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final int pageCount;
+
+  const NoteDocument({
+    required this.id,
+    required this.title,
+    required this.subjectId,
+    this.paperStyle = PaperStyle.dotted,
+    this.colorTheme = PaperColorTheme.white,
+    this.isFavorite = false,
+    required this.createdAt,
+    required this.updatedAt,
+    this.pageCount = 1,
+  });
+
+  NoteDocument copyWith({
+    String? id,
+    String? title,
+    String? subjectId,
+    PaperStyle? paperStyle,
+    PaperColorTheme? colorTheme,
+    bool? isFavorite,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    int? pageCount,
+  }) {
+    return NoteDocument(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      subjectId: subjectId ?? this.subjectId,
+      paperStyle: paperStyle ?? this.paperStyle,
+      colorTheme: colorTheme ?? this.colorTheme,
+      isFavorite: isFavorite ?? this.isFavorite,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      pageCount: pageCount ?? this.pageCount,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'title': title,
+    'subjectId': subjectId,
+    'paperStyle': paperStyle.name,
+    'colorTheme': colorTheme.name,
+    'isFavorite': isFavorite,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+    'pageCount': pageCount,
+  };
+
+  factory NoteDocument.fromMap(Map<String, dynamic> map) {
+    final styleStr = map['paperStyle'] as String?;
+    final themeStr = map['colorTheme'] as String?;
+    return NoteDocument(
+      id: map['id'] as String? ?? '',
+      title: map['title'] as String? ?? 'Başlıksız Not',
+      subjectId: map['subjectId'] as String? ?? 'general',
+      paperStyle: PaperStyle.values.firstWhere(
+        (e) => e.name == styleStr,
+        orElse: () => PaperStyle.dotted,
+      ),
+      colorTheme: PaperColorTheme.values.firstWhere(
+        (e) => e.name == themeStr,
+        orElse: () => PaperColorTheme.white,
+      ),
+      isFavorite: map['isFavorite'] as bool? ?? false,
+      createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ??
+          DateTime.now(),
+      updatedAt: DateTime.tryParse(map['updatedAt'] as String? ?? '') ??
+          DateTime.now(),
+      pageCount: (map['pageCount'] as num?)?.toInt() ?? 1,
+    );
+  }
+}
+
 
 

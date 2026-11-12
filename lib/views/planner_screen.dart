@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../controllers/planner_controller.dart';
 import '../models/planner_models.dart';
 import '../services/pdf_service.dart';
+import '../services/planner_storage_service.dart';
 import '../widgets/apple_day_calendar_panel.dart';
 import '../widgets/canvas_minimap.dart';
 import '../widgets/days_sidebar.dart';
@@ -17,7 +18,9 @@ import '../widgets/planner_toolbar.dart';
 import '../widgets/tasks_sidebar.dart';
 
 class PlannerScreen extends StatefulWidget {
-  const PlannerScreen({super.key});
+  final VoidCallback? onBackToHome;
+
+  const PlannerScreen({super.key, this.onBackToHome});
 
   @override
   State<PlannerScreen> createState() => _PlannerScreenState();
@@ -403,6 +406,13 @@ class _PlannerScreenState extends State<PlannerScreen>
                                 // 1a. Unified Planner Toolbar (Dynamically resizes with sidebar state)
                                 PlannerToolbar(
                                   controller: _controller,
+                                  onBackToHome: widget.onBackToHome ??
+                                      (Navigator.of(context).canPop()
+                                          ? () {
+                                              PlannerStorageService.flushPendingWrites();
+                                              Navigator.of(context).maybePop();
+                                            }
+                                          : null),
                                   isQuickAccessOpen: _controller.isQuickAccessOpen,
                                   onToggleQuickAccess: _controller.toggleQuickAccess,
                                   isMinimapOpen: _controller.isMinimapOpen,

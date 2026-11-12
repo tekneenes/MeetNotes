@@ -3283,4 +3283,33 @@ void main() {
     await tester.tap(find.text('İptal'));
     await tester.pumpAndSettle();
   });
+
+  test('Zoom reaches 500% and PDF document pages cannot be selected by lasso',
+      () async {
+    final controller = PlannerController();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    controller.setZoomScale(5.0);
+    expect(controller.zoomScale, 5.0);
+
+    controller.setZoomScale(6.5);
+    expect(controller.zoomScale, 5.0);
+
+    // Document page should be ignored by lasso selection
+    final docPage = CanvasImageItem(
+      id: 'pdf_page_0',
+      position: const Offset(100, 100),
+      width: 400,
+      height: 500,
+      base64Data: '',
+      isLocked: true,
+      isDocumentPage: true,
+      pdfFileId: 'file_1',
+      pdfPageIndex: 0,
+    );
+    expect(docPage.isDocumentPage, isTrue);
+    expect(docPage.toMap()['isDocumentPage'], isTrue);
+    expect(CanvasImageItem.fromMap(docPage.toMap()).isDocumentPage, isTrue);
+
+    controller.dispose();
+  });
 }

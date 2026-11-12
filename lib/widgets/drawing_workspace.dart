@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -31,6 +32,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
   double _scale = 1.0;
   Offset _panOffset = Offset.zero;
   Size? _lastViewportSize;
+  Timer? _pdfZoomRefreshTimer;
 
   // Multi-touch & Trackpad gesture state
   final Map<int, Offset> _activePointers = {};
@@ -67,6 +69,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
 
   @override
   void dispose() {
+    _pdfZoomRefreshTimer?.cancel();
     widget.controller.removeListener(_syncFromController);
     widget.controller.canvasPanRequestListenable.removeListener(
       _handleExternalPanRequest,
@@ -75,14 +78,27 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
   }
 
   void _syncLiveVisibleRect(Size viewportSize) {
-    widget.controller.updateLiveVisibleRect(
-      Rect.fromLTWH(
-        -_panOffset.dx / _scale,
-        -_panOffset.dy / _scale,
-        viewportSize.width / _scale,
-        viewportSize.height / _scale,
-      ),
+    final visibleRect = Rect.fromLTWH(
+      -_panOffset.dx / _scale,
+      -_panOffset.dy / _scale,
+      viewportSize.width / _scale,
+      viewportSize.height / _scale,
     );
+    widget.controller.updateLiveVisibleRect(visibleRect);
+    _schedulePdfZoomRefresh(visibleRect);
+  }
+
+  void _schedulePdfZoomRefresh(Rect visibleRect) {
+    if (_scale <= 1.2) return;
+    _pdfZoomRefreshTimer?.cancel();
+    _pdfZoomRefreshTimer = Timer(const Duration(milliseconds: 160), () {
+      if (!mounted) return;
+      widget.controller.refreshPdfPagesForZoom(
+        _scale,
+        devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+        visibleCanvasRect: visibleRect,
+      );
+    });
   }
 
   void _handleExternalPanRequest() {
@@ -242,7 +258,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           ? (currentDistance / _initialPinchDistance)
           : 1.0;
 
-      final newScale = (_baseScale * scaleFactor).clamp(0.5, 4.0);
+      final newScale = (_baseScale * scaleFactor).clamp(0.5, 5.0);
       final rawPan = currentMidpoint - (_anchorCanvasPoint * newScale);
       setState(() {
         _scale = newScale;
@@ -278,7 +294,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
   }
 
   void _handleTrackpadPanZoomUpdate(PointerPanZoomUpdateEvent event, Size viewportSize) {
-    final newScale = (_baseScale * event.scale).clamp(0.5, 4.0);
+    final newScale = (_baseScale * event.scale).clamp(0.5, 5.0);
     // IMPORTANT: Use event.pan (untransformed delta vector), NOT event.localPan!
     // In Flutter's _TransformedPointerPanZoomUpdateEvent, localPan applies transformPosition()
     // which erroneously subtracts the widget's global (x, y) offset (-280px from left sidebar)!
@@ -304,7 +320,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         // Zoom centered at cursor position
         final zoomDelta = -event.scrollDelta.dy;
         final zoomFactor = math.exp(zoomDelta * 0.002);
-        final newScale = (_scale * zoomFactor).clamp(0.5, 4.0);
+        final newScale = (_scale * zoomFactor).clamp(0.5, 5.0);
         final focal = event.localPosition;
         final canvasFocal = _toCanvas(focal);
         final rawPan = focal - (canvasFocal * newScale);
@@ -719,7 +735,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                           imageBytes,
                           fit: BoxFit.cover,
                           gaplessPlayback: true,
-                          filterQuality: FilterQuality.medium,
+                          filterQuality: FilterQuality.high,
                           errorBuilder: (_, __, ___) => const Center(
                             child: Icon(Icons.broken_image_rounded, size: 36, color: Colors.grey),
                           ),

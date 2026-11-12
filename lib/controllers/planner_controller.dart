@@ -889,7 +889,11 @@ class PlannerController extends ChangeNotifier {
     return item;
   }
 
-  /// Imports every page of a PDF directly as clean canvas pages on blank paper.
+  final Map<String, double> _renderedPdfWidthByImageId = {};
+  final Set<String> _inFlightPdfReRenders = {};
+
+  /// Imports every page of a PDF directly as vertically stacked, non-selectable
+  /// document pages on the scrollable canvas.
   Future<int> importPdfAsNotePages({
     required String fileName,
     String? path,
@@ -914,7 +918,8 @@ class PlannerController extends ChangeNotifier {
       path: path,
       base64Data: fileBytes != null ? base64Encode(fileBytes) : null,
     );
-    await addUploadedFile(fileItem, rawBytes: fileBytes);
+    final savedFile = await addUploadedFile(fileItem, rawBytes: fileBytes);
+    final resolvedFileId = savedFile?.id ?? fileItem.id;
 
     final info = await PdfService.getPdfInfo(path: path, data: fileBytes);
     if (info == null || info.pageCount <= 0) {
@@ -922,45 +927,115 @@ class PlannerController extends ChangeNotifier {
       return 1;
     }
 
+    var currentY = 28.0;
+    const pageW = 680.0;
+    const initialRenderWidth = 1440.0;
+
     for (var i = 0; i < info.pageCount; i++) {
-      if (i > 0) {
-        addNewPage();
-      }
       final pngBytes = await PdfService.renderPage(
         path: path,
         data: fileBytes,
         pageIndex: i,
-        width: 1440.0,
+        width: initialRenderWidth,
       );
       if (pngBytes == null) continue;
       final pageInfo = i < info.pages.length ? info.pages[i] : null;
       final aspect = (pageInfo != null && pageInfo.aspectRatio > 0)
           ? pageInfo.aspectRatio
           : 0.707;
-      const pageW = 680.0;
       final pageH = pageW / aspect;
+      final itemId = const Uuid().v4();
       final item = CanvasImageItem(
-        id: const Uuid().v4(),
-        position: const Offset(120, 28),
+        id: itemId,
+        position: Offset(120.0, currentY),
         width: pageW,
         height: pageH,
         name: '$fileName • Sayfa ${i + 1}',
         base64Data: base64Encode(pngBytes),
         memoryBytes: pngBytes,
-        layerOrder: _nextTopLayerOrder(),
+        isLocked: true,
+        isDocumentPage: true,
+        pdfFileId: resolvedFileId,
+        pdfPageIndex: i,
+        layerOrder: -100000 + i,
       );
+      _renderedPdfWidthByImageId[itemId] = initialRenderWidth;
       _canvasImages.add(item);
-      _normalizeUnifiedLayerOrders();
-      await _saveCurrentCanvasImages();
+      currentY += pageH + 28.0;
     }
 
-    if (_currentPageIndex != 0) {
-      _currentPageIndex = 0;
-      await _loadPageStrokes();
-    } else {
+    await _saveCurrentCanvasImages();
+    notifyListeners();
+    return info.pageCount;
+  }
+
+  /// Dynamically re-renders visible PDF document pages at higher DPI when
+  /// zoomed in (up to 500%) so text and diagrams stay razor-sharp.
+  Future<void> refreshPdfPagesForZoom(
+    double scale, {
+    double devicePixelRatio = 2.0,
+    Rect? visibleCanvasRect,
+  }) async {
+    if (_isDisposed) return;
+    final desiredWidth = (680.0 * scale * devicePixelRatio)
+        .clamp(1440.0, 4200.0)
+        .roundToDouble();
+
+    bool changed = false;
+    for (var idx = 0; idx < _canvasImages.length; idx++) {
+      if (_isDisposed) return;
+      final img = _canvasImages[idx];
+      if (!img.isDocumentPage ||
+          img.pdfFileId == null ||
+          img.pdfPageIndex == null) {
+        continue;
+      }
+      if (visibleCanvasRect != null && !visibleCanvasRect.overlaps(img.rect)) {
+        continue;
+      }
+      final currentWidth = _renderedPdfWidthByImageId[img.id] ?? 1440.0;
+      if (desiredWidth <= currentWidth * 1.25) {
+        continue;
+      }
+      if (_inFlightPdfReRenders.contains(img.id)) {
+        continue;
+      }
+
+      final fileIdx = _uploadedFiles.indexWhere((f) => f.id == img.pdfFileId);
+      if (fileIdx == -1) continue;
+      final file = _uploadedFiles[fileIdx];
+      Uint8List? fileBytes;
+      if (file.base64Data != null && file.base64Data!.isNotEmpty) {
+        try {
+          fileBytes = base64Decode(file.base64Data!);
+        } catch (_) {}
+      }
+
+      _inFlightPdfReRenders.add(img.id);
+      try {
+        final pngBytes = await PdfService.renderPage(
+          path: file.path,
+          data: fileBytes,
+          pageIndex: img.pdfPageIndex!,
+          width: desiredWidth,
+        );
+        if (pngBytes != null && !_isDisposed) {
+          final latestIdx = _canvasImages.indexWhere((x) => x.id == img.id);
+          if (latestIdx != -1) {
+            _canvasImages[latestIdx] =
+                _canvasImages[latestIdx].copyWith(memoryBytes: pngBytes);
+            _renderedPdfWidthByImageId[img.id] = desiredWidth;
+            changed = true;
+          }
+        }
+      } finally {
+        _inFlightPdfReRenders.remove(img.id);
+      }
+    }
+
+    if (changed && !_isDisposed) {
       notifyListeners();
     }
-    return info.pageCount;
   }
 
   /// Selects a single canvas image using the shared lasso selection system
@@ -4766,6 +4841,7 @@ class PlannerController extends ChangeNotifier {
     final lockedImageHits = <String>{};
     if (_lassoIncludeImages) {
       for (final img in _canvasImages) {
+        if (img.isDocumentPage) continue;
         final rect = img.rect;
         final center = rect.center;
         final samplePoints = [
@@ -4859,6 +4935,7 @@ class PlannerController extends ChangeNotifier {
       }
     }
     for (final img in _canvasImages) {
+      if (img.isDocumentPage) continue;
       if (img.groupId != null && groupIds.contains(img.groupId)) {
         _selectedImageIds.add(img.id);
       }
@@ -5276,6 +5353,7 @@ class PlannerController extends ChangeNotifier {
       }
     }
     for (final img in _canvasImages) {
+      if (img.isDocumentPage) continue;
       if (img.groupId == groupId) {
         _selectedImageIds.add(img.id);
       }
@@ -7259,12 +7337,12 @@ class PlannerController extends ChangeNotifier {
 
   // Zoom Controls
   void zoomIn() {
-    _zoomScale = (_zoomScale + 0.25).clamp(0.5, 4.0);
+    _zoomScale = (_zoomScale + 0.25).clamp(0.5, 5.0);
     notifyListeners();
   }
 
   void zoomOut() {
-    _zoomScale = (_zoomScale - 0.25).clamp(0.5, 4.0);
+    _zoomScale = (_zoomScale - 0.25).clamp(0.5, 5.0);
     notifyListeners();
   }
 
@@ -7274,7 +7352,7 @@ class PlannerController extends ChangeNotifier {
   }
 
   void setZoomScale(double scale, {bool notify = true}) {
-    _zoomScale = scale.clamp(0.5, 4.0);
+    _zoomScale = scale.clamp(0.5, 5.0);
     if (notify) {
       notifyListeners();
     }

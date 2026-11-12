@@ -63,7 +63,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     if (!mounted) return;
     setState(() => _isImportingPdf = true);
     try {
-      await _controller.importPdfAsNotePages(
+      final importedPageCount = await _controller.importPdfAsNotePages(
         fileName: widget.initialPdfName ?? '$_currentTitle.pdf',
         path: widget.initialPdfPath,
         bytes: widget.initialPdfBytes,
@@ -71,7 +71,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
       await widget.libraryController.syncNoteAfterEditing(
         widget.note.id,
         title: _currentTitle,
-        pageCount: _controller.totalPages,
+        pageCount: importedPageCount > 1 ? importedPageCount : _controller.totalPages,
         paperStyle: _controller.paperConfig.style,
         colorTheme: _controller.paperConfig.colorTheme,
       );
@@ -91,10 +91,15 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
 
   Future<void> _syncAndPop() async {
     await PlannerStorageService.flushPendingWrites();
+    final docPageCount =
+        _controller.canvasImages.where((img) => img.isDocumentPage).length;
+    final effectivePageCount = docPageCount > _controller.totalPages
+        ? docPageCount
+        : _controller.totalPages;
     await widget.libraryController.syncNoteAfterEditing(
       widget.note.id,
       title: _currentTitle,
-      pageCount: _controller.totalPages,
+      pageCount: effectivePageCount,
       paperStyle: _controller.paperConfig.style,
       colorTheme: _controller.paperConfig.colorTheme,
     );

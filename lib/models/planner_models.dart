@@ -898,6 +898,9 @@ class CanvasImageItem {
   final int? layerOrder;
   final Uint8List? memoryBytes;
   final String? groupId;
+  final bool isDocumentPage;
+  final String? pdfFileId;
+  final int? pdfPageIndex;
 
   const CanvasImageItem({
     required this.id,
@@ -911,6 +914,9 @@ class CanvasImageItem {
     this.layerOrder,
     this.memoryBytes,
     this.groupId,
+    this.isDocumentPage = false,
+    this.pdfFileId,
+    this.pdfPageIndex,
   });
 
   Rect get rect => Rect.fromLTWH(position.dx, position.dy, width, height);
@@ -939,6 +945,9 @@ class CanvasImageItem {
     Uint8List? memoryBytes,
     String? groupId,
     bool clearGroupId = false,
+    bool? isDocumentPage,
+    String? pdfFileId,
+    int? pdfPageIndex,
   }) {
     return CanvasImageItem(
       id: id ?? this.id,
@@ -952,6 +961,9 @@ class CanvasImageItem {
       layerOrder: layerOrder ?? this.layerOrder,
       memoryBytes: memoryBytes ?? this.memoryBytes,
       groupId: clearGroupId ? null : (groupId ?? this.groupId),
+      isDocumentPage: isDocumentPage ?? this.isDocumentPage,
+      pdfFileId: pdfFileId ?? this.pdfFileId,
+      pdfPageIndex: pdfPageIndex ?? this.pdfPageIndex,
     );
   }
 
@@ -967,6 +979,9 @@ class CanvasImageItem {
     'rotation': rotation,
     if (layerOrder != null) 'layerOrder': layerOrder,
     if (groupId != null) 'groupId': groupId,
+    if (isDocumentPage) 'isDocumentPage': isDocumentPage,
+    if (pdfFileId != null) 'pdfFileId': pdfFileId,
+    if (pdfPageIndex != null) 'pdfPageIndex': pdfPageIndex,
   };
 
   factory CanvasImageItem.fromMap(Map<String, dynamic> map) {
@@ -992,6 +1007,9 @@ class CanvasImageItem {
       layerOrder: (map['layerOrder'] as num?)?.toInt(),
       memoryBytes: decoded,
       groupId: map['groupId'] as String?,
+      isDocumentPage: map['isDocumentPage'] as bool? ?? false,
+      pdfFileId: map['pdfFileId'] as String?,
+      pdfPageIndex: (map['pdfPageIndex'] as num?)?.toInt(),
     );
   }
 }

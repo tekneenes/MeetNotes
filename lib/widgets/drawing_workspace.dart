@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -30,6 +31,8 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
   // Viewport Zoom & Pan state (Canvas -> Viewport: p_viewport = p_canvas * _scale + _panOffset)
   double _scale = 1.0;
   Offset _panOffset = Offset.zero;
+  Size? _lastViewportSize;
+  Timer? _pdfZoomRefreshTimer;
 
   // Multi-touch & Trackpad gesture state
   final Map<int, Offset> _activePointers = {};
@@ -43,12 +46,73 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     super.initState();
     _scale = widget.controller.zoomScale;
     widget.controller.addListener(_syncFromController);
+    widget.controller.canvasPanRequestListenable.addListener(
+      _handleExternalPanRequest,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant DrawingWorkspace oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_syncFromController);
+      oldWidget.controller.canvasPanRequestListenable.removeListener(
+        _handleExternalPanRequest,
+      );
+      _scale = widget.controller.zoomScale;
+      widget.controller.addListener(_syncFromController);
+      widget.controller.canvasPanRequestListenable.addListener(
+        _handleExternalPanRequest,
+      );
+    }
   }
 
   @override
   void dispose() {
+    _pdfZoomRefreshTimer?.cancel();
     widget.controller.removeListener(_syncFromController);
+    widget.controller.canvasPanRequestListenable.removeListener(
+      _handleExternalPanRequest,
+    );
     super.dispose();
+  }
+
+  void _syncLiveVisibleRect(Size viewportSize) {
+    final visibleRect = Rect.fromLTWH(
+      -_panOffset.dx / _scale,
+      -_panOffset.dy / _scale,
+      viewportSize.width / _scale,
+      viewportSize.height / _scale,
+    );
+    widget.controller.updateLiveVisibleRect(visibleRect);
+    _schedulePdfZoomRefresh(visibleRect);
+  }
+
+  void _schedulePdfZoomRefresh(Rect visibleRect) {
+    if (_scale <= 1.2) return;
+    _pdfZoomRefreshTimer?.cancel();
+    _pdfZoomRefreshTimer = Timer(const Duration(milliseconds: 160), () {
+      if (!mounted) return;
+      widget.controller.refreshPdfPagesForZoom(
+        _scale,
+        devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+        visibleCanvasRect: visibleRect,
+      );
+    });
+  }
+
+  void _handleExternalPanRequest() {
+    final req = widget.controller.canvasPanRequestListenable.value;
+    final viewportSize = _lastViewportSize;
+    if (req == null || viewportSize == null || !mounted) return;
+    final rawPan = Offset(
+      viewportSize.width / 2.0 - req.targetCenter.dx * _scale,
+      viewportSize.height / 2.0 - req.targetCenter.dy * _scale,
+    );
+    setState(() {
+      _panOffset = _clampPanOffset(rawPan, _scale, viewportSize);
+    });
+    _syncLiveVisibleRect(viewportSize);
   }
 
   void _syncFromController() {
@@ -194,12 +258,13 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           ? (currentDistance / _initialPinchDistance)
           : 1.0;
 
-      final newScale = (_baseScale * scaleFactor).clamp(0.5, 4.0);
+      final newScale = (_baseScale * scaleFactor).clamp(0.5, 5.0);
       final rawPan = currentMidpoint - (_anchorCanvasPoint * newScale);
       setState(() {
         _scale = newScale;
         _panOffset = _clampPanOffset(rawPan, newScale, viewportSize);
       });
+      _syncLiveVisibleRect(viewportSize);
       widget.controller.setZoomScale(_scale, notify: false);
     } else if (_activePointers.length == 1 && !_isMultiTouchZooming) {
       if (widget.controller.selectedTool != DrawingTool.text) {
@@ -229,7 +294,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
   }
 
   void _handleTrackpadPanZoomUpdate(PointerPanZoomUpdateEvent event, Size viewportSize) {
-    final newScale = (_baseScale * event.scale).clamp(0.5, 4.0);
+    final newScale = (_baseScale * event.scale).clamp(0.5, 5.0);
     // IMPORTANT: Use event.pan (untransformed delta vector), NOT event.localPan!
     // In Flutter's _TransformedPointerPanZoomUpdateEvent, localPan applies transformPosition()
     // which erroneously subtracts the widget's global (x, y) offset (-280px from left sidebar)!
@@ -239,6 +304,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
       _scale = newScale;
       _panOffset = _clampPanOffset(rawPan, newScale, viewportSize);
     });
+    _syncLiveVisibleRect(viewportSize);
     widget.controller.setZoomScale(_scale, notify: false);
   }
 
@@ -254,7 +320,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         // Zoom centered at cursor position
         final zoomDelta = -event.scrollDelta.dy;
         final zoomFactor = math.exp(zoomDelta * 0.002);
-        final newScale = (_scale * zoomFactor).clamp(0.5, 4.0);
+        final newScale = (_scale * zoomFactor).clamp(0.5, 5.0);
         final focal = event.localPosition;
         final canvasFocal = _toCanvas(focal);
         final rawPan = focal - (canvasFocal * newScale);
@@ -262,6 +328,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
           _scale = newScale;
           _panOffset = _clampPanOffset(rawPan, newScale, viewportSize);
         });
+        _syncLiveVisibleRect(viewportSize);
         widget.controller.setZoomScale(_scale, notify: false);
       } else {
         // Natural trackpad or mouse wheel scroll pan
@@ -269,6 +336,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
         setState(() {
           _panOffset = _clampPanOffset(rawPan, _scale, viewportSize);
         });
+        _syncLiveVisibleRect(viewportSize);
       }
     }
   }
@@ -350,6 +418,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final viewportSize = Size(constraints.maxWidth, constraints.maxHeight);
+        _lastViewportSize = viewportSize;
         final visibleCanvasRect = Rect.fromLTWH(
           -_panOffset.dx / _scale,
           -_panOffset.dy / _scale,
@@ -666,7 +735,7 @@ class _DrawingWorkspaceState extends State<DrawingWorkspace> {
                           imageBytes,
                           fit: BoxFit.cover,
                           gaplessPlayback: true,
-                          filterQuality: FilterQuality.medium,
+                          filterQuality: FilterQuality.high,
                           errorBuilder: (_, __, ___) => const Center(
                             child: Icon(Icons.broken_image_rounded, size: 36, color: Colors.grey),
                           ),

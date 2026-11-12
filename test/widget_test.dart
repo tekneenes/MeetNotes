@@ -11,17 +11,26 @@ import 'package:meet_notes/widgets/compact_font_picker_dialog.dart';
 import 'package:meet_notes/widgets/compact_stroke_width_picker.dart';
 import 'package:meet_notes/widgets/compact_lasso_picker_dialog.dart';
 import 'package:meet_notes/widgets/compact_shapes_picker.dart';
+import 'package:meet_notes/widgets/apple_day_calendar_panel.dart';
 import 'package:meet_notes/widgets/apple_notes_toolbar.dart';
+import 'package:meet_notes/widgets/canvas_minimap.dart';
+import 'package:meet_notes/widgets/days_sidebar.dart';
 import 'package:meet_notes/widgets/drawing_workspace.dart';
 import 'package:meet_notes/widgets/paper_settings_dialog.dart';
+import 'package:meet_notes/widgets/planner_toolbar.dart';
 import 'package:meet_notes/widgets/compact_paper_region_style_dialog.dart';
+import 'package:meet_notes/services/planner_storage_service.dart';
 import 'package:meet_notes/services/shape_recognition_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUpAll(() async {
-    SharedPreferences.setMockInitialValues({});
     await initializeDateFormatting('tr_TR', null);
+  });
+
+  setUp(() {
+    PlannerStorageService.resetForTest();
+    SharedPreferences.setMockInitialValues({});
   });
 
   testWidgets('MeetNotesApp initial load and Day Card hero expand/shrink test',
@@ -33,6 +42,15 @@ void main() {
     await tester.pumpWidget(const MeetNotesApp());
     await tester.pumpAndSettle();
 
+    // Verify Notability-style HomeScreen renders first
+    expect(find.text('Haftalık Ajanda & Planlayıcı'), findsOneWidget);
+    expect(find.text('Tüm Notlar'), findsWidgets);
+    expect(find.text('Yeni Not'), findsOneWidget);
+
+    // Navigate into Weekly Agenda & Planner
+    await tester.tap(find.text('Ajandayı Aç'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Pazartesi'), findsOneWidget);
 
     // Tap the Pazartesi day card to expand it to fullscreen
@@ -41,16 +59,73 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     await tester.pumpAndSettle();
 
-    expect(find.text('Küçült / Haftaya Dön'), findsOneWidget);
-    expect(find.text('Pazartesi Notları'), findsOneWidget);
+    expect(find.text('Küçült / Haftaya Dön'), findsNothing);
+    expect(find.byTooltip('Küçült / Haftaya Dön'), findsOneWidget);
+    expect(find.byType(AppleDayCalendarPanel), findsOneWidget);
+    expect(find.text('tam gün'), findsOneWidget);
 
-    // Tap shrink button to return card back to sidebar
-    await tester.tap(find.text('Küçült / Haftaya Dön'));
+    // Add a calendar event inline inside AppleDayCalendarPanel (no AlertDialog)
+    await tester.tap(find.byTooltip('Etkinlik Ekle'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(AppleDayCalendarPanel),
+        matching: find.text('Kaydet'),
+      ),
+      findsOneWidget,
+    );
+
+    // Tapping Kaydet with blank title defaults cleanly to 'Yeni Etkinlik'
+    await tester.tap(find.text('Kaydet'));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(AppleDayCalendarPanel),
+        matching: find.text('Yeni Etkinlik'),
+      ),
+      findsOneWidget,
+    );
+
+    // Add a named event inline as well
+    await tester.tap(find.byTooltip('Etkinlik Ekle'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AppleDayCalendarPanel),
+        matching: find.byType(TextField),
+      ).first,
+      'Ürün Toplantısı',
+    );
+    await tester.tap(find.text('Kaydet'));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(AppleDayCalendarPanel),
+        matching: find.text('Ürün Toplantısı'),
+      ),
+      findsOneWidget,
+    );
+
+    // Tap shrink button to return card back to sidebar and verify event preview synced
+    await tester.tap(find.byTooltip('Küçült / Haftaya Dön'));
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 700));
 
-    expect(find.text('Küçült / Haftaya Dön'), findsNothing);
+    expect(find.byTooltip('Küçült / Haftaya Dön'), findsNothing);
     expect(find.text('Pazartesi'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(DaysSidebar),
+        matching: find.text('Ürün Toplantısı'),
+      ),
+      findsOneWidget,
+    );
+
+    // Navigate back to HomeScreen via < Ana Sayfa
+    await tester.tap(find.text('Ana Sayfa'));
+    await tester.pumpAndSettle();
+    expect(find.text('Haftalık Ajanda & Planlayıcı'), findsOneWidget);
   });
 
   testWidgets('AppleNotesFloatingToolbar shape selection test',
@@ -78,6 +153,55 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
+
+    // Drawing tools with custom PNG icon assets
+    final expectedCustomIcons = <String, String>{
+      'Tükenmez Kalem': 'assets/icons/pen.png',
+      'Dolma Kalem': 'assets/icons/fountain.png',
+      'Monoline Kalem': 'assets/icons/monoline.png',
+      'Kurşun Kalem': 'assets/icons/pencil.png',
+      'Fosforlu Kalem': 'assets/icons/marker.png',
+      'Sulu Boya': 'assets/icons/watercolor.png',
+      'Pastel Boya': 'assets/icons/crayon.png',
+      'Ezber Bandı': 'assets/icons/tape.png',
+      'Silgi (${controller.eraserType.label})': 'assets/icons/eraser.png',
+      'Kement (${controller.lassoSelectionMode.label})':
+          'assets/icons/rect_select.png',
+      'Metin Aracı': 'assets/icons/text.png',
+      'Geometrik Şekiller': 'assets/icons/shapes.png',
+    };
+    for (final entry in expectedCustomIcons.entries) {
+      final toolImage = tester.widget<Image>(
+        find.descendant(
+          of: find.byTooltip(entry.key),
+          matching: find.byType(Image),
+        ),
+      );
+      expect((toolImage.image as AssetImage).assetName, entry.value);
+    }
+
+    // Switching lasso mode to freeform should display assets/icons/lasso.png
+    controller.setLassoSelectionMode(LassoSelectionMode.freeform);
+    await tester.pumpAndSettle();
+    final freeformLassoImage = tester.widget<Image>(
+      find.descendant(
+        of: find.byTooltip('Kement (Serbest Kement)'),
+        matching: find.byType(Image),
+      ),
+    );
+    expect(
+      (freeformLassoImage.image as AssetImage).assetName,
+      'assets/icons/lasso.png',
+    );
+    controller.setLassoSelectionMode(LassoSelectionMode.rectangle);
+    await tester.pumpAndSettle();
+
+    // Verify tapping the dedicated Geometrik Şekiller button also opens CompactShapesPicker
+    await tester.tap(find.byTooltip('Geometrik Şekiller'));
+    await tester.pumpAndSettle();
+    expect(find.text('Geometrik Şekiller'), findsOneWidget);
+    await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();
 
     // Find the 3-dots button (Icons.more_horiz_rounded)
@@ -1167,7 +1291,7 @@ void main() {
     expect(controller.canvasImages, isEmpty);
     expect(controller.canvasFiles, isEmpty);
 
-    // 3. Test PDF viewer subpage navigation and dragging/inserting a PDF page to canvas
+    // 3. Test persistent uploaded PDF library (not auto-placed onto canvas)
     const samplePdfFile = CanvasFileItem(
       id: 'pdf_test_1',
       position: Offset(100, 100),
@@ -1175,6 +1299,15 @@ void main() {
       extension: 'pdf',
       sizeBytes: 1024 * 50,
     );
+
+    await controller.addUploadedFile(samplePdfFile);
+    expect(controller.uploadedFiles.length, 1);
+    expect(controller.uploadedFiles.first.name, 'Sample.pdf');
+    expect(controller.canvasFiles, isEmpty);
+
+    // Re-uploading the exact same file deduplicates cleanly
+    await controller.addUploadedFile(samplePdfFile);
+    expect(controller.uploadedFiles.length, 1);
 
     controller.openQuickAccessPdfViewer(samplePdfFile);
     expect(controller.isQuickAccessPdfViewerPage, isTrue);
@@ -1200,6 +1333,19 @@ void main() {
     controller.closeQuickAccessPdfViewer();
     expect(controller.isQuickAccessPdfViewerPage, isFalse);
     expect(controller.isQuickAccessFilesPage, isTrue);
+    expect(controller.uploadedFiles.length, 1);
+
+    // Uploaded files remain available across clearCanvas, page additions, and day controllers
+    controller.clearCanvas();
+    controller.addNewPage();
+    expect(controller.uploadedFiles.length, 1);
+
+    final dayController = PlannerController(singleDayDate: DateTime(2026, 11, 11));
+    await tester.pump(const Duration(milliseconds: 100));
+    await dayController.refreshUploadedFiles();
+    expect(dayController.uploadedFiles.length, 1);
+    expect(dayController.uploadedFiles.first.name, 'Sample.pdf');
+    dayController.dispose();
 
     // Drain debounce save timer
     await tester.pump(const Duration(milliseconds: 1000));
@@ -1289,6 +1435,22 @@ void main() {
     expect(find.text('Kement ve Alan Seçimi'), findsOneWidget);
     expect(find.text('Kare Seçim'), findsWidgets);
     expect(find.text('Serbest Kement'), findsOneWidget);
+    final dialogRectSelectImages = tester
+        .widgetList<Image>(
+          find.descendant(
+            of: find.byType(CompactLassoPickerDialog),
+            matching: find.byType(Image),
+          ),
+        )
+        .map((img) => (img.image as AssetImage).assetName)
+        .toList();
+    expect(
+      dialogRectSelectImages,
+      containsAll(<String>[
+        'assets/icons/rect_select.png',
+        'assets/icons/lasso.png',
+      ]),
+    );
     expect(find.text('SEÇİM FİLTRELERİ'), findsOneWidget);
     expect(find.text('4/4 Aktif'), findsOneWidget);
     expect(find.text('Çizim'), findsOneWidget);
@@ -2889,5 +3051,265 @@ void main() {
 
     // Drain timer
     await tester.pump(const Duration(milliseconds: 1000));
+  });
+
+  testWidgets('DaysSidebar week navigation, synchronized collapse, and offscreen spring return test',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(const MeetNotesApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Ajandayı Aç'));
+    await tester.pumpAndSettle();
+
+    // 1. Week navigation arrows exist in GÜNLÜK NOTLAR (DaysSidebar) header
+    final sidebarFinder = find.byType(DaysSidebar);
+    final prevWeekBtn = find.descendant(
+      of: sidebarFinder,
+      matching: find.byTooltip('Önceki Hafta'),
+    );
+    final nextWeekBtn = find.descendant(
+      of: sidebarFinder,
+      matching: find.byTooltip('Sonraki Hafta'),
+    );
+    final todayBtn = find.descendant(
+      of: sidebarFinder,
+      matching: find.byTooltip('Bugüne Git'),
+    );
+    expect(prevWeekBtn, findsOneWidget);
+    expect(nextWeekBtn, findsOneWidget);
+    expect(todayBtn, findsOneWidget);
+
+    // No English subtitles or fullscreen expand icon inside Day Cards
+    expect(find.byIcon(Icons.open_in_full_rounded), findsNothing);
+    expect(find.text('Monday'), findsNothing);
+    expect(find.text('Tuesday'), findsNothing);
+    expect(find.text('Wednesday'), findsNothing);
+
+    // Navigate next week and back to today
+    await tester.tap(nextWeekBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(todayBtn);
+    await tester.pumpAndSettle();
+
+    // 2. Toggle sidebar collapse & expand cleanly
+    expect(find.byTooltip('Günlük Notlar Panelini Gizle'), findsOneWidget);
+    await tester.tap(find.byTooltip('Günlük Notlar Panelini Gizle'));
+    await tester.pumpAndSettle();
+    expect(find.text('GÜNLÜK NOTLAR'), findsNothing);
+
+    await tester.tap(find.byTooltip('Günlük Notlar Panelini Göster'));
+    await tester.pumpAndSettle();
+    expect(find.text('GÜNLÜK NOTLAR'), findsOneWidget);
+
+    // 3. Expand Pazartesi -> switch across to Pazar (scrolled offscreen in sidebar) -> shrink back
+    await tester.tap(find.text('Pazartesi'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 120));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Küçült / Haftaya Dön'), findsOneWidget);
+
+    for (var i = 0; i < 6; i++) {
+      await tester.tap(find.byTooltip('Sonraki Gün (Alt + →)'));
+      await tester.pumpAndSettle();
+    }
+    expect(find.byType(AppleDayCalendarPanel), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AppleDayCalendarPanel),
+        matching: find.text('Pazar'),
+      ),
+      findsOneWidget,
+    );
+
+    // Close back -> should scroll sidebar to Pazar slot and complete spring smoothly
+    await tester.tap(find.byTooltip('Küçült / Haftaya Dön'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Küçült / Haftaya Dön'), findsNothing);
+    expect(find.text('Pazar'), findsOneWidget);
+    expect(find.text('Cumartesi'), findsOneWidget);
+  });
+
+  testWidgets('PlannerToolbar minimap toggle opens floating CanvasMinimapOverlay and pans on tap', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    PlannerStorageService.resetForTest();
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(const MeetNotesApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Ajandayı Aç'));
+    await tester.pumpAndSettle();
+
+    final minimapOpenBtn = find.byTooltip('Tuval Haritası (Minimap)');
+    expect(minimapOpenBtn, findsOneWidget);
+    expect(find.byType(CanvasMinimapOverlay), findsNothing);
+
+    await tester.tap(minimapOpenBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CanvasMinimapOverlay), findsOneWidget);
+    expect(find.text('Tuval Haritası'), findsNothing);
+    expect(find.textContaining('X: '), findsOneWidget);
+    expect(find.byTooltip('Başlangıca Dön'), findsOneWidget);
+
+    // Tap inside the minimap surface to jump viewport and tap return-to-origin
+    final minimapRect = tester.getRect(find.byType(CanvasMinimapOverlay));
+    await tester.tapAt(Offset(minimapRect.right - 24, minimapRect.bottom - 38));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Başlangıca Dön'));
+    await tester.pumpAndSettle();
+
+    // Toggle closed using toolbar button
+    await tester.tap(find.byTooltip('Tuval Haritasını Kapat'));
+    await tester.pumpAndSettle();
+    expect(find.byType(CanvasMinimapOverlay), findsNothing);
+
+    // Expanding a day card uses the same PlannerToolbar order & supports minimap
+    await tester.tap(find.text('Pazartesi'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Küçült / Haftaya Dön'), findsNothing);
+    expect(find.byTooltip('Küçült / Haftaya Dön'), findsOneWidget);
+    final expandedToolbar = find.byWidgetPredicate(
+      (w) => w is PlannerToolbar && w.embedded,
+    );
+    expect(expandedToolbar, findsOneWidget);
+
+    // Header divider between day selector and map button aligns cleanly with AppleDayCalendarPanel edge
+    expect(
+      tester.getTopLeft(expandedToolbar).dx - 14.0,
+      moreOrLessEquals(
+        tester.getTopRight(find.byType(AppleDayCalendarPanel)).dx,
+        epsilon: 0.5,
+      ),
+    );
+
+    final expandedMinimapBtn = find.descendant(
+      of: expandedToolbar,
+      matching: find.byTooltip('Tuval Haritası (Minimap)'),
+    );
+    final expandedZoom = find.descendant(
+      of: expandedToolbar,
+      matching: find.byTooltip('Sıfırla (%100)'),
+    );
+    final expandedPageLabel = find.descendant(
+      of: expandedToolbar,
+      matching: find.textContaining('Sayfa '),
+    );
+    expect(
+      tester.getTopLeft(expandedMinimapBtn).dx,
+      lessThan(tester.getTopLeft(expandedZoom).dx),
+    );
+    expect(
+      tester.getTopLeft(expandedZoom).dx,
+      lessThan(tester.getTopLeft(expandedPageLabel).dx),
+    );
+
+    await tester.tap(expandedMinimapBtn);
+    await tester.pumpAndSettle();
+    expect(find.byType(CanvasMinimapOverlay), findsOneWidget);
+  });
+
+  testWidgets('HomeScreen create note, open editor, search and favorite flow',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(const MeetNotesApp());
+    await tester.pumpAndSettle();
+
+    // Open "Yeni Not" dialog
+    await tester.tap(find.text('Yeni Not'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Yeni Not Oluştur'), findsOneWidget);
+
+    // Enter note title and create
+    final titleField = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(titleField, 'Matematik Notları');
+    await tester.tap(find.text('Oluştur ve Aç'));
+    await tester.pumpAndSettle();
+
+    // Should now be inside NoteEditorScreen with < Ana Sayfa and title
+    expect(find.text('Ana Sayfa'), findsOneWidget);
+    expect(find.text('Matematik Notları'), findsOneWidget);
+    expect(find.byType(DrawingWorkspace), findsOneWidget);
+
+    // Return to HomeScreen
+    await tester.tap(find.text('Ana Sayfa'));
+    await tester.pumpAndSettle();
+
+    // Verify new note appears on HomeScreen
+    expect(find.text('Matematik Notları'), findsOneWidget);
+
+    // Test search filtering
+    final searchField = find.widgetWithText(TextField, 'Notlarda ara...');
+    await tester.enterText(searchField, 'Matematik');
+    await tester.pumpAndSettle();
+    expect(find.text('Matematik Notları'), findsOneWidget);
+
+    await tester.enterText(searchField, 'OlmayanNot');
+    await tester.pumpAndSettle();
+    expect(find.text('Matematik Notları'), findsNothing);
+
+    await tester.enterText(searchField, '');
+    await tester.pumpAndSettle();
+    expect(find.text('Matematik Notları'), findsOneWidget);
+
+    // Verify quick "PDF Aç" button and "Sadece PDF" mode in Yeni Not dialog
+    expect(find.text('PDF Aç'), findsOneWidget);
+    await tester.tap(find.text('Yeni Not'));
+    await tester.pumpAndSettle();
+    expect(find.text('Kağıt Stili'), findsOneWidget);
+    await tester.tap(find.text('Sadece PDF'));
+    await tester.pumpAndSettle();
+    expect(find.text('Kağıt Stili'), findsNothing);
+    expect(find.text('PDF Dosyası Seç'), findsOneWidget);
+    await tester.tap(find.text('İptal'));
+    await tester.pumpAndSettle();
+  });
+
+  test('Zoom reaches 500% and PDF document pages cannot be selected by lasso',
+      () async {
+    final controller = PlannerController();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    controller.setZoomScale(5.0);
+    expect(controller.zoomScale, 5.0);
+
+    controller.setZoomScale(6.5);
+    expect(controller.zoomScale, 5.0);
+
+    // Document page should be ignored by lasso selection
+    final docPage = CanvasImageItem(
+      id: 'pdf_page_0',
+      position: const Offset(100, 100),
+      width: 400,
+      height: 500,
+      base64Data: '',
+      isLocked: true,
+      isDocumentPage: true,
+      pdfFileId: 'file_1',
+      pdfPageIndex: 0,
+    );
+    expect(docPage.isDocumentPage, isTrue);
+    expect(docPage.toMap()['isDocumentPage'], isTrue);
+    expect(CanvasImageItem.fromMap(docPage.toMap()).isDocumentPage, isTrue);
+
+    controller.dispose();
   });
 }

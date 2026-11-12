@@ -18,7 +18,8 @@ enum PaperColorTheme {
   cream('Krem / Fildişi', 'Krem', Color(0xFFF9F5EB), Color(0xFF7C6F59)),
   black('Siyah Kağıt', 'Siyah', Color(0xFF1E2022), Color(0xFF94A3B8)),
   yellow('Pastel Sarı', 'Sarı', Color(0xFFFFFBEB), Color(0xFF92400E)),
-  green('Pastel Yeşil', 'Yeşil', Color(0xFFF0FDF4), Color(0xFF047857));
+  green('Pastel Yeşil', 'Yeşil', Color(0xFFF0FDF4), Color(0xFF047857)),
+  gray('Gri Zemin', 'Gri', Color(0xFFE5E7EB), Color(0xFF94A3B8));
 
   final String label;
   final String shortLabel;
@@ -460,6 +461,92 @@ class DayScheduleItem {
   }
 }
 
+class DayCalendarEvent {
+  static const List<int> palette = [
+    0xFF0A84FF, // Apple Blue
+    0xFF8B5CF6, // Violet
+    0xFF10B981, // Emerald
+    0xFFF97316, // Amber / Orange
+    0xFFF43F5E, // Rose
+  ];
+
+  final String id;
+  final String title;
+  final bool isAllDay;
+  final int startMinutes;
+  final int endMinutes;
+  final int colorValue;
+  final String notes;
+
+  const DayCalendarEvent({
+    required this.id,
+    required this.title,
+    this.isAllDay = false,
+    this.startMinutes = 540, // 09:00
+    this.endMinutes = 600, // 10:00
+    this.colorValue = 0xFF0A84FF,
+    this.notes = '',
+  });
+
+  static String formatMinutes(int totalMinutes) {
+    final clamped = totalMinutes.clamp(0, 1440);
+    final h = (clamped ~/ 60) % 24;
+    final m = clamped % 60;
+    if (clamped == 1440) return '24:00';
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+  }
+
+  String get formattedTimeRange {
+    if (isAllDay) return 'Tam gün';
+    return '${formatMinutes(startMinutes)} – ${formatMinutes(endMinutes)}';
+  }
+
+  DayCalendarEvent copyWith({
+    String? id,
+    String? title,
+    bool? isAllDay,
+    int? startMinutes,
+    int? endMinutes,
+    int? colorValue,
+    String? notes,
+  }) {
+    return DayCalendarEvent(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      isAllDay: isAllDay ?? this.isAllDay,
+      startMinutes: startMinutes ?? this.startMinutes,
+      endMinutes: endMinutes ?? this.endMinutes,
+      colorValue: colorValue ?? this.colorValue,
+      notes: notes ?? this.notes,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'title': title,
+    'isAllDay': isAllDay,
+    'startMinutes': startMinutes,
+    'endMinutes': endMinutes,
+    'colorValue': colorValue,
+    'notes': notes,
+  };
+
+  factory DayCalendarEvent.fromMap(Map<String, dynamic> map) {
+    final start = ((map['startMinutes'] as num?)?.toInt() ?? 540).clamp(0, 1410);
+    final rawEnd = (map['endMinutes'] as num?)?.toInt() ?? (start + 60);
+    final end = rawEnd.clamp(start + 15, 1440);
+    return DayCalendarEvent(
+      id: map['id'] as String? ?? '',
+      title: map['title'] as String? ?? '',
+      isAllDay: map['isAllDay'] as bool? ?? false,
+      startMinutes: start,
+      endMinutes: end,
+      colorValue: (map['colorValue'] as num?)?.toInt() ?? 0xFF0A84FF,
+      notes: map['notes'] as String? ?? '',
+    );
+  }
+}
+
 class PlannerTaskItem {
   final String id;
   final String title;
@@ -811,6 +898,9 @@ class CanvasImageItem {
   final int? layerOrder;
   final Uint8List? memoryBytes;
   final String? groupId;
+  final bool isDocumentPage;
+  final String? pdfFileId;
+  final int? pdfPageIndex;
 
   const CanvasImageItem({
     required this.id,
@@ -824,6 +914,9 @@ class CanvasImageItem {
     this.layerOrder,
     this.memoryBytes,
     this.groupId,
+    this.isDocumentPage = false,
+    this.pdfFileId,
+    this.pdfPageIndex,
   });
 
   Rect get rect => Rect.fromLTWH(position.dx, position.dy, width, height);
@@ -852,6 +945,9 @@ class CanvasImageItem {
     Uint8List? memoryBytes,
     String? groupId,
     bool clearGroupId = false,
+    bool? isDocumentPage,
+    String? pdfFileId,
+    int? pdfPageIndex,
   }) {
     return CanvasImageItem(
       id: id ?? this.id,
@@ -865,6 +961,9 @@ class CanvasImageItem {
       layerOrder: layerOrder ?? this.layerOrder,
       memoryBytes: memoryBytes ?? this.memoryBytes,
       groupId: clearGroupId ? null : (groupId ?? this.groupId),
+      isDocumentPage: isDocumentPage ?? this.isDocumentPage,
+      pdfFileId: pdfFileId ?? this.pdfFileId,
+      pdfPageIndex: pdfPageIndex ?? this.pdfPageIndex,
     );
   }
 
@@ -880,6 +979,9 @@ class CanvasImageItem {
     'rotation': rotation,
     if (layerOrder != null) 'layerOrder': layerOrder,
     if (groupId != null) 'groupId': groupId,
+    if (isDocumentPage) 'isDocumentPage': isDocumentPage,
+    if (pdfFileId != null) 'pdfFileId': pdfFileId,
+    if (pdfPageIndex != null) 'pdfPageIndex': pdfPageIndex,
   };
 
   factory CanvasImageItem.fromMap(Map<String, dynamic> map) {
@@ -905,6 +1007,9 @@ class CanvasImageItem {
       layerOrder: (map['layerOrder'] as num?)?.toInt(),
       memoryBytes: decoded,
       groupId: map['groupId'] as String?,
+      isDocumentPage: map['isDocumentPage'] as bool? ?? false,
+      pdfFileId: map['pdfFileId'] as String?,
+      pdfPageIndex: (map['pdfPageIndex'] as num?)?.toInt(),
     );
   }
 }
@@ -1175,6 +1280,135 @@ class SavedCanvasAsset {
           .toList(),
       createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ??
           DateTime.now(),
+    );
+  }
+}
+
+class NoteSubject {
+  final String id;
+  final String name;
+  final Color color;
+  final DateTime createdAt;
+
+  const NoteSubject({
+    required this.id,
+    required this.name,
+    required this.color,
+    required this.createdAt,
+  });
+
+  NoteSubject copyWith({
+    String? id,
+    String? name,
+    Color? color,
+    DateTime? createdAt,
+  }) {
+    return NoteSubject(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      color: color ?? this.color,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'name': name,
+    'color': color.toARGB32(),
+    'createdAt': createdAt.toIso8601String(),
+  };
+
+  factory NoteSubject.fromMap(Map<String, dynamic> map) {
+    return NoteSubject(
+      id: map['id'] as String? ?? '',
+      name: map['name'] as String? ?? 'Konu',
+      color: Color((map['color'] as num?)?.toInt() ?? 0xFF2563EB),
+      createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ??
+          DateTime.now(),
+    );
+  }
+}
+
+class NoteDocument {
+  final String id;
+  final String title;
+  final String subjectId;
+  final PaperStyle paperStyle;
+  final PaperColorTheme colorTheme;
+  final bool isFavorite;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final int pageCount;
+
+  const NoteDocument({
+    required this.id,
+    required this.title,
+    required this.subjectId,
+    this.paperStyle = PaperStyle.dotted,
+    this.colorTheme = PaperColorTheme.white,
+    this.isFavorite = false,
+    required this.createdAt,
+    required this.updatedAt,
+    this.pageCount = 1,
+  });
+
+  NoteDocument copyWith({
+    String? id,
+    String? title,
+    String? subjectId,
+    PaperStyle? paperStyle,
+    PaperColorTheme? colorTheme,
+    bool? isFavorite,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    int? pageCount,
+  }) {
+    return NoteDocument(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      subjectId: subjectId ?? this.subjectId,
+      paperStyle: paperStyle ?? this.paperStyle,
+      colorTheme: colorTheme ?? this.colorTheme,
+      isFavorite: isFavorite ?? this.isFavorite,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      pageCount: pageCount ?? this.pageCount,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'title': title,
+    'subjectId': subjectId,
+    'paperStyle': paperStyle.name,
+    'colorTheme': colorTheme.name,
+    'isFavorite': isFavorite,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+    'pageCount': pageCount,
+  };
+
+  factory NoteDocument.fromMap(Map<String, dynamic> map) {
+    final styleStr = map['paperStyle'] as String?;
+    final themeStr = map['colorTheme'] as String?;
+    return NoteDocument(
+      id: map['id'] as String? ?? '',
+      title: map['title'] as String? ?? 'Başlıksız Not',
+      subjectId: map['subjectId'] as String? ?? 'general',
+      paperStyle: PaperStyle.values.firstWhere(
+        (e) => e.name == styleStr,
+        orElse: () => PaperStyle.dotted,
+      ),
+      colorTheme: PaperColorTheme.values.firstWhere(
+        (e) => e.name == themeStr,
+        orElse: () => PaperColorTheme.white,
+      ),
+      isFavorite: map['isFavorite'] as bool? ?? false,
+      createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ??
+          DateTime.now(),
+      updatedAt: DateTime.tryParse(map['updatedAt'] as String? ?? '') ??
+          DateTime.now(),
+      pageCount: (map['pageCount'] as num?)?.toInt() ?? 1,
     );
   }
 }

@@ -2,7 +2,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'services/planner_storage_service.dart';
-import 'views/planner_screen.dart';
+import 'views/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,7 +63,7 @@ class MeetNotesApp extends StatelessWidget {
         useMaterial3: true,
         fontFamily: null,
       ),
-      home: const PlannerScreen(),
+      home: const HomeScreen(),
     );
   }
 }

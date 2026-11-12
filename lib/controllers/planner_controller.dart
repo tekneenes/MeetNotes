@@ -14,6 +14,8 @@ import '../services/shape_recognition_service.dart';
 class PlannerController extends ChangeNotifier {
   final PlannerStorageService _storage = PlannerStorageService();
   final DateTime? singleDayDate;
+  final String? noteId;
+  final PaperConfig? initialPaperConfig;
 
   late DateTime _currentWeekStart;
   int _currentPageIndex = 0;
@@ -89,6 +91,15 @@ class PlannerController extends ChangeNotifier {
   Map<String, CanvasPaperRegion> _initialResizePaperRegions = {};
   Rect? _initialDragAreaSelectionRect;
   Rect? _canvasVisibleRect;
+  final ValueNotifier<Rect?> liveCanvasVisibleRectListenable =
+      ValueNotifier<Rect?>(null);
+  final ValueNotifier<({int id, Offset targetCenter})?>
+      canvasPanRequestListenable =
+      ValueNotifier<({int id, Offset targetCenter})?>(null);
+  int _panRequestSeq = 0;
+  bool _liveRectUpdateScheduled = false;
+  bool _isDisposed = false;
+  bool _isMinimapOpen = false;
   int? _lastDragTimestamp;
   Offset? _lastDragPoint;
   double _currentDragVelocity = 0.0;
@@ -101,10 +112,12 @@ class PlannerController extends ChangeNotifier {
 
   final Map<String, String> _dayNotes = {};
   final Map<String, List<DrawingStroke>> _dayPreviewStrokes = {};
+  final Map<String, List<DayCalendarEvent>> _dayEvents = {};
   List<PlannerTaskItem> _tasks = [];
   List<CanvasTextItem> _canvasTexts = [];
   List<CanvasImageItem> _canvasImages = [];
   List<CanvasFileItem> _canvasFiles = [];
+  List<CanvasFileItem> _uploadedFiles = [];
   List<CanvasPaperRegion> _canvasPaperRegions = [];
   final Set<String> _selectedPaperRegionIds = {};
   Rect? _activeAreaSelectionRect;
@@ -130,10 +143,25 @@ class PlannerController extends ChangeNotifier {
 
   bool _isLoading = true;
 
-  String get _storagePrefix => singleDayDate != null ? 'day_' : '';
+  String get _storagePrefix {
+    if (noteId != null) return 'note_${noteId}_';
+    if (singleDayDate != null) return 'day_';
+    return '';
+  }
 
-  PlannerController({this.singleDayDate}) {
-    if (singleDayDate != null) {
+  String get _paperStoragePrefix => noteId != null ? _storagePrefix : '';
+
+  PlannerController({
+    this.singleDayDate,
+    this.noteId,
+    this.initialPaperConfig,
+  }) {
+    if (initialPaperConfig != null) {
+      _paperConfig = initialPaperConfig!;
+    }
+    if (noteId != null) {
+      _currentWeekStart = DateTime(2000, 1, 1);
+    } else if (singleDayDate != null) {
       _currentWeekStart = DateTime(
         singleDayDate!.year,
         singleDayDate!.month,
@@ -339,8 +367,60 @@ class PlannerController extends ChangeNotifier {
   bool get enableSmartSnapping => _enableSmartSnapping;
   List<SmartAlignmentGuide> get activeSmartGuides => List.unmodifiable(_activeSmartGuides);
   Rect? get canvasVisibleRect => _canvasVisibleRect;
+  bool get isMinimapOpen => _isMinimapOpen;
+
+  void toggleMinimap() {
+    _isMinimapOpen = !_isMinimapOpen;
+    notifyListeners();
+  }
+
+  void setMinimapOpen(bool value) {
+    if (_isMinimapOpen != value) {
+      _isMinimapOpen = value;
+      notifyListeners();
+    }
+  }
+
+  bool _rectsClose(Rect? a, Rect b) {
+    if (a == null) return false;
+    return (a.left - b.left).abs() < 0.5 &&
+        (a.top - b.top).abs() < 0.5 &&
+        (a.width - b.width).abs() < 0.5 &&
+        (a.height - b.height).abs() < 0.5;
+  }
+
   void setCanvasVisibleRect(Rect rect) {
     _canvasVisibleRect = rect;
+    if (!_rectsClose(liveCanvasVisibleRectListenable.value, rect) &&
+        !_liveRectUpdateScheduled) {
+      _liveRectUpdateScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _liveRectUpdateScheduled = false;
+        if (_isDisposed) return;
+        if (!_rectsClose(
+          liveCanvasVisibleRectListenable.value,
+          _canvasVisibleRect!,
+        )) {
+          liveCanvasVisibleRectListenable.value = _canvasVisibleRect;
+        }
+      });
+    }
+  }
+
+  void updateLiveVisibleRect(Rect rect) {
+    _canvasVisibleRect = rect;
+    if (!_isDisposed && !_rectsClose(liveCanvasVisibleRectListenable.value, rect)) {
+      liveCanvasVisibleRectListenable.value = rect;
+    }
+  }
+
+  void requestPanToCanvasCenter(Offset targetCenter) {
+    if (_isDisposed) return;
+    _panRequestSeq++;
+    canvasPanRequestListenable.value = (
+      id: _panRequestSeq,
+      targetCenter: targetCenter,
+    );
   }
   void setEnableSmartSnapping(bool value) {
     if (_enableSmartSnapping != value) {
@@ -364,6 +444,7 @@ class PlannerController extends ChangeNotifier {
   CanvasFileItem? get activePdfFile => _activePdfFile;
   List<CanvasImageItem> get canvasImages => List.unmodifiable(_canvasImages);
   List<CanvasFileItem> get canvasFiles => List.unmodifiable(_canvasFiles);
+  List<CanvasFileItem> get uploadedFiles => List.unmodifiable(_uploadedFiles);
   String? get selectedImageId =>
       _selectedImageIds.length == 1 ? _selectedImageIds.first : null;
   String? get selectedFileId => _selectedFileId;
@@ -634,8 +715,35 @@ class PlannerController extends ChangeNotifier {
         _savedAssets = assets;
         notifyListeners();
       });
+      refreshUploadedFiles();
     }
     notifyListeners();
+  }
+
+  Future<void> refreshUploadedFiles() async {
+    final loaded = await _storage.loadUploadedFiles();
+    final merged = List<CanvasFileItem>.of(loaded);
+    var changed = false;
+    for (final legacy in _canvasFiles) {
+      final exists = merged.any((u) => _isSameUploadedFile(u, legacy));
+      if (!exists) {
+        merged.add(legacy);
+        changed = true;
+      }
+    }
+    _uploadedFiles = merged;
+    if (changed) {
+      await _storage.saveUploadedFiles(_uploadedFiles);
+    }
+    notifyListeners();
+  }
+
+  static bool _isSameUploadedFile(CanvasFileItem a, CanvasFileItem b) {
+    if (a.id == b.id) return true;
+    return a.sizeBytes > 0 &&
+        b.sizeBytes > 0 &&
+        a.sizeBytes == b.sizeBytes &&
+        a.name.trim().toLowerCase() == b.name.trim().toLowerCase();
   }
 
   void openQuickAccessMainPage() {
@@ -693,6 +801,7 @@ class PlannerController extends ChangeNotifier {
     _isQuickAccessOpen = true;
     _quickAccessSubPage = QuickAccessSubPage.files;
     _activePdfFile = null;
+    refreshUploadedFiles();
     notifyListeners();
   }
 
@@ -706,6 +815,7 @@ class PlannerController extends ChangeNotifier {
   void closeQuickAccessPdfViewer() {
     _activePdfFile = null;
     _quickAccessSubPage = QuickAccessSubPage.files;
+    refreshUploadedFiles();
     notifyListeners();
   }
 
@@ -720,8 +830,11 @@ class PlannerController extends ChangeNotifier {
     PdfPageDragData dragData, {
     Offset? targetCenter,
   }) async {
-    final idx = _canvasFiles.indexWhere((f) => f.id == dragData.fileId);
-    final file = idx != -1 ? _canvasFiles[idx] : null;
+    final uploadedIdx = _uploadedFiles.indexWhere((f) => f.id == dragData.fileId);
+    final canvasIdx = _canvasFiles.indexWhere((f) => f.id == dragData.fileId);
+    final file = uploadedIdx != -1
+        ? _uploadedFiles[uploadedIdx]
+        : (canvasIdx != -1 ? _canvasFiles[canvasIdx] : null);
 
     Uint8List? pngBytes;
     if (dragData.previewBase64 != null) {
@@ -774,6 +887,155 @@ class PlannerController extends ChangeNotifier {
     await _saveCurrentCanvasImages();
     notifyListeners();
     return item;
+  }
+
+  final Map<String, double> _renderedPdfWidthByImageId = {};
+  final Set<String> _inFlightPdfReRenders = {};
+
+  /// Imports every page of a PDF directly as vertically stacked, non-selectable
+  /// document pages on the scrollable canvas.
+  Future<int> importPdfAsNotePages({
+    required String fileName,
+    String? path,
+    Uint8List? bytes,
+  }) async {
+    Uint8List? fileBytes = bytes;
+    if ((fileBytes == null || fileBytes.isEmpty) && path != null) {
+      try {
+        final f = File(path);
+        if (await f.exists()) {
+          fileBytes = await f.readAsBytes();
+        }
+      } catch (_) {}
+    }
+
+    final fileItem = CanvasFileItem(
+      id: const Uuid().v4(),
+      position: const Offset(120, 160),
+      name: fileName,
+      sizeBytes: fileBytes?.length ?? 0,
+      extension: 'pdf',
+      path: path,
+      base64Data: fileBytes != null ? base64Encode(fileBytes) : null,
+    );
+    final savedFile = await addUploadedFile(fileItem, rawBytes: fileBytes);
+    final resolvedFileId = savedFile?.id ?? fileItem.id;
+
+    final info = await PdfService.getPdfInfo(path: path, data: fileBytes);
+    if (info == null || info.pageCount <= 0) {
+      notifyListeners();
+      return 1;
+    }
+
+    var currentY = 28.0;
+    const pageW = 680.0;
+    const initialRenderWidth = 1440.0;
+
+    for (var i = 0; i < info.pageCount; i++) {
+      final pngBytes = await PdfService.renderPage(
+        path: path,
+        data: fileBytes,
+        pageIndex: i,
+        width: initialRenderWidth,
+      );
+      if (pngBytes == null) continue;
+      final pageInfo = i < info.pages.length ? info.pages[i] : null;
+      final aspect = (pageInfo != null && pageInfo.aspectRatio > 0)
+          ? pageInfo.aspectRatio
+          : 0.707;
+      final pageH = pageW / aspect;
+      final itemId = const Uuid().v4();
+      final item = CanvasImageItem(
+        id: itemId,
+        position: Offset(120.0, currentY),
+        width: pageW,
+        height: pageH,
+        name: '$fileName • Sayfa ${i + 1}',
+        base64Data: base64Encode(pngBytes),
+        memoryBytes: pngBytes,
+        isLocked: true,
+        isDocumentPage: true,
+        pdfFileId: resolvedFileId,
+        pdfPageIndex: i,
+        layerOrder: -100000 + i,
+      );
+      _renderedPdfWidthByImageId[itemId] = initialRenderWidth;
+      _canvasImages.add(item);
+      currentY += pageH + 28.0;
+    }
+
+    await _saveCurrentCanvasImages();
+    notifyListeners();
+    return info.pageCount;
+  }
+
+  /// Dynamically re-renders visible PDF document pages at higher DPI when
+  /// zoomed in (up to 500%) so text and diagrams stay razor-sharp.
+  Future<void> refreshPdfPagesForZoom(
+    double scale, {
+    double devicePixelRatio = 2.0,
+    Rect? visibleCanvasRect,
+  }) async {
+    if (_isDisposed) return;
+    final desiredWidth = (680.0 * scale * devicePixelRatio)
+        .clamp(1440.0, 4200.0)
+        .roundToDouble();
+
+    bool changed = false;
+    for (var idx = 0; idx < _canvasImages.length; idx++) {
+      if (_isDisposed) return;
+      final img = _canvasImages[idx];
+      if (!img.isDocumentPage ||
+          img.pdfFileId == null ||
+          img.pdfPageIndex == null) {
+        continue;
+      }
+      if (visibleCanvasRect != null && !visibleCanvasRect.overlaps(img.rect)) {
+        continue;
+      }
+      final currentWidth = _renderedPdfWidthByImageId[img.id] ?? 1440.0;
+      if (desiredWidth <= currentWidth * 1.25) {
+        continue;
+      }
+      if (_inFlightPdfReRenders.contains(img.id)) {
+        continue;
+      }
+
+      final fileIdx = _uploadedFiles.indexWhere((f) => f.id == img.pdfFileId);
+      if (fileIdx == -1) continue;
+      final file = _uploadedFiles[fileIdx];
+      Uint8List? fileBytes;
+      if (file.base64Data != null && file.base64Data!.isNotEmpty) {
+        try {
+          fileBytes = base64Decode(file.base64Data!);
+        } catch (_) {}
+      }
+
+      _inFlightPdfReRenders.add(img.id);
+      try {
+        final pngBytes = await PdfService.renderPage(
+          path: file.path,
+          data: fileBytes,
+          pageIndex: img.pdfPageIndex!,
+          width: desiredWidth,
+        );
+        if (pngBytes != null && !_isDisposed) {
+          final latestIdx = _canvasImages.indexWhere((x) => x.id == img.id);
+          if (latestIdx != -1) {
+            _canvasImages[latestIdx] =
+                _canvasImages[latestIdx].copyWith(memoryBytes: pngBytes);
+            _renderedPdfWidthByImageId[img.id] = desiredWidth;
+            changed = true;
+          }
+        }
+      } finally {
+        _inFlightPdfReRenders.remove(img.id);
+      }
+    }
+
+    if (changed && !_isDisposed) {
+      notifyListeners();
+    }
   }
 
   /// Selects a single canvas image using the shared lasso selection system
@@ -837,6 +1099,58 @@ class PlannerController extends ChangeNotifier {
     }
   }
 
+  Future<CanvasFileItem?> addUploadedFile(
+    CanvasFileItem item, {
+    Uint8List? rawBytes,
+  }) async {
+    final ext = (item.extension ??
+            (item.name.contains('.') ? item.name.split('.').last : ''))
+        .toLowerCase();
+
+    final existingIdx =
+        _uploadedFiles.indexWhere((f) => _isSameUploadedFile(f, item));
+    if (existingIdx != -1) {
+      final existing = _uploadedFiles[existingIdx];
+      var updated = existing;
+      if (rawBytes != null && rawBytes.isNotEmpty) {
+        final localPath = await _storage.persistUploadedFileBytes(
+          existing.id,
+          ext,
+          rawBytes,
+        );
+        updated = existing.copyWith(
+          path: localPath ?? item.path ?? existing.path,
+          base64Data: localPath != null ? null : base64Encode(rawBytes),
+          extension: ext.isNotEmpty ? ext : existing.extension,
+          sizeBytes: item.sizeBytes > 0 ? item.sizeBytes : existing.sizeBytes,
+        );
+        _uploadedFiles[existingIdx] = updated;
+        await _storage.saveUploadedFiles(_uploadedFiles);
+      }
+      _selectedFileId = updated.id;
+      notifyListeners();
+      return updated;
+    }
+
+    String? localPath;
+    if (rawBytes != null && rawBytes.isNotEmpty) {
+      localPath = await _storage.persistUploadedFileBytes(item.id, ext, rawBytes);
+    }
+
+    final savedItem = item.copyWith(
+      extension: ext,
+      path: localPath ?? item.path,
+      base64Data: localPath != null
+          ? null
+          : (rawBytes != null ? base64Encode(rawBytes) : item.base64Data),
+    );
+    _uploadedFiles.add(savedItem);
+    _selectedFileId = savedItem.id;
+    await _storage.saveUploadedFiles(_uploadedFiles);
+    notifyListeners();
+    return savedItem;
+  }
+
   Future<CanvasFileItem?> pickAndAddFile({Offset? targetPosition}) async {
     try {
       final result = await FilePicker.pickFiles(
@@ -861,18 +1175,66 @@ class PlannerController extends ChangeNotifier {
         position: pos,
         name: file.name,
         sizeBytes: file.size,
-        extension: file.extension ?? (file.name.contains('.') ? file.name.split('.').last : ''),
+        extension: file.extension ??
+            (file.name.contains('.') ? file.name.split('.').last : ''),
         path: filePath,
         base64Data: bytes != null ? base64Encode(bytes) : null,
       );
-      _canvasFiles.add(item);
-      _selectedFileId = id;
-      await _saveCurrentCanvasFiles();
-      notifyListeners();
-      return item;
+      return await addUploadedFile(item, rawBytes: bytes);
     } catch (e) {
       debugPrint('pickAndAddFile error: $e');
       return null;
+    }
+  }
+
+  /// Explicitly places an already-uploaded file shortcut onto the active canvas page
+  /// without touching or duplicating the persistent uploaded library entry.
+  void addUploadedFileToCanvas(CanvasFileItem file, {Offset? targetPosition}) {
+    final existingIdx = _canvasFiles.indexWhere((f) => f.id == file.id);
+    if (existingIdx != -1) {
+      _selectedFileId = _canvasFiles[existingIdx].id;
+      notifyListeners();
+      return;
+    }
+    final canvasItem = file.copyWith(
+      position: targetPosition ?? const Offset(120, 160),
+    );
+    _canvasFiles.add(canvasItem);
+    _selectedFileId = canvasItem.id;
+    _saveCurrentCanvasFiles();
+    notifyListeners();
+  }
+
+  Future<void> removeUploadedFile(String id) async {
+    final idx = _uploadedFiles.indexWhere((f) => f.id == id);
+    if (idx != -1) {
+      final removed = _uploadedFiles.removeAt(idx);
+      await _storage.deleteUploadedFileBytes(removed);
+      await _storage.saveUploadedFiles(_uploadedFiles);
+    }
+    if (_activePdfFile?.id == id) {
+      _activePdfFile = null;
+      _quickAccessSubPage = QuickAccessSubPage.files;
+    }
+    if (_selectedFileId == id) _selectedFileId = null;
+    notifyListeners();
+  }
+
+  void toggleUploadedFileLock(String id) {
+    final idx = _uploadedFiles.indexWhere((f) => f.id == id);
+    if (idx != -1) {
+      _uploadedFiles[idx] = _uploadedFiles[idx].copyWith(
+        isLocked: !_uploadedFiles[idx].isLocked,
+      );
+      _storage.saveUploadedFiles(_uploadedFiles);
+      final canvasIdx = _canvasFiles.indexWhere((f) => f.id == id);
+      if (canvasIdx != -1) {
+        _canvasFiles[canvasIdx] = _canvasFiles[canvasIdx].copyWith(
+          isLocked: _uploadedFiles[idx].isLocked,
+        );
+        _saveCurrentCanvasFiles();
+      }
+      notifyListeners();
     }
   }
 
@@ -1647,25 +2009,27 @@ class PlannerController extends ChangeNotifier {
   bool get canRedo => _redoStack.isNotEmpty;
 
   List<DayScheduleItem> get currentWeekDays {
-    final turkishDays = [
+    const turkishDays = [
       'Pazartesi',
       'Salı',
       'Çarşamba',
       'Perşembe',
       'Cuma',
-      'Cumartesi / Pazar',
+      'Cumartesi',
+      'Pazar',
     ];
-    final englishDays = [
+    const englishDays = [
       'Monday',
       'Tuesday',
       'Wednesday',
       'Thursday',
       'Friday',
-      'Weekend',
+      'Saturday',
+      'Sunday',
     ];
 
     final list = <DayScheduleItem>[];
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 7; i++) {
       final dayDate = _currentWeekStart.add(Duration(days: i));
       final dateKey = _formatDateKey(dayDate);
       list.add(DayScheduleItem(
@@ -1675,16 +2039,6 @@ class PlannerController extends ChangeNotifier {
         text: _dayNotes[dateKey] ?? '',
       ));
     }
-
-    // Weekend (Cumartesi / Pazar combined or 6th day as anchor)
-    final weekendDate = _currentWeekStart.add(const Duration(days: 5));
-    final weekendKey = _formatDateKey(weekendDate);
-    list.add(DayScheduleItem(
-      date: weekendDate,
-      dayName: turkishDays[5],
-      dayNameEnglish: englishDays[5],
-      text: _dayNotes[weekendKey] ?? '',
-    ));
 
     return list;
   }
@@ -1702,8 +2056,12 @@ class PlannerController extends ChangeNotifier {
   Future<void> _loadAll() async {
     _isLoading = true;
     notifyListeners();
-
-    _paperConfig = await _storage.loadPaperConfig();
+    final loadedPaper = await _storage.loadPaperConfig(prefix: _paperStoragePrefix);
+    _paperConfig = (noteId != null &&
+            initialPaperConfig != null &&
+            loadedPaper == const PaperConfig())
+        ? initialPaperConfig!
+        : loadedPaper;
     _totalPages = await _storage.loadPageCount(_currentWeekStart, prefix: _storagePrefix);
     if (_currentPageIndex >= _totalPages) {
       _currentPageIndex = 0;
@@ -1716,17 +2074,34 @@ class PlannerController extends ChangeNotifier {
     _canvasPaperRegions = await _storage.loadCanvasPaperRegions(_currentWeekStart, _currentPageIndex, prefix: _storagePrefix);
     _normalizeUnifiedLayerOrders();
     _savedAssets = await _storage.loadSavedAssets();
+    final loadedFiles = await _storage.loadUploadedFiles();
+    final mergedFiles = List<CanvasFileItem>.of(loadedFiles);
+    var migratedLegacy = false;
+    for (final legacy in _canvasFiles) {
+      if (!mergedFiles.any((u) => _isSameUploadedFile(u, legacy))) {
+        mergedFiles.add(legacy);
+        migratedLegacy = true;
+      }
+    }
+    _uploadedFiles = mergedFiles;
+    if (migratedLegacy) {
+      await _storage.saveUploadedFiles(_uploadedFiles);
+    }
 
-    if (singleDayDate != null) {
-      final text = await _storage.loadDayText(singleDayDate!);
-      _dayNotes[_formatDateKey(singleDayDate!)] = text;
-    } else {
-      // Load day notes & daily drawing previews for the week
-      for (int i = 0; i < 7; i++) {
-        final day = _currentWeekStart.add(Duration(days: i));
-        final key = _formatDateKey(day);
-        _dayNotes[key] = await _storage.loadDayText(day);
-        _dayPreviewStrokes[key] = await _storage.loadStrokes(day, 0, prefix: 'day_');
+    if (noteId == null) {
+      if (singleDayDate != null) {
+        final key = _formatDateKey(singleDayDate!);
+        _dayNotes[key] = await _storage.loadDayText(singleDayDate!);
+        _dayEvents[key] = await _storage.loadDayEvents(singleDayDate!);
+      } else {
+        // Load day notes, calendar events & daily drawing previews for the week
+        for (int i = 0; i < 7; i++) {
+          final day = _currentWeekStart.add(Duration(days: i));
+          final key = _formatDateKey(day);
+          _dayNotes[key] = await _storage.loadDayText(day);
+          _dayPreviewStrokes[key] = await _storage.loadStrokes(day, 0, prefix: 'day_');
+          _dayEvents[key] = await _storage.loadDayEvents(day);
+        }
       }
     }
 
@@ -1742,11 +2117,75 @@ class PlannerController extends ChangeNotifier {
     return _dayNotes[_formatDateKey(date)] ?? '';
   }
 
+  List<DayCalendarEvent> getDayEvents(DateTime date) {
+    return List.unmodifiable(_dayEvents[_formatDateKey(date)] ?? const []);
+  }
+
+  void addDayEvent(DateTime date, DayCalendarEvent event) {
+    final key = _formatDateKey(date);
+    final updated = List<DayCalendarEvent>.of(_dayEvents[key] ?? const [])
+      ..add(event)
+      ..sort((a, b) {
+        if (a.isAllDay != b.isAllDay) return a.isAllDay ? -1 : 1;
+        return a.startMinutes.compareTo(b.startMinutes);
+      });
+    _dayEvents[key] = updated;
+    notifyListeners();
+    _storage.saveDayEvents(date, updated);
+  }
+
+  void updateDayEvent(DateTime date, DayCalendarEvent event) {
+    final key = _formatDateKey(date);
+    final current = List<DayCalendarEvent>.of(_dayEvents[key] ?? const []);
+    final idx = current.indexWhere((e) => e.id == event.id);
+    if (idx == -1) return;
+    current[idx] = event;
+    current.sort((a, b) {
+      if (a.isAllDay != b.isAllDay) return a.isAllDay ? -1 : 1;
+      return a.startMinutes.compareTo(b.startMinutes);
+    });
+    _dayEvents[key] = current;
+    notifyListeners();
+    _storage.saveDayEvents(date, current);
+  }
+
+  void deleteDayEvent(DateTime date, String eventId) {
+    final key = _formatDateKey(date);
+    final current = List<DayCalendarEvent>.of(_dayEvents[key] ?? const []);
+    final beforeLen = current.length;
+    current.removeWhere((e) => e.id == eventId);
+    if (current.length == beforeLen) return;
+    _dayEvents[key] = current;
+    notifyListeners();
+    _storage.saveDayEvents(date, current);
+  }
+
   Future<void> refreshDayPreview(DateTime date) async {
     final key = _formatDateKey(date);
     _dayNotes[key] = await _storage.loadDayText(date);
     _dayPreviewStrokes[key] = await _storage.loadStrokes(date, 0, prefix: 'day_');
+    _dayEvents[key] = await _storage.loadDayEvents(date);
     notifyListeners();
+  }
+
+  /// Immediately updates the in-memory sidebar preview for [date] so close
+  /// transitions do not block waiting on storage I/O.
+  void setDayPreviewImmediate(
+    DateTime date, {
+    String? text,
+    List<DrawingStroke>? strokes,
+  }) {
+    final key = _formatDateKey(date);
+    var changed = false;
+    if (text != null && _dayNotes[key] != text) {
+      _dayNotes[key] = text;
+      changed = true;
+    }
+    if (strokes != null) {
+      _dayPreviewStrokes[key] = List<DrawingStroke>.of(strokes);
+      changed = true;
+    }
+    if (changed) notifyListeners();
   }
 
   // Week Navigation
@@ -1923,7 +2362,7 @@ class PlannerController extends ChangeNotifier {
 
   void updatePaperConfig(PaperConfig config) {
     _paperConfig = config;
-    _storage.savePaperConfig(config);
+    _storage.savePaperConfig(config, prefix: _paperStoragePrefix);
     notifyListeners();
   }
 
@@ -4402,6 +4841,7 @@ class PlannerController extends ChangeNotifier {
     final lockedImageHits = <String>{};
     if (_lassoIncludeImages) {
       for (final img in _canvasImages) {
+        if (img.isDocumentPage) continue;
         final rect = img.rect;
         final center = rect.center;
         final samplePoints = [
@@ -4495,6 +4935,7 @@ class PlannerController extends ChangeNotifier {
       }
     }
     for (final img in _canvasImages) {
+      if (img.isDocumentPage) continue;
       if (img.groupId != null && groupIds.contains(img.groupId)) {
         _selectedImageIds.add(img.id);
       }
@@ -4912,6 +5353,7 @@ class PlannerController extends ChangeNotifier {
       }
     }
     for (final img in _canvasImages) {
+      if (img.isDocumentPage) continue;
       if (img.groupId == groupId) {
         _selectedImageIds.add(img.id);
       }
@@ -6895,12 +7337,12 @@ class PlannerController extends ChangeNotifier {
 
   // Zoom Controls
   void zoomIn() {
-    _zoomScale = (_zoomScale + 0.25).clamp(0.5, 4.0);
+    _zoomScale = (_zoomScale + 0.25).clamp(0.5, 5.0);
     notifyListeners();
   }
 
   void zoomOut() {
-    _zoomScale = (_zoomScale - 0.25).clamp(0.5, 4.0);
+    _zoomScale = (_zoomScale - 0.25).clamp(0.5, 5.0);
     notifyListeners();
   }
 
@@ -6910,7 +7352,7 @@ class PlannerController extends ChangeNotifier {
   }
 
   void setZoomScale(double scale, {bool notify = true}) {
-    _zoomScale = scale.clamp(0.5, 4.0);
+    _zoomScale = scale.clamp(0.5, 5.0);
     if (notify) {
       notifyListeners();
     }
@@ -6918,8 +7360,11 @@ class PlannerController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _drawAndHoldTimer?.cancel();
     _drawAndHoldTimer = null;
+    liveCanvasVisibleRectListenable.dispose();
+    canvasPanRequestListenable.dispose();
     super.dispose();
   }
 }

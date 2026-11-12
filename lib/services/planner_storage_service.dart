@@ -1,5 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/planner_models.dart';
 
@@ -9,6 +13,9 @@ class PlannerStorageService {
   static const String _strokesPrefix = 'meet_notes_strokes_';
   static const String _dayTextPrefix = 'meet_notes_day_';
   static const String _savedAssetsKey = 'meet_notes_saved_assets';
+  static const String _uploadedFilesKey = 'meet_notes_uploaded_files';
+  static const String _subjectsKey = 'meet_notes_subjects';
+  static const String _notesKey = 'meet_notes_documents';
 
   // --- Debounced (coalesced) writes for strokes & canvas texts ---
   // jsonEncode of every stroke on the UI thread caused a dropped frame at the
@@ -19,7 +26,7 @@ class PlannerStorageService {
   static const Duration _writeDelay = Duration(milliseconds: 600);
   static final Map<String, String Function()> _pendingWrites = {};
   static Timer? _writeTimer;
-  static Future<void> _writeChain = Future.value();
+  static Future<void>? _activeWrite;
 
   static void _scheduleWrite(String key, String Function() encoder) {
     _pendingWrites[key] = encoder; // latest snapshot per key wins
@@ -32,17 +39,34 @@ class PlannerStorageService {
   static Future<void> flushPendingWrites() {
     _writeTimer?.cancel();
     _writeTimer = null;
+    final previous = _activeWrite;
     if (_pendingWrites.isNotEmpty) {
       final items = Map<String, String Function()>.of(_pendingWrites);
       _pendingWrites.clear();
-      _writeChain = _writeChain.then((_) async {
+      late final Future<void> current;
+      current = (previous ?? Future<void>.value()).then((_) async {
         final prefs = await SharedPreferences.getInstance();
         for (final e in items.entries) {
           await prefs.setString(e.key, e.value());
         }
-      }).catchError((Object _) {});
+      }).catchError((Object _) {}).whenComplete(() {
+        if (identical(_activeWrite, current)) {
+          _activeWrite = null;
+        }
+      });
+      _activeWrite = current;
+      return current;
     }
-    return _writeChain;
+    return previous ?? Future<void>.value();
+  }
+
+  /// Clears static debounced write state between isolated tests.
+  @visibleForTesting
+  static void resetForTest() {
+    _writeTimer?.cancel();
+    _writeTimer = null;
+    _pendingWrites.clear();
+    _activeWrite = null;
   }
 
   String _formatWeekKey(DateTime date) {
@@ -54,9 +78,10 @@ class PlannerStorageService {
   }
 
   // --- Paper Configuration ---
-  Future<PaperConfig> loadPaperConfig() async {
+  Future<PaperConfig> loadPaperConfig({String prefix = ''}) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_paperConfigKey);
+    final key = prefix.isEmpty ? _paperConfigKey : '${_paperConfigKey}_$prefix';
+    final raw = prefs.getString(key);
     if (raw == null) return const PaperConfig();
     try {
       final map = jsonDecode(raw) as Map<String, dynamic>;
@@ -66,9 +91,10 @@ class PlannerStorageService {
     }
   }
 
-  Future<void> savePaperConfig(PaperConfig config) async {
+  Future<void> savePaperConfig(PaperConfig config, {String prefix = ''}) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_paperConfigKey, jsonEncode(config.toMap()));
+    final key = prefix.isEmpty ? _paperConfigKey : '${_paperConfigKey}_$prefix';
+    await prefs.setString(key, jsonEncode(config.toMap()));
   }
 
   // --- Page Count ---
@@ -116,6 +142,28 @@ class PlannerStorageService {
     final prefs = await SharedPreferences.getInstance();
     final key = '$_dayTextPrefix${_formatDayKey(date)}';
     await prefs.setString(key, text);
+  }
+
+  // --- Day Calendar Events ---
+  Future<List<DayCalendarEvent>> loadDayEvents(DateTime date) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'meet_notes_day_events_${_formatDayKey(date)}';
+    final raw = prefs.getString(key);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map((e) => DayCalendarEvent.fromMap(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveDayEvents(DateTime date, List<DayCalendarEvent> events) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'meet_notes_day_events_${_formatDayKey(date)}';
+    await prefs.setString(key, jsonEncode(events.map((e) => e.toMap()).toList()));
   }
 
   // --- Weekly Tasks ---
@@ -242,6 +290,126 @@ class PlannerStorageService {
     final prefs = await SharedPreferences.getInstance();
     final raw = jsonEncode(assets.map((a) => a.toMap()).toList());
     await prefs.setString(_savedAssetsKey, raw);
+  }
+
+  // --- Global Persistent Uploaded Files Library (PDFs, Documents, etc.) ---
+  Future<List<CanvasFileItem>> loadUploadedFiles() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_uploadedFilesKey);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map((e) => CanvasFileItem.fromMap(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveUploadedFiles(List<CanvasFileItem> files) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = jsonEncode(files.map((f) => f.toMap()).toList());
+    await prefs.setString(_uploadedFilesKey, raw);
+  }
+
+  /// Copies uploaded bytes into the app's sandboxed Application Support directory
+  /// so macOS/iOS security-scoped file permissions never expire across restarts
+  /// and large binaries do not bloat SharedPreferences.
+  Future<String?> persistUploadedFileBytes(
+    String fileId,
+    String extension,
+    Uint8List bytes,
+  ) async {
+    if (kIsWeb || bytes.isEmpty) return null;
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      final filesDir = Directory('${supportDir.path}/uploaded_files');
+      if (!await filesDir.exists()) {
+        await filesDir.create(recursive: true);
+      }
+      final cleanExt = extension.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toLowerCase();
+      final suffix = cleanExt.isNotEmpty ? '.$cleanExt' : '';
+      final targetFile = File('${filesDir.path}/$fileId$suffix');
+      await targetFile.writeAsBytes(bytes, flush: true);
+      return targetFile.path;
+    } on MissingPluginException {
+      return null;
+    } catch (e) {
+      debugPrint('persistUploadedFileBytes error: $e');
+      return null;
+    }
+  }
+
+  Future<void> deleteUploadedFileBytes(CanvasFileItem file) async {
+    final filePath = file.path;
+    if (kIsWeb || filePath == null || filePath.isEmpty) return;
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      final filesDirPath = '${supportDir.path}/uploaded_files/';
+      if (!filePath.startsWith(filesDirPath)) return;
+      final targetFile = File(filePath);
+      if (await targetFile.exists()) {
+        await targetFile.delete();
+      }
+    } on MissingPluginException {
+      // Ignore in headless tests without path_provider channel
+    } catch (e) {
+      debugPrint('deleteUploadedFileBytes error: $e');
+    }
+  }
+
+  // --- Note Subjects & Standalone Notebook Documents ---
+  Future<List<NoteSubject>> loadNoteSubjects() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_subjectsKey);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map((e) => NoteSubject.fromMap(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveNoteSubjects(List<NoteSubject> subjects) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = jsonEncode(subjects.map((s) => s.toMap()).toList());
+    await prefs.setString(_subjectsKey, raw);
+  }
+
+  Future<List<NoteDocument>> loadNotes() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_notesKey);
+    if (raw == null) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map((e) => NoteDocument.fromMap(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveNotes(List<NoteDocument> notes) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = jsonEncode(notes.map((n) => n.toMap()).toList());
+    await prefs.setString(_notesKey, raw);
+  }
+
+  Future<void> deleteNoteStorage(String noteId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final marker = 'note_${noteId}_';
+    final keysToRemove = prefs
+        .getKeys()
+        .where((k) => k.contains(marker))
+        .toList();
+    for (final k in keysToRemove) {
+      await prefs.remove(k);
+    }
   }
 }
 

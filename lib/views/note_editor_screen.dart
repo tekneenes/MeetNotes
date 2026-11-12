@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../controllers/home_library_controller.dart';
 import '../controllers/planner_controller.dart';
@@ -10,11 +11,17 @@ import '../widgets/planner_toolbar.dart';
 class NoteEditorScreen extends StatefulWidget {
   final NoteDocument note;
   final HomeLibraryController libraryController;
+  final String? initialPdfPath;
+  final Uint8List? initialPdfBytes;
+  final String? initialPdfName;
 
   const NoteEditorScreen({
     super.key,
     required this.note,
     required this.libraryController,
+    this.initialPdfPath,
+    this.initialPdfBytes,
+    this.initialPdfName,
   });
 
   @override
@@ -24,6 +31,8 @@ class NoteEditorScreen extends StatefulWidget {
 class _NoteEditorScreenState extends State<NoteEditorScreen> {
   late final PlannerController _controller;
   late String _currentTitle;
+  bool _didImportInitialPdf = false;
+  bool _isImportingPdf = false;
 
   @override
   void initState() {
@@ -36,10 +45,45 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
         colorTheme: widget.note.colorTheme,
       ),
     );
+    _controller.addListener(_handleControllerReadyForPdf);
+  }
+
+  void _handleControllerReadyForPdf() {
+    if (_didImportInitialPdf || _controller.isLoading) return;
+    if (widget.initialPdfPath == null && widget.initialPdfBytes == null) {
+      _didImportInitialPdf = true;
+      return;
+    }
+    _didImportInitialPdf = true;
+    _runInitialPdfImport();
+  }
+
+  Future<void> _runInitialPdfImport() async {
+    if (!mounted) return;
+    setState(() => _isImportingPdf = true);
+    try {
+      await _controller.importPdfAsNotePages(
+        fileName: widget.initialPdfName ?? '$_currentTitle.pdf',
+        path: widget.initialPdfPath,
+        bytes: widget.initialPdfBytes,
+      );
+      await widget.libraryController.syncNoteAfterEditing(
+        widget.note.id,
+        title: _currentTitle,
+        pageCount: _controller.totalPages,
+        paperStyle: _controller.paperConfig.style,
+        colorTheme: _controller.paperConfig.colorTheme,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isImportingPdf = false);
+      }
+    }
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_handleControllerReadyForPdf);
     _controller.dispose();
     super.dispose();
   }
@@ -137,6 +181,48 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                         Positioned.fill(
                           child: DrawingWorkspace(controller: _controller),
                         ),
+                        if (_isImportingPdf)
+                          Positioned(
+                            top: 14,
+                            right: 16,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.95),
+                                borderRadius: BorderRadius.circular(10),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.08),
+                                    blurRadius: 10,
+                                  ),
+                                ],
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'PDF sayfaları hazırlanıyor...',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         Positioned(
                           top: 10,
                           left: 12,

@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../controllers/home_library_controller.dart';
@@ -40,17 +43,79 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _openNote(NoteDocument note) async {
+  Future<void> _openNote(
+    NoteDocument note, {
+    String? initialPdfPath,
+    Uint8List? initialPdfBytes,
+    String? initialPdfName,
+  }) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => NoteEditorScreen(
           note: note,
           libraryController: _library,
+          initialPdfPath: initialPdfPath,
+          initialPdfBytes: initialPdfBytes,
+          initialPdfName: initialPdfName,
         ),
       ),
     );
     if (mounted) {
       await _library.refreshAgendaStats();
+    }
+  }
+
+  Future<({String name, String? path, Uint8List? bytes})?> _pickPdfFile() async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pdf'],
+        allowMultiple: false,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return null;
+      final file = result.files.first;
+      var bytes = file.bytes;
+      final path = file.path;
+      if ((bytes == null || bytes.isEmpty) && path != null) {
+        final f = File(path);
+        if (await f.exists()) {
+          bytes = await f.readAsBytes();
+        }
+      }
+      return (name: file.name, path: path, bytes: bytes);
+    } catch (e) {
+      debugPrint('PDF pick error: $e');
+      return null;
+    }
+  }
+
+  String _titleFromPdfName(String fileName) {
+    final lower = fileName.toLowerCase();
+    if (lower.endsWith('.pdf') && fileName.length > 4) {
+      return fileName.substring(0, fileName.length - 4);
+    }
+    return fileName;
+  }
+
+  Future<void> _createAndOpenPdfNote() async {
+    final picked = await _pickPdfFile();
+    if (picked == null || !mounted) return;
+    final selectedSubjectId = _library.selectedSubjectId ??
+        (_library.subjects.isNotEmpty ? _library.subjects.first.id : 'general');
+    final doc = await _library.createNote(
+      title: _titleFromPdfName(picked.name),
+      subjectId: selectedSubjectId,
+      paperStyle: PaperStyle.blank,
+      colorTheme: PaperColorTheme.white,
+    );
+    if (mounted) {
+      await _openNote(
+        doc,
+        initialPdfPath: picked.path,
+        initialPdfBytes: picked.bytes,
+        initialPdfName: picked.name,
+      );
     }
   }
 
@@ -60,6 +125,8 @@ class _HomeScreenState extends State<HomeScreen> {
         (_library.subjects.isNotEmpty ? _library.subjects.first.id : 'general');
     var selectedStyle = PaperStyle.dotted;
     var selectedTheme = PaperColorTheme.white;
+    var isPdfOnlyMode = false;
+    ({String name, String? path, Uint8List? bytes})? pickedPdf;
 
     final created = await showDialog<bool>(
       context: context,
@@ -71,136 +138,275 @@ class _HomeScreenState extends State<HomeScreen> {
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
           content: SizedBox(
-            width: 360,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(
-                  controller: titleCtrl,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    labelText: 'Not Başlığı',
-                    hintText: 'Örn: Ders Notları, Toplantı Özeti...',
-                    isDense: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+            width: 380,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: titleCtrl,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: 'Not Başlığı',
+                      hintText: isPdfOnlyMode
+                          ? 'Boş bırakılırsa PDF adı kullanılır...'
+                          : 'Örn: Ders Notları, Toplantı Özeti...',
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    onSubmitted: (_) {
+                      if (!isPdfOnlyMode || pickedPdf != null) {
+                        Navigator.of(ctx).pop(true);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Not Türü',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey.shade700,
                     ),
                   ),
-                  onSubmitted: (_) => Navigator.of(ctx).pop(true),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'Konu / Klasör',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: _library.subjects.map((subject) {
-                    final isSelected = selectedSubjectId == subject.id;
-                    return ChoiceChip(
-                      avatar: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: subject.color,
-                          shape: BoxShape.circle,
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          avatar: const Icon(
+                            Icons.edit_note_rounded,
+                            size: 16,
+                            color: Color(0xFF007AFF),
+                          ),
+                          label: const Text(
+                            'Defter Notu',
+                            style: TextStyle(fontSize: 11.5),
+                          ),
+                          selected: !isPdfOnlyMode,
+                          selectedColor: const Color(0xFFEFF6FF),
+                          onSelected: (_) {
+                            setModalState(() => isPdfOnlyMode = false);
+                          },
                         ),
                       ),
-                      label: Text(
-                        subject.name,
-                        style: const TextStyle(fontSize: 11.5),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ChoiceChip(
+                          avatar: const Icon(
+                            Icons.picture_as_pdf_rounded,
+                            size: 16,
+                            color: Color(0xFFDC2626),
+                          ),
+                          label: const Text(
+                            'Sadece PDF',
+                            style: TextStyle(fontSize: 11.5),
+                          ),
+                          selected: isPdfOnlyMode,
+                          selectedColor: const Color(0xFFFEF2F2),
+                          onSelected: (_) {
+                            setModalState(() => isPdfOnlyMode = true);
+                          },
+                        ),
                       ),
-                      selected: isSelected,
-                      selectedColor: subject.color.withValues(alpha: 0.14),
-                      onSelected: (_) {
-                        setModalState(() => selectedSubjectId = subject.id);
-                      },
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'Kağıt Stili',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.grey.shade700,
+                    ],
                   ),
-                ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: PaperStyle.values.map((style) {
-                    final isSelected = selectedStyle == style;
-                    return ChoiceChip(
-                      label: Text(
-                        style.label,
-                        style: const TextStyle(fontSize: 11.5),
-                      ),
-                      selected: isSelected,
-                      selectedColor: const Color(0xFFEFF6FF),
-                      onSelected: (_) {
-                        setModalState(() => selectedStyle = style);
-                      },
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'Kağıt Rengi',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.grey.shade700,
+                  const SizedBox(height: 14),
+                  Text(
+                    'Konu / Klasör',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey.shade700,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: PaperColorTheme.values.map((theme) {
-                    final isSelected = selectedTheme == theme;
-                    return Tooltip(
-                      message: theme.label,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(18),
-                        onTap: () => setModalState(() => selectedTheme = theme),
-                        child: Container(
-                          width: 28,
-                          height: 28,
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: _library.subjects.map((subject) {
+                      final isSelected = selectedSubjectId == subject.id;
+                      return ChoiceChip(
+                        avatar: Container(
+                          width: 8,
+                          height: 8,
                           decoration: BoxDecoration(
-                            color: theme.backgroundColor,
+                            color: subject.color,
                             shape: BoxShape.circle,
-                            border: Border.all(
-                              color: isSelected
-                                  ? const Color(0xFF007AFF)
-                                  : Colors.black.withValues(alpha: 0.16),
-                              width: isSelected ? 2.4 : 1.0,
+                          ),
+                        ),
+                        label: Text(
+                          subject.name,
+                          style: const TextStyle(fontSize: 11.5),
+                        ),
+                        selected: isSelected,
+                        selectedColor: subject.color.withValues(alpha: 0.14),
+                        onSelected: (_) {
+                          setModalState(() => selectedSubjectId = subject.id);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  if (isPdfOnlyMode) ...[
+                    const SizedBox(height: 14),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () async {
+                        final picked = await _pickPdfFile();
+                        if (picked == null) return;
+                        setModalState(() {
+                          pickedPdf = picked;
+                          if (titleCtrl.text.trim().isEmpty) {
+                            titleCtrl.text = _titleFromPdfName(picked.name);
+                          }
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: pickedPdf != null
+                                ? const Color(0xFFDC2626).withValues(alpha: 0.45)
+                                : const Color(0xFFCBD5E1),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEF2F2),
+                                borderRadius: BorderRadius.circular(9),
+                              ),
+                              child: const Icon(
+                                Icons.picture_as_pdf_rounded,
+                                color: Color(0xFFDC2626),
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    pickedPdf?.name ?? 'PDF Dosyası Seç',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    pickedPdf != null
+                                        ? 'Sayfalar doğrudan boş arka plan üzerine açılır'
+                                        : 'Çizgili/kareli kağıt olmadan doğrudan PDF açın',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(
+                              Icons.upload_file_rounded,
+                              size: 18,
+                              color: Color(0xFF64748B),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 14),
+                    Text(
+                      'Kağıt Stili',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: PaperStyle.values.map((style) {
+                        final isSelected = selectedStyle == style;
+                        return ChoiceChip(
+                          label: Text(
+                            style.label,
+                            style: const TextStyle(fontSize: 11.5),
+                          ),
+                          selected: isSelected,
+                          selectedColor: const Color(0xFFEFF6FF),
+                          onSelected: (_) {
+                            setModalState(() => selectedStyle = style);
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'Kağıt Rengi',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: PaperColorTheme.values.map((theme) {
+                        final isSelected = selectedTheme == theme;
+                        return Tooltip(
+                          message: theme.label,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(18),
+                            onTap: () =>
+                                setModalState(() => selectedTheme = theme),
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: theme.backgroundColor,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: isSelected
+                                      ? const Color(0xFF007AFF)
+                                      : Colors.black.withValues(alpha: 0.16),
+                                  width: isSelected ? 2.4 : 1.0,
+                                ),
+                              ),
+                              child: isSelected
+                                  ? Icon(
+                                      Icons.check_rounded,
+                                      size: 14,
+                                      color: theme.isDark
+                                          ? Colors.white
+                                          : const Color(0xFF007AFF),
+                                    )
+                                  : null,
                             ),
                           ),
-                          child: isSelected
-                              ? Icon(
-                                  Icons.check_rounded,
-                                  size: 14,
-                                  color: theme.isDark
-                                      ? Colors.white
-                                      : const Color(0xFF007AFF),
-                                )
-                              : null,
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
           actions: [
@@ -209,9 +415,16 @@ class _HomeScreenState extends State<HomeScreen> {
               child: const Text('İptal'),
             ),
             FilledButton.icon(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('Oluştur ve Aç'),
+              onPressed: (isPdfOnlyMode && pickedPdf == null)
+                  ? null
+                  : () => Navigator.of(ctx).pop(true),
+              icon: Icon(
+                isPdfOnlyMode
+                    ? Icons.picture_as_pdf_rounded
+                    : Icons.add_rounded,
+                size: 18,
+              ),
+              label: Text(isPdfOnlyMode ? 'PDF ile Aç' : 'Oluştur ve Aç'),
             ),
           ],
         ),
@@ -219,14 +432,22 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (created == true && mounted) {
+      final finalTitle = titleCtrl.text.trim().isNotEmpty
+          ? titleCtrl.text.trim()
+          : (pickedPdf != null ? _titleFromPdfName(pickedPdf!.name) : '');
       final doc = await _library.createNote(
-        title: titleCtrl.text,
+        title: finalTitle,
         subjectId: selectedSubjectId,
-        paperStyle: selectedStyle,
-        colorTheme: selectedTheme,
+        paperStyle: isPdfOnlyMode ? PaperStyle.blank : selectedStyle,
+        colorTheme: isPdfOnlyMode ? PaperColorTheme.white : selectedTheme,
       );
       if (mounted) {
-        await _openNote(doc);
+        await _openNote(
+          doc,
+          initialPdfPath: isPdfOnlyMode ? pickedPdf?.path : null,
+          initialPdfBytes: isPdfOnlyMode ? pickedPdf?.bytes : null,
+          initialPdfName: isPdfOnlyMode ? pickedPdf?.name : null,
+        );
       }
     }
   }
@@ -888,6 +1109,27 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(width: 10),
+          // Quick PDF Note CTA
+          OutlinedButton.icon(
+            onPressed: _createAndOpenPdfNote,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFDC2626),
+              side: BorderSide(
+                color: const Color(0xFFDC2626).withValues(alpha: 0.35),
+              ),
+              backgroundColor: const Color(0xFFFEF2F2),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            icon: const Icon(Icons.picture_as_pdf_rounded, size: 17),
+            label: const Text(
+              'PDF Aç',
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+            ),
+          ),
+          const SizedBox(width: 8),
           // Primary CTA: + Yeni Not
           FilledButton.icon(
             onPressed: _showCreateNoteDialog,

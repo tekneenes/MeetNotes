@@ -889,6 +889,80 @@ class PlannerController extends ChangeNotifier {
     return item;
   }
 
+  /// Imports every page of a PDF directly as clean canvas pages on blank paper.
+  Future<int> importPdfAsNotePages({
+    required String fileName,
+    String? path,
+    Uint8List? bytes,
+  }) async {
+    Uint8List? fileBytes = bytes;
+    if ((fileBytes == null || fileBytes.isEmpty) && path != null) {
+      try {
+        final f = File(path);
+        if (await f.exists()) {
+          fileBytes = await f.readAsBytes();
+        }
+      } catch (_) {}
+    }
+
+    final fileItem = CanvasFileItem(
+      id: const Uuid().v4(),
+      position: const Offset(120, 160),
+      name: fileName,
+      sizeBytes: fileBytes?.length ?? 0,
+      extension: 'pdf',
+      path: path,
+      base64Data: fileBytes != null ? base64Encode(fileBytes) : null,
+    );
+    await addUploadedFile(fileItem, rawBytes: fileBytes);
+
+    final info = await PdfService.getPdfInfo(path: path, data: fileBytes);
+    if (info == null || info.pageCount <= 0) {
+      notifyListeners();
+      return 1;
+    }
+
+    for (var i = 0; i < info.pageCount; i++) {
+      if (i > 0) {
+        addNewPage();
+      }
+      final pngBytes = await PdfService.renderPage(
+        path: path,
+        data: fileBytes,
+        pageIndex: i,
+        width: 1000.0,
+      );
+      if (pngBytes == null) continue;
+      final pageInfo = i < info.pages.length ? info.pages[i] : null;
+      final aspect = (pageInfo != null && pageInfo.aspectRatio > 0)
+          ? pageInfo.aspectRatio
+          : 0.707;
+      const pageW = 640.0;
+      final pageH = pageW / aspect;
+      final item = CanvasImageItem(
+        id: const Uuid().v4(),
+        position: const Offset(48, 32),
+        width: pageW,
+        height: pageH,
+        name: '$fileName • Sayfa ${i + 1}',
+        base64Data: base64Encode(pngBytes),
+        memoryBytes: pngBytes,
+        layerOrder: _nextTopLayerOrder(),
+      );
+      _canvasImages.add(item);
+      _normalizeUnifiedLayerOrders();
+      await _saveCurrentCanvasImages();
+    }
+
+    if (_currentPageIndex != 0) {
+      _currentPageIndex = 0;
+      await _loadPageStrokes();
+    } else {
+      notifyListeners();
+    }
+    return info.pageCount;
+  }
+
   /// Selects a single canvas image using the shared lasso selection system
   /// (same dashed frame, 8 resize handles and rotation knob as strokes).
   void _selectImageInLasso(String id) {

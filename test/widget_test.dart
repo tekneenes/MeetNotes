@@ -3270,5 +3270,17 @@ void main() {
     await tester.enterText(searchField, '');
     await tester.pumpAndSettle();
     expect(find.text('Matematik Notları'), findsOneWidget);
+
+    // Verify quick "PDF Aç" button and "Sadece PDF" mode in Yeni Not dialog
+    expect(find.text('PDF Aç'), findsOneWidget);
+    await tester.tap(find.text('Yeni Not'));
+    await tester.pumpAndSettle();
+    expect(find.text('Kağıt Stili'), findsOneWidget);
+    await tester.tap(find.text('Sadece PDF'));
+    await tester.pumpAndSettle();
+    expect(find.text('Kağıt Stili'), findsNothing);
+    expect(find.text('PDF Dosyası Seç'), findsOneWidget);
+    await tester.tap(find.text('İptal'));
+    await tester.pumpAndSettle();
   });
 }
